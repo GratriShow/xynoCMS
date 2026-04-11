@@ -2,7 +2,6 @@ name: Build Launcher
 
 on:
   push:
-    branches: [ main ]
     tags: [ 'v*' ]
   workflow_dispatch:
 
@@ -34,6 +33,12 @@ jobs:
         working-directory: launcher
         run: npm ci
 
+      - name: Ensure linux deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2 || sudo apt-get install -y libfuse2t64 || true
+
       - name: Build launcher
         working-directory: launcher
         run: npx electron-builder --${{ matrix.platform }} --publish never
@@ -41,15 +46,15 @@ jobs:
       - name: Verify build
         shell: bash
         run: |
-          echo "Checking dist folder..."
-          ls -la launcher/dist || true
+          echo "Checking release folder..."
+          ls -la launcher/release || true
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.platform }}
           path: |
-            launcher/dist/*.exe
-            launcher/dist/*.dmg
-            launcher/dist/*.AppImage
+            launcher/release/*.exe
+            launcher/release/*.dmg
+            launcher/release/*.AppImage
           if-no-files-found: error
