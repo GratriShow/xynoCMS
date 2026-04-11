@@ -1,0 +1,16 @@
+JVM info: Azul Systems, Inc. - 25.0.1 - 25.0.1+8-LTS
+java.net.preferIPv4Stack=true
+Current Time: 10/04/2026 22:59:35
+Option                  Description                                             
+------                  -----------                                             
+--debug                 Run in debug mode -- don't delete any files             
+--extract [File]        Extract the contained jar file to the specified         
+                          directory (default: .)                                
+-h, --help              Help with this installer                                
+--installClient [File]  Install the client files to the specified directory     
+                          (default: .)                                          
+--installServer [File]  Install a server to the specified directory (default: .)
+--makeOffline [File]    Creates a offline installer at the specified path       
+                          (default: .)                                          
+--mirror <URL>          Use a specific mirror URL                               
+--offline               Don't attempt any network calls                         

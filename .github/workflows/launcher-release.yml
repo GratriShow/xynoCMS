@@ -1,0 +1,205 @@
+name: Launcher build + upload
+
+on:
+  workflow_dispatch:
+    inputs:
+      required:
+        description: "Mark update as required (0/1)"
+        required: false
+        default: "0"
+      active:
+        description: "Activate this release (0/1)"
+        required: false
+        default: "1"
+  push:
+    tags:
+      - "launcher-v*"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: launcher/package-lock.json
+
+      - name: Install deps
+        working-directory: launcher
+        run: npm ci
+
+      - name: Build (NSIS)
+        working-directory: launcher
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run build:win
+
+      - name: Upload installer (win)
+        shell: bash
+        working-directory: launcher
+        env:
+          UPLOAD_URL: ${{ secrets.RELEASE_UPLOAD_URL }}
+          UPLOAD_TOKEN: ${{ secrets.XYNO_RELEASE_UPLOAD_TOKEN }}
+          LAUNCHER_UUID: ${{ secrets.LAUNCHER_UUID }}
+          ACTIVE: ${{ github.event.inputs.active || '1' }}
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          FILE="$(ls -1 release/*.exe 2>/dev/null | head -n 1 || true)"
+          if [[ -z "$FILE" ]]; then
+            echo "No .exe produced in launcher/release" >&2
+            ls -la release || true
+            exit 1
+          fi
+          curl -fsS -X POST "$UPLOAD_URL" \
+            -H "X-Upload-Token: $UPLOAD_TOKEN" \
+            -F "uuid=$LAUNCHER_UUID" \
+            -F "type=installer" \
+            -F "platform=win" \
+            -F "version=$VERSION" \
+            -F "active=$ACTIVE" \
+            -F "file=@$FILE"
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: launcher/package-lock.json
+
+      - name: Install deps
+        working-directory: launcher
+        run: npm ci
+
+      - name: Build (DMG)
+        working-directory: launcher
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run build:mac
+
+      - name: Upload installer (mac)
+        shell: bash
+        working-directory: launcher
+        env:
+          UPLOAD_URL: ${{ secrets.RELEASE_UPLOAD_URL }}
+          UPLOAD_TOKEN: ${{ secrets.XYNO_RELEASE_UPLOAD_TOKEN }}
+          LAUNCHER_UUID: ${{ secrets.LAUNCHER_UUID }}
+          ACTIVE: ${{ github.event.inputs.active || '1' }}
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          FILE="$(ls -1 release/*.dmg 2>/dev/null | head -n 1 || true)"
+          if [[ -z "$FILE" ]]; then
+            echo "No .dmg produced in launcher/release" >&2
+            ls -la release || true
+            exit 1
+          fi
+          curl -fsS -X POST "$UPLOAD_URL" \
+            -H "X-Upload-Token: $UPLOAD_TOKEN" \
+            -F "uuid=$LAUNCHER_UUID" \
+            -F "type=installer" \
+            -F "platform=mac" \
+            -F "version=$VERSION" \
+            -F "active=$ACTIVE" \
+            -F "file=@$FILE"
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: launcher/package-lock.json
+
+      - name: Install deps
+        working-directory: launcher
+        run: npm ci
+
+      - name: Build (AppImage)
+        working-directory: launcher
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run build:linux
+
+      - name: Build update zip (app.asar)
+        working-directory: launcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          ASAR="release/linux-unpacked/resources/app.asar"
+          if [[ ! -f "$ASAR" ]]; then
+            echo "Missing app.asar at $ASAR" >&2
+            find release -maxdepth 3 -type f -name app.asar -print || true
+            exit 1
+          fi
+          node tools/makeUpdateZip.js --asar "$ASAR" --out "release/update-$VERSION.zip"
+
+      - name: Upload installer (linux)
+        shell: bash
+        working-directory: launcher
+        env:
+          UPLOAD_URL: ${{ secrets.RELEASE_UPLOAD_URL }}
+          UPLOAD_TOKEN: ${{ secrets.XYNO_RELEASE_UPLOAD_TOKEN }}
+          LAUNCHER_UUID: ${{ secrets.LAUNCHER_UUID }}
+          ACTIVE: ${{ github.event.inputs.active || '1' }}
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          FILE="$(ls -1 release/*.AppImage 2>/dev/null | head -n 1 || true)"
+          if [[ -z "$FILE" ]]; then
+            echo "No .AppImage produced in launcher/release" >&2
+            ls -la release || true
+            exit 1
+          fi
+          curl -fsS -X POST "$UPLOAD_URL" \
+            -H "X-Upload-Token: $UPLOAD_TOKEN" \
+            -F "uuid=$LAUNCHER_UUID" \
+            -F "type=installer" \
+            -F "platform=linux" \
+            -F "version=$VERSION" \
+            -F "active=$ACTIVE" \
+            -F "file=@$FILE"
+
+      - name: Upload update zip
+        shell: bash
+        working-directory: launcher
+        env:
+          UPLOAD_URL: ${{ secrets.RELEASE_UPLOAD_URL }}
+          UPLOAD_TOKEN: ${{ secrets.XYNO_RELEASE_UPLOAD_TOKEN }}
+          LAUNCHER_UUID: ${{ secrets.LAUNCHER_UUID }}
+          REQUIRED: ${{ github.event.inputs.required || '0' }}
+          ACTIVE: ${{ github.event.inputs.active || '1' }}
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          FILE="release/update-$VERSION.zip"
+          if [[ ! -f "$FILE" ]]; then
+            echo "Missing update zip: $FILE" >&2
+            ls -la release || true
+            exit 1
+          fi
+          curl -fsS -X POST "$UPLOAD_URL" \
+            -H "X-Upload-Token: $UPLOAD_TOKEN" \
+            -F "uuid=$LAUNCHER_UUID" \
+            -F "type=update" \
+            -F "version=$VERSION" \
+            -F "required=$REQUIRED" \
+            -F "active=$ACTIVE" \
+            -F "file=@$FILE"

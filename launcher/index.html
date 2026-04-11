@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Launcher</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+
+      body {
+        margin: 0;
+        padding: 16px;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        line-height: 1.35;
+      }
+
+      h1 {
+        font-size: 16px;
+        margin: 0 0 10px 0;
+        font-weight: 600;
+      }
+
+      h2 {
+        font-size: 14px;
+        margin: 0 0 6px 0;
+        font-weight: 600;
+      }
+
+      .muted {
+        opacity: 0.8;
+      }
+
+      .lead {
+        margin: 0 0 10px 0;
+      }
+
+      .shell {
+        position: relative;
+        height: 190px;
+        overflow: hidden;
+      }
+
+      .screen {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        transform: translateY(6px);
+        transition: opacity 220ms ease, transform 220ms ease;
+        pointer-events: none;
+      }
+
+      .screen.active {
+        opacity: 1;
+        transform: none;
+        pointer-events: auto;
+      }
+
+      .row {
+        margin: 6px 0;
+      }
+
+      progress {
+        width: 100%;
+        height: 16px;
+      }
+
+      #currentFile {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 12px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      #errorBox {
+        margin-top: 8px;
+        padding: 10px;
+        border: 1px solid #c33;
+        border-radius: 8px;
+        color: #900;
+        white-space: pre-wrap;
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      button {
+        appearance: none;
+        border: 1px solid rgba(127, 127, 127, 0.35);
+        border-radius: 10px;
+        padding: 8px 12px;
+        font-weight: 600;
+        cursor: pointer;
+        background: transparent;
+      }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+
+      .spinner {
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        border: 2px solid rgba(127, 127, 127, 0.35);
+        border-top-color: rgba(127, 127, 127, 0.9);
+        animation: spin 0.9s linear infinite;
+        margin: 6px 0 8px 0;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .screen {
+          transition: none;
+        }
+        .spinner {
+          animation: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1 id="launcherName">Launcher</h1>
+
+    <main class="shell" aria-live="polite">
+      <section id="screen-init" class="screen active" aria-label="Initialisation">
+        <h2>Initialisation</h2>
+        <p class="lead">Initialisation du launcher</p>
+        <div class="spinner" aria-hidden="true"></div>
+        <p class="muted" id="initHint">Connexion et chargement…</p>
+      </section>
+
+      <section id="screen-sync" class="screen" aria-label="Synchronisation">
+        <h2>Synchronisation</h2>
+        <p class="lead" id="syncStep">Récupération du manifest</p>
+        <div class="row">
+          <progress id="syncProgressBar" max="100" value="0"></progress>
+        </div>
+        <div class="row muted" id="syncProgressText">0%</div>
+      </section>
+
+      <section id="screen-download" class="screen" aria-label="Téléchargement">
+        <h2>Téléchargement</h2>
+        <p class="lead" id="downloadStep">Téléchargement en cours</p>
+        <div class="row muted">Fichier en cours</div>
+        <div class="row" id="currentFile"></div>
+        <div class="row">
+          <progress id="downloadProgressBar" max="100" value="0"></progress>
+        </div>
+        <div class="row muted" id="downloadProgressText">0%</div>
+        <div class="row muted" id="downloadSpeed" style="display: none"></div>
+      </section>
+
+      <section id="screen-ready" class="screen" aria-label="Prêt">
+        <h2>Prêt</h2>
+        <p class="lead">Launcher prêt</p>
+        <p class="muted" id="authHint"></p>
+        <button id="continueBtn" type="button">Se connecter avec Microsoft</button>
+      </section>
+
+      <section id="screen-blocked" class="screen" aria-label="Abonnement requis">
+        <h2>Abonnement</h2>
+        <p class="lead" id="blockedMessage">Votre abonnement a expiré</p>
+        <div class="actions">
+          <button id="renewBtn" type="button">Renouveler</button>
+        </div>
+      </section>
+
+      <section id="screen-error" class="screen" aria-label="Erreur">
+        <h2>Erreur</h2>
+        <p class="lead">Impossible de démarrer le launcher</p>
+        <div id="errorBox"></div>
+        <div class="actions">
+          <button id="retryBtn" type="button">Réessayer</button>
+          <button id="quitBtn" type="button">Quitter</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>

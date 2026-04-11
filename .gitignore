@@ -1,0 +1,9 @@
+# Local secrets
+/config/.env.local
+
+# Node/Electron
+/launcher/dist
+/launcher/node_modules
+
+# OS
+.DS_Store

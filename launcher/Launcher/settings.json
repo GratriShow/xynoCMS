@@ -1,0 +1,6 @@
+{
+  "ram_min": 2048,
+  "ram_max": 4096,
+  "java_path": null,
+  "fullscreen": false
+}
