@@ -5,66 +5,12 @@ on:
     branches: [ main ]
     tags: [ 'v*' ]
   workflow_dispatch:
-    inputs:
-      bump:
-        description: 'Bump version (patch) and create tag vX.Y.Z'
-        required: false
-        default: 'false'
-      release_type:
-        description: 'npm version type (patch|minor|major)'
-        required: false
-        default: 'patch'
-  repository_dispatch:
-    types: [ cms_rebuild ]
 
 permissions:
   contents: write
 
-concurrency:
-  group: launcher-build-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
-  bump_version:
-    if: >-
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor != 'github-actions[bot]')
-      || (github.event_name == 'workflow_dispatch' && inputs.bump == 'true')
-      || (github.event_name == 'repository_dispatch' && (github.event.client_payload.bump == true || github.event.client_payload.bump == 'true'))
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: true
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: launcher/package-lock.json
-
-      - name: Install deps
-        working-directory: launcher
-        run: npm ci
-
-      - name: Configure git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Bump version + tag
-        working-directory: launcher
-        run: |
-          RELEASE_TYPE="${{ inputs.release_type }}"
-          if [ -z "$RELEASE_TYPE" ]; then RELEASE_TYPE="patch"; fi
-          npm version "$RELEASE_TYPE" -m "chore(release): v%s [skip ci]"
-
-      - name: Push commit + tags
-        run: |
-          git push --follow-tags
-
-  build_and_publish:
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+  build:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -72,191 +18,10 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: linux
-            make_update_zip: true
           - os: windows-latest
             platform: win
-            make_update_zip: false
           - os: macos-latest
             platform: mac
-            make_update_zip: false
-
-    env:
-      CMS_BASE_URL: ${{ secrets.CMS_BASE_URL }}
-      LAUNCHER_UUID: ${{ secrets.LAUNCHER_UUID }}
-      RELEASE_UPLOAD_TOKEN: ${{ secrets.RELEASE_UPLOAD_TOKEN }}
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: launcher/package-lock.json
-
-      - name: Install deps
-        working-directory: launcher
-        run: npm ci
-
-      - name: Lint
-        working-directory: launcher
-        run: npm run lint
-
-      - name: Ensure linux deps (AppImage)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libfuse2 || sudo apt-get install -y libfuse2t64 || true
-
-      - name: Build installers
-        working-directory: launcher
-        run: npm run build:${{ matrix.platform }} -- --publish never
-
-      - name: Resolve version
-        id: ver
-        shell: bash
-        run: |
-          REF_NAME="${GITHUB_REF_NAME}"
-          VERSION="${REF_NAME#v}"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-
-      - name: Upload installer to CMS
-        if: runner.os != 'Windows'
-        shell: bash
-        env:
-          VERSION: ${{ steps.ver.outputs.version }}
-        run: |
-          set -euo pipefail
-
-          if [[ -z "${CMS_BASE_URL}" || -z "${LAUNCHER_UUID}" || -z "${RELEASE_UPLOAD_TOKEN}" ]]; then
-            echo "Missing required secrets: CMS_BASE_URL, LAUNCHER_UUID, RELEASE_UPLOAD_TOKEN" >&2
-            exit 2
-          fi
-
-          file=""
-          case "${{ matrix.platform }}" in
-            mac)
-              file=$(ls -1 launcher/release/*.dmg 2>/dev/null | head -n 1 || true)
-              ;;
-            linux)
-              file=$(ls -1 launcher/release/*.AppImage 2>/dev/null | head -n 1 || true)
-              ;;
-            *)
-              echo "Unsupported platform in bash step" >&2
-              exit 2
-              ;;
-          esac
-
-          if [[ -z "$file" ]]; then
-            echo "Installer not found in launcher/release" >&2
-            ls -la launcher/release || true
-            exit 1
-          fi
-
-          echo "Uploading installer: $file"
-          curl -fSsSL -X POST "${CMS_BASE_URL%/}/api/release_upload.php" \
-            -H "X-Upload-Token: ${RELEASE_UPLOAD_TOKEN}" \
-            -F "uuid=${LAUNCHER_UUID}" \
-            -F "type=installer" \
-            -F "platform=${{ matrix.platform }}" \
-            -F "version=${VERSION}" \
-            -F "active=1" \
-            -F "file=@${file}"
-
-      - name: Upload installer to CMS (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        env:
-          VERSION: ${{ steps.ver.outputs.version }}
-        run: |
-          if (-not $env:CMS_BASE_URL -or -not $env:LAUNCHER_UUID -or -not $env:RELEASE_UPLOAD_TOKEN) {
-            throw "Missing required secrets: CMS_BASE_URL, LAUNCHER_UUID, RELEASE_UPLOAD_TOKEN"
-          }
-
-          $exe = Get-ChildItem -Path "launcher/release" -Recurse -File -Filter "*.exe" |
-            Where-Object { $_.Name -notmatch "blockmap" } |
-            Sort-Object LastWriteTime -Descending |
-            Select-Object -First 1
-
-          if (-not $exe) {
-            Get-ChildItem -Path "launcher/release" -Recurse | Select-Object FullName
-            throw "Installer .exe not found"
-          }
-
-          $url = "$($env:CMS_BASE_URL.TrimEnd('/'))/api/release_upload.php"
-          Write-Host "Uploading installer: $($exe.FullName)"
-
-          curl.exe -fSsSL -X POST $url `
-            -H "X-Upload-Token: $env:RELEASE_UPLOAD_TOKEN" `
-            -F "uuid=$env:LAUNCHER_UUID" `
-            -F "type=installer" `
-            -F "platform=win" `
-            -F "version=$env:VERSION" `
-            -F "active=1" `
-            -F "file=@$($exe.FullName)"
-
-      - name: Build update zip (from app.asar)
-        if: matrix.make_update_zip
-        shell: bash
-        env:
-          VERSION: ${{ steps.ver.outputs.version }}
-        run: |
-          set -euo pipefail
-
-          asar=$(find launcher/release -type f -path '*/resources/app.asar' -print -quit || true)
-          if [[ -z "$asar" ]]; then
-            echo "app.asar not found (expected under launcher/release/**/resources/app.asar)" >&2
-            find launcher/release -maxdepth 4 -type f | head -n 200 >&2
-            exit 1
-          fi
-
-          out="launcher/release/update-${VERSION}.zip"
-          node launcher/tools/makeUpdateZip.js --asar "$asar" --out "$out"
-
-          echo "Uploading update zip: $out"
-          curl -fSsSL -X POST "${CMS_BASE_URL%/}/api/release_upload.php" \
-            -H "X-Upload-Token: ${RELEASE_UPLOAD_TOKEN}" \
-            -F "uuid=${LAUNCHER_UUID}" \
-            -F "type=update" \
-            -F "version=${VERSION}" \
-            -F "required=0" \
-            -F "active=1" \
-            -F "file=@${out}"
-
-      - name: Upload build artifacts (GitHub)
-        uses: actions/upload-artifact@v4
-        with:
-          name: launcher-${{ matrix.platform }}-${{ github.ref_name }}
-          path: |
-            launcher/release/*.exe
-            launcher/release/*.dmg
-            launcher/release/*.AppImage
-            launcher/release/update-*.zip
-          if-no-files-found: ignore
-
-  build_and_publish_dispatch:
-    if: github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.bump != 'true')
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            platform: linux
-            make_update_zip: true
-          - os: windows-latest
-            platform: win
-            make_update_zip: false
-          - os: macos-latest
-            platform: mac
-            make_update_zip: false
-
-    env:
-      CMS_BASE_URL: ${{ secrets.CMS_BASE_URL }}
-      LAUNCHER_UUID: ${{ secrets.LAUNCHER_UUID }}
-      RELEASE_UPLOAD_TOKEN: ${{ secrets.RELEASE_UPLOAD_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
@@ -264,144 +29,27 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: launcher/package-lock.json
 
       - name: Install deps
         working-directory: launcher
         run: npm ci
 
-      - name: Lint
+      - name: Build launcher
         working-directory: launcher
-        run: npm run lint
+        run: npx electron-builder --${{ matrix.platform }} --publish never
 
-      - name: Ensure linux deps (AppImage)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libfuse2 || sudo apt-get install -y libfuse2t64 || true
-
-      - name: Build installers
-        working-directory: launcher
-        run: npm run build:${{ matrix.platform }} -- --publish never
-
-      - name: Resolve version (package.json)
-        id: ver
+      - name: Verify build
         shell: bash
         run: |
-          VERSION=$(node -p "require('./launcher/package.json').version")
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Checking dist folder..."
+          ls -la launcher/dist || true
 
-      - name: Upload installer to CMS
-        if: runner.os != 'Windows'
-        shell: bash
-        env:
-          VERSION: ${{ steps.ver.outputs.version }}
-        run: |
-          set -euo pipefail
-
-          if [[ -z "${CMS_BASE_URL}" || -z "${LAUNCHER_UUID}" || -z "${RELEASE_UPLOAD_TOKEN}" ]]; then
-            echo "Missing required secrets: CMS_BASE_URL, LAUNCHER_UUID, RELEASE_UPLOAD_TOKEN" >&2
-            exit 2
-          fi
-
-          file=""
-          case "${{ matrix.platform }}" in
-            mac)
-              file=$(ls -1 launcher/release/*.dmg 2>/dev/null | head -n 1 || true)
-              ;;
-            linux)
-              file=$(ls -1 launcher/release/*.AppImage 2>/dev/null | head -n 1 || true)
-              ;;
-            *)
-              echo "Unsupported platform in bash step" >&2
-              exit 2
-              ;;
-          esac
-
-          if [[ -z "$file" ]]; then
-            echo "Installer not found in launcher/release" >&2
-            ls -la launcher/release || true
-            exit 1
-          fi
-
-          echo "Uploading installer: $file"
-          curl -fSsSL -X POST "${CMS_BASE_URL%/}/api/release_upload.php" \
-            -H "X-Upload-Token: ${RELEASE_UPLOAD_TOKEN}" \
-            -F "uuid=${LAUNCHER_UUID}" \
-            -F "type=installer" \
-            -F "platform=${{ matrix.platform }}" \
-            -F "version=${VERSION}" \
-            -F "active=1" \
-            -F "file=@${file}"
-
-      - name: Upload installer to CMS (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        env:
-          VERSION: ${{ steps.ver.outputs.version }}
-        run: |
-          if (-not $env:CMS_BASE_URL -or -not $env:LAUNCHER_UUID -or -not $env:RELEASE_UPLOAD_TOKEN) {
-            throw "Missing required secrets: CMS_BASE_URL, LAUNCHER_UUID, RELEASE_UPLOAD_TOKEN"
-          }
-
-          $exe = Get-ChildItem -Path "launcher/release" -Recurse -File -Filter "*.exe" |
-            Where-Object { $_.Name -notmatch "blockmap" } |
-            Sort-Object LastWriteTime -Descending |
-            Select-Object -First 1
-
-          if (-not $exe) {
-            Get-ChildItem -Path "launcher/release" -Recurse | Select-Object FullName
-            throw "Installer .exe not found"
-          }
-
-          $url = "$($env:CMS_BASE_URL.TrimEnd('/'))/api/release_upload.php"
-          Write-Host "Uploading installer: $($exe.FullName)"
-
-          curl.exe -fSsSL -X POST $url `
-            -H "X-Upload-Token: $env:RELEASE_UPLOAD_TOKEN" `
-            -F "uuid=$env:LAUNCHER_UUID" `
-            -F "type=installer" `
-            -F "platform=win" `
-            -F "version=$env:VERSION" `
-            -F "active=1" `
-            -F "file=@$($exe.FullName)"
-
-      - name: Build update zip (from app.asar)
-        if: matrix.make_update_zip
-        shell: bash
-        env:
-          VERSION: ${{ steps.ver.outputs.version }}
-        run: |
-          set -euo pipefail
-
-          asar=$(find launcher/release -type f -path '*/resources/app.asar' -print -quit || true)
-          if [[ -z "$asar" ]]; then
-            echo "app.asar not found (expected under launcher/release/**/resources/app.asar)" >&2
-            find launcher/release -maxdepth 4 -type f | head -n 200 >&2
-            exit 1
-          fi
-
-          out="launcher/release/update-${VERSION}.zip"
-          node launcher/tools/makeUpdateZip.js --asar "$asar" --out "$out"
-
-          echo "Uploading update zip: $out"
-          curl -fSsSL -X POST "${CMS_BASE_URL%/}/api/release_upload.php" \
-            -H "X-Upload-Token: ${RELEASE_UPLOAD_TOKEN}" \
-            -F "uuid=${LAUNCHER_UUID}" \
-            -F "type=update" \
-            -F "version=${VERSION}" \
-            -F "required=0" \
-            -F "active=1" \
-            -F "file=@${out}"
-
-      - name: Upload build artifacts (GitHub)
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: launcher-${{ matrix.platform }}-dispatch
+          name: build-${{ matrix.platform }}
           path: |
-            launcher/release/*.exe
-            launcher/release/*.dmg
-            launcher/release/*.AppImage
-            launcher/release/update-*.zip
-          if-no-files-found: ignore
+            launcher/dist/*.exe
+            launcher/dist/*.dmg
+            launcher/dist/*.AppImage
+          if-no-files-found: error
