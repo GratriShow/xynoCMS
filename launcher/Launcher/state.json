@@ -1,0 +1,9 @@
+{
+  "launcher_id": "xxx",
+  "version": "v1.0.0",
+  "installed_files": {
+    "mods/mod.jar": "sha1hash",
+    "config/config.json": "sha1hash"
+  },
+  "last_sync": "timestamp"
+}

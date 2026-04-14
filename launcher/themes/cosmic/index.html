@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Launcher</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="theme-cosmic">
+    <header class="topbar">
+      <h1 id="launcherName">Launcher</h1>
+      <div class="badge">COSMIC</div>
+    </header>
+
+    <main class="shell" aria-live="polite">
+      <section id="screen-init" class="screen active" aria-label="Initialisation">
+        <h2>Initialisation</h2>
+        <p class="lead">Initialisation du launcher</p>
+        <div class="spinner" aria-hidden="true"></div>
+        <p class="muted" id="initHint">Connexion et chargement…</p>
+      </section>
+
+      <section id="screen-sync" class="screen" aria-label="Synchronisation">
+        <h2>Synchronisation</h2>
+        <p class="lead" id="syncStep">Récupération du manifest</p>
+        <div class="row">
+          <progress id="syncProgressBar" max="100" value="0"></progress>
+        </div>
+        <div class="row muted" id="syncProgressText">0%</div>
+      </section>
+
+      <section id="screen-download" class="screen" aria-label="Téléchargement">
+        <h2>Téléchargement</h2>
+        <p class="lead" id="downloadStep">Téléchargement en cours</p>
+        <div class="row muted">Fichier en cours</div>
+        <div class="row" id="currentFile"></div>
+        <div class="row">
+          <progress id="downloadProgressBar" max="100" value="0"></progress>
+        </div>
+        <div class="row muted" id="downloadProgressText">0%</div>
+        <div class="row muted" id="downloadSpeed" style="display: none"></div>
+      </section>
+
+      <section id="screen-ready" class="screen" aria-label="Prêt">
+        <h2>Prêt</h2>
+        <p class="lead">Launcher prêt</p>
+        <p class="muted" id="authHint"></p>
+        <button id="continueBtn" type="button">Se connecter avec Microsoft</button>
+        <div class="actions">
+          <button id="settingsBtn" type="button">Paramètres</button>
+        </div>
+
+        <section id="newsBox" class="news" aria-label="News" style="display:none">
+          <div class="news-head">
+            <span class="muted">News</span>
+          </div>
+          <div id="newsItems" class="news-items" role="list"></div>
+        </section>
+      </section>
+
+      <section id="screen-blocked" class="screen" aria-label="Abonnement requis">
+        <h2>Abonnement</h2>
+        <p class="lead" id="blockedMessage">Votre abonnement a expiré</p>
+        <div class="actions">
+          <button id="renewBtn" type="button">Renouveler</button>
+        </div>
+      </section>
+
+      <section id="screen-settings" class="screen" aria-label="Paramètres">
+        <h2>Paramètres</h2>
+        <p class="lead">Configurer votre expérience</p>
+
+        <div class="row muted">RAM min : <span id="ramMinLabel">2.0 Go</span></div>
+        <div class="row"><input id="ramMinRange" type="range" min="512" max="16384" step="256" /></div>
+
+        <div class="row muted">RAM max : <span id="ramMaxLabel">4.0 Go</span></div>
+        <div class="row"><input id="ramMaxRange" type="range" min="512" max="16384" step="256" /></div>
+
+        <div class="row muted">Java (auto ou manuel)</div>
+        <div class="row"><input id="javaPathInput" type="text" placeholder="Auto (détection)" /></div>
+        <div class="row muted" id="javaAutoHint"></div>
+
+        <div class="row"><label><input id="fullscreenToggle" type="checkbox" /> Plein écran</label></div>
+
+        <div class="row muted">Résolution (optionnel)</div>
+        <div class="row" style="display:flex; gap:8px;">
+          <input id="resWidthInput" type="number" min="640" max="7680" step="1" placeholder="Largeur" style="flex:1;" />
+          <input id="resHeightInput" type="number" min="480" max="4320" step="1" placeholder="Hauteur" style="flex:1;" />
+        </div>
+
+        <div class="row" id="settingsError" style="white-space: pre-wrap;"></div>
+        <div class="actions">
+          <button id="settingsBackBtn" type="button">Retour</button>
+        </div>
+      </section>
+
+      <section id="screen-error" class="screen" aria-label="Erreur">
+        <h2>Erreur</h2>
+        <p class="lead">Impossible de démarrer le launcher</p>
+        <div id="errorBox"></div>
+        <div class="actions">
+          <button id="retryBtn" type="button">Réessayer</button>
+          <button id="quitBtn" type="button">Quitter</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="../common/launcher-ui.js"></script>
+    <script src="renderer.js"></script>
+  </body>
+</html>

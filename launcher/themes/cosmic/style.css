@@ -1,0 +1,222 @@
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  padding: 16px;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  line-height: 1.35;
+  background: radial-gradient(1200px 500px at 30% -10%, rgba(149, 94, 255, 0.28), transparent 55%),
+    radial-gradient(900px 520px at 110% 40%, rgba(0, 209, 255, 0.18), transparent 60%),
+    #0b1020;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.badge {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+h1 {
+  font-size: 16px;
+  margin: 0;
+  font-weight: 700;
+}
+
+h2 {
+  font-size: 14px;
+  margin: 0 0 6px 0;
+  font-weight: 700;
+}
+
+.muted {
+  opacity: 0.78;
+}
+
+.lead {
+  margin: 0 0 10px 0;
+}
+
+.shell {
+  position: relative;
+  height: 190px;
+  overflow: hidden;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(10px);
+}
+
+.screen {
+  position: absolute;
+  inset: 12px;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 220ms ease, transform 220ms ease;
+  pointer-events: none;
+}
+
+.screen.active {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.row {
+  margin: 6px 0;
+}
+
+progress {
+  width: 100%;
+  height: 16px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+#currentFile {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#errorBox {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid rgba(255, 112, 112, 0.5);
+  border-radius: 12px;
+  color: rgba(255, 220, 220, 0.95);
+  background: rgba(255, 80, 80, 0.08);
+  white-space: pre-wrap;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+button {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-weight: 700;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.news {
+  margin-top: 10px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  border-radius: 12px;
+  padding: 10px;
+  max-height: 86px;
+  overflow: auto;
+}
+
+.news-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.news-items {
+  display: grid;
+  gap: 8px;
+}
+
+.news-item {
+  display: grid;
+  gap: 2px;
+}
+
+.news-title {
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.news-meta {
+  font-size: 11px;
+}
+
+.news-content {
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+input[type='text'],
+input[type='number'] {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+input[type='range'] {
+  width: 100%;
+}
+
+#settingsError {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 112, 112, 0.5);
+  border-radius: 12px;
+  color: rgba(255, 220, 220, 0.95);
+  background: rgba(255, 80, 80, 0.08);
+  display: none;
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  animation: spin 0.9s linear infinite;
+  margin: 6px 0 8px 0;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen {
+    transition: none;
+  }
+  .spinner {
+    animation: none;
+  }
+}
