@@ -1,0 +1,85 @@
+name: Build Launcher
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      uuid:
+        description: "Launcher UUID"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+          - os: windows-latest
+            platform: win
+          - os: macos-latest
+            platform: mac
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install deps
+        working-directory: launcher
+        run: npm ci
+
+      - name: Ensure linux deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2 || sudo apt-get install -y libfuse2t64 || true
+
+      - name: Build launcher
+        working-directory: launcher
+        run: npx electron-builder --${{ matrix.platform }} --publish never
+
+      - name: Verify build
+        shell: bash
+        run: |
+          echo "Checking release folder..."
+          ls -la launcher/release || true
+
+      - name: Upload artifacts (GitHub)
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.platform }}
+          path: |
+            launcher/release/*.exe
+            launcher/release/*.dmg
+            launcher/release/*.AppImage
+          if-no-files-found: error
+
+      # 👉 AJOUT IMPORTANT (upload vers TON VPS)
+      - name: Upload to VPS
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          FILE=$(find launcher/release -name "*.dmg" | head -n 1)
+
+          if [ -z "$FILE" ]; then
+            echo "No dmg found"
+            exit 1
+          fi
+
+          echo "Uploading $FILE"
+
+          curl -X POST https://xynocms.xynoweb.fr/api/upload_build.php \
+            -F "file=@$FILE" \
+            -F "uuid=${{ github.event.inputs.uuid }}" \
+            -F "token=8f7sd6f8sd6f8sd6f8sd6f"
