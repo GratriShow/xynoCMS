@@ -65,7 +65,7 @@ jobs:
             launcher/release/*.AppImage
           if-no-files-found: error
 
-      # 🔥 Upload vers ton VPS
+      # 🔥 Upload vers ton VPS (FIX FINAL)
       - name: Upload to VPS
         if: matrix.platform == 'mac'
         shell: bash
@@ -79,8 +79,8 @@ jobs:
 
           echo "Uploading $FILE"
 
-          curl -X POST https://xynocms.xynoweb.fr/api/upload_build.php \
-            -F "file=@$FILE" \
-            -F "uuid=${{ github.event.inputs.uuid }}" \
-            -F "platform=${{ matrix.platform }}" \
-            -F "token=8f7sd6f8sd6f8sd6f8sd6f"
+          curl -v -X POST https://xynocms.xynoweb.fr/api/upload_build.php \
+            -F file=@"$FILE" \
+            -F uuid="${{ github.event.inputs.uuid }}" \
+            -F platform="${{ matrix.platform }}" \
+            -F token="8f7sd6f8sd6f8sd6f8sd6f"
