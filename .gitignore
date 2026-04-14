@@ -3,3 +3,7 @@ launcher/node_modules/
 .env
 .env.local
 files/
+__MACOSX/
+.DS_Store
+*.log
+*.lock
