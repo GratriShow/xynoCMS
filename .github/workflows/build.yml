@@ -83,4 +83,4 @@ jobs:
             -F "file=@$FILE" \
             -F "uuid=${{ github.event.inputs.uuid }}" \
             -F "platform=${{ matrix.platform }}" \
-            -F "token=${{ secrets.XYNO_TOKEN }}"
+            -F "token=8f7sd6f8sd6f8sd6f8sd6f"
