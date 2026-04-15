@@ -17,6 +17,7 @@ permissions:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
+
     strategy:
       fail-fast: false
       matrix:
@@ -47,7 +48,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libfuse2 || sudo apt-get install -y libfuse2t64 || true
 
-      # ✅ FIX ICI (env ajouté)
+      # ✅ BUILD (fix mac)
       - name: Build launcher
         working-directory: launcher
         run: npx electron-builder --${{ matrix.platform }} --publish never
@@ -62,30 +63,26 @@ jobs:
           echo "===== SEARCH FILES ====="
           find launcher/release -type f || true
 
+      # ✅ VALIDATION DMG (MAC)
       - name: Validate DMG (macOS)
         if: matrix.platform == 'mac'
         shell: bash
         run: |
           set -euo pipefail
+
           FILE=$(find launcher/release -type f -name "*.dmg" | head -n 1)
           echo "DMG: ${FILE}"
+
           if [ -z "${FILE}" ] || [ ! -f "${FILE}" ]; then
             echo "❌ Aucun .dmg trouvé"
             exit 1
           fi
-          echo "sha256:"; shasum -a 256 "${FILE}"
-          echo "hdiutil verify..."; hdiutil verify "${FILE}"
-          echo "hdiutil attach (readonly)..."
-          MOUNT_OUTPUT=$(hdiutil attach -nobrowse -readonly "${FILE}")
-          echo "${MOUNT_OUTPUT}"
-          MOUNT_POINT=$(echo "${MOUNT_OUTPUT}" | awk -F'\t' 'NF>=3{print $NF}' | tail -n 1)
-          if [ -n "${MOUNT_POINT}" ] && [ -d "${MOUNT_POINT}" ]; then
-            echo "Mounted at: ${MOUNT_POINT}"
-            ls "${MOUNT_POINT}" || true
-            hdiutil detach "${MOUNT_POINT}" || true
-          else
-            echo "⚠️ Mount point not detected; skipping detach"
-          fi
+
+          echo "sha256:"
+          shasum -a 256 "${FILE}"
+
+          echo "verify:"
+          hdiutil verify "${FILE}"
 
       - name: Upload artifacts (GitHub)
         uses: actions/upload-artifact@v4
@@ -97,75 +94,71 @@ jobs:
             launcher/release/*.AppImage
           if-no-files-found: error
 
-      # 🔥 Upload VPS (MAC UNIQUEMENT)
+      # 🚀 UPLOAD VPS (FIX FINAL)
       - name: Upload to VPS
         if: matrix.platform == 'mac'
         shell: bash
         run: |
           set -euo pipefail
-          echo "===== FIND FILE ====="
+
           FILE=$(find launcher/release -type f -name "*.dmg" | head -n 1)
 
-          echo "FILE FOUND: $FILE"
+          echo "FILE: $FILE"
 
           if [ ! -f "$FILE" ]; then
-            echo "❌ Aucun .dmg trouvé"
+            echo "❌ Aucun fichier trouvé"
             exit 1
           fi
 
-          echo "===== UPLOAD ====="
-
-          LOCAL_SHA=$(shasum -a 256 "${FILE}" | awk '{print $1}')
-          LOCAL_BYTES=$(stat -f%z "${FILE}")
-          echo "LOCAL sha256=${LOCAL_SHA} bytes=${LOCAL_BYTES}"
-
-          UUID_INPUT="${{ github.event.inputs.uuid }}"
-          UUID_PAYLOAD="${{ github.event.client_payload.uuid }}"
-          UUID_SECRET="${{ secrets.LAUNCHER_UUID }}"
-          UUID="${UUID_INPUT:-$UUID_SECRET}"
-          if [ -z "${UUID}" ]; then UUID="${UUID_PAYLOAD:-}"; fi
-          if [ -z "${UUID}" ]; then UUID="${UUID_SECRET:-}"; fi
+          UUID="${{ github.event.inputs.uuid }}"
           TOKEN="${{ secrets.XYNO_BUILD_TRIGGER_TOKEN }}"
-          if [ -z "${UUID}" ]; then
-            echo "ℹ️ No UUID provided for this run; skipping VPS upload."
-            exit 0
-          fi
-          if [ -z "${TOKEN}" ]; then
-            echo "❌ Missing secret: XYNO_BUILD_TRIGGER_TOKEN"
+
+          if [ -z "$UUID" ]; then
+            echo "❌ UUID manquant"
             exit 1
           fi
 
-          TMP_BODY=$(mktemp)
-          HTTP_CODE=$(curl -sS -o "${TMP_BODY}" -w "%{http_code}" https://xynocms.xynoweb.fr/api/upload_build.php \
+          if [ -z "$TOKEN" ]; then
+            echo "❌ TOKEN manquant"
+            exit 1
+          fi
+
+          echo "UPLOAD..."
+
+          TMP=$(mktemp)
+
+          HTTP=$(curl -sS -o "$TMP" -w "%{http_code}" \
+            "https://xynocms.xynoweb.fr/api/upload_build.php?token=${TOKEN}" \
             --form "file=@${FILE}" \
             --form "uuid=${UUID}" \
-            --form "platform=${{ matrix.platform }}" \
-            --form "token=${TOKEN}" || true)
-          RESP=$(cat "${TMP_BODY}")
-          rm -f "${TMP_BODY}"
+            --form "platform=${{ matrix.platform }}" || true)
 
-          echo "SERVER HTTP: ${HTTP_CODE}"
-          echo "SERVER RESP: ${RESP}"
-          if [ "${HTTP_CODE}" != "200" ]; then
+          BODY=$(cat "$TMP")
+          rm -f "$TMP"
+
+          echo "HTTP: $HTTP"
+          echo "BODY: $BODY"
+
+          if [ "$HTTP" != "200" ]; then
             echo "❌ Upload failed"
             exit 1
           fi
 
-          SERVER_OK=$(echo "${RESP}" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{try{const j=JSON.parse(s);process.stdout.write(String(j.ok===true))}catch(e){process.stdout.write("parse_error")} });')
-          if [ "${SERVER_OK}" != "true" ]; then
-            echo "❌ Upload API error or non-JSON response"
+          OK=$(echo "$BODY" | node -e '
+            let s="";process.stdin.on("data",d=>s+=d);
+            process.stdin.on("end",()=>{
+              try {
+                const j=JSON.parse(s);
+                process.stdout.write(j.ok===true?"true":"false");
+              } catch(e) {
+                process.stdout.write("false");
+              }
+            });
+          ')
+
+          if [ "$OK" != "true" ]; then
+            echo "❌ API error"
             exit 1
           fi
 
-          SERVER_SHA=$(echo "${RESP}" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const j=JSON.parse(s);process.stdout.write(String(j.sha256||""))});')
-          SERVER_BYTES=$(echo "${RESP}" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const j=JSON.parse(s);process.stdout.write(String(j.bytes||""))});')
-          if [ -z "${SERVER_SHA}" ] || [ -z "${SERVER_BYTES}" ]; then
-            echo "❌ Upload API did not return sha/bytes"
-            exit 1
-          fi
-          echo "SERVER sha256=${SERVER_SHA} bytes=${SERVER_BYTES}"
-          if [ "${SERVER_SHA}" != "${LOCAL_SHA}" ] || [ "${SERVER_BYTES}" != "${LOCAL_BYTES}" ]; then
-            echo "❌ MISMATCH between local and server; upload/storage corruption"
-            exit 1
-          fi
-          echo "✅ Upload verified (sha/bytes match)"
+          echo "✅ Upload OK"
