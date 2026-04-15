@@ -100,16 +100,21 @@ jobs:
           node tools/makeUpdateZip.js --asar "release/linux-unpacked/resources/app.asar" --out "release/update-${VERSION}.zip"
 
       - name: Upload update zip to CMS
-        if: ${{ secrets.LAUNCHER_UUID != '' }}
         run: |
           set -euo pipefail
+          UUID="${{ secrets.LAUNCHER_UUID }}"
+          if [ -z "$UUID" ]; then
+            echo "LAUNCHER_UUID secret not set; skipping CMS upload for tag build."
+            exit 0
+          fi
+
           VERSION="${GITHUB_REF_NAME#v}"
           FILE="launcher/release/update-${VERSION}.zip"
           test -f "$FILE"
 
           curl -sS -f -X POST "${{ secrets.CMS_BASE_URL }}/api/release_upload.php" \
             -H "X-Upload-Token: ${{ secrets.RELEASE_UPLOAD_TOKEN }}" \
-            -F "uuid=${{ secrets.LAUNCHER_UUID }}" \
+            -F "uuid=${UUID}" \
             -F "type=update" \
             -F "version=${VERSION}" \
             -F "required=1" \
@@ -168,10 +173,15 @@ jobs:
           npm run ${{ matrix.npm_script }}
 
       - name: Upload installer to CMS
-        if: ${{ secrets.LAUNCHER_UUID != '' }}
         shell: bash
         run: |
           set -euo pipefail
+          UUID="${{ secrets.LAUNCHER_UUID }}"
+          if [ -z "$UUID" ]; then
+            echo "LAUNCHER_UUID secret not set; skipping CMS upload for tag build."
+            exit 0
+          fi
+
           VERSION="${GITHUB_REF_NAME#v}"
 
           # Find newest matching artifact under launcher/release
@@ -185,7 +195,7 @@ jobs:
 
           curl -sS -f -X POST "${{ secrets.CMS_BASE_URL }}/api/release_upload.php" \
             -H "X-Upload-Token: ${{ secrets.RELEASE_UPLOAD_TOKEN }}" \
-            -F "uuid=${{ secrets.LAUNCHER_UUID }}" \
+            -F "uuid=${UUID}" \
             -F "type=installer" \
             -F "platform=${{ matrix.platform }}" \
             -F "version=${VERSION}" \
