@@ -1,59 +1,159 @@
-{
-  "name": "xyno-launcher-base",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Base technique Electron: fetch manifest + sync fichiers (sans launch Minecraft)",
-  "main": "main.js",
-  "scripts": {
-    "dev": "electron .",
-    "start": "electron .",
-    "build": "electron-builder",
-    "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac",
-    "build:linux": "electron-builder --linux",
-    "build:update-zip": "node tools/makeUpdateZip.js",
-    "build:obfuscate": "node tools/obfuscate.js",
-    "start:obf": "npm run build:obfuscate && electron dist",
-    "lint": "node -c main.js && node -c preload.js && node -c renderer.js && node -c services/api.js && node -c services/apiV2.js && node -c services/manifest.js && node -c services/downloader.js && node -c services/fileManager.js && node -c services/state.js && node -c services/authService.js && node -c services/minecraft.js && node -c services/settings.js && node -c services/versionStore.js && node -c services/autoUpdate.js && node -c tools/applyUpdate.js && node -c utils/hash.js && node -c utils/paths.js && node -c themes/common/launcher-ui.js && node -c themes/default/renderer.js && node -c themes/cosmic/renderer.js"
-  },
-  "build": {
-    "appId": "com.xyno.launcher",
-    "productName": "XynoLauncher",
-    "asar": true,
-    "files": [
-      "main.js",
-      "preload.js",
-      "renderer.js",
-      "index.html",
-      "services/**",
-      "themes/**",
-      "tools/**",
-      "utils/**",
-      "Launcher/**",
-      "package.json"
-    ],
-    "directories": {
-      "output": "release"
-    },
-    "win": {
-      "target": "nsis"
-    },
-    "mac": {
-      "target": "dmg"
-    },
-    "linux": {
-      "target": "AppImage"
-    }
-  },
-  "devDependencies": {
-    "electron": "^32.2.0",
-    "electron-builder": "^26.0.12",
-    "javascript-obfuscator": "^4.1.0"
-  },
-  "dependencies": {
-    "minecraft-launcher-core": "^3.18.2",
-    "prismarine-auth": "^3.1.1",
-    "yazl": "^2.5.1",
-    "yauzl": "^2.10.0"
-  }
-}
+name: Build Launcher
+
+on:
+  push:
+    tags: [ 'v*' ]
+
+  workflow_dispatch:
+    inputs:
+      uuid:
+        description: "Launcher UUID"
+        required: false
+
+  repository_dispatch:
+    types: [ 'cms_rebuild' ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+          - os: windows-latest
+            platform: win
+          - os: macos-13
+            platform: mac
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 🔥 FIX NODE (IMPORTANT)
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install deps
+        working-directory: launcher
+        run: npm ci
+
+      - name: Ensure linux deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2 || sudo apt-get install -y libfuse2t64 || true
+
+      # 🔥 BUILD FIX
+      - name: Build launcher
+        working-directory: launcher
+        run: |
+          if [ "${{ matrix.platform }}" = "mac" ]; then
+            npx electron-builder --mac --universal --publish never
+          else
+            npx electron-builder --${{ matrix.platform }} --publish never
+          fi
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      # DEBUG
+      - name: Debug release folder
+        run: |
+          echo "===== RELEASE CONTENT ====="
+          ls launcher/release || dir launcher/release || true
+          echo "===== SEARCH FILES ====="
+          find launcher/release -type f || true
+
+      # VALIDATION MAC
+      - name: Validate DMG (macOS)
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          FILE=$(find launcher/release -type f -name "*.dmg" | head -n 1)
+
+          if [ -z "${FILE}" ] || [ ! -f "${FILE}" ]; then
+            echo "❌ Aucun .dmg trouvé"
+            exit 1
+          fi
+
+          echo "DMG: ${FILE}"
+          shasum -a 256 "${FILE}"
+          hdiutil verify "${FILE}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.platform }}
+          path: |
+            launcher/release/*.exe
+            launcher/release/*.dmg
+            launcher/release/*.AppImage
+          if-no-files-found: error
+
+      # 🚀 UPLOAD VPS
+      - name: Upload to VPS
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          FILE=$(find launcher/release -type f -name "*.dmg" | head -n 1)
+
+          if [ ! -f "$FILE" ]; then
+            echo "❌ Aucun fichier trouvé"
+            exit 1
+          fi
+
+          UUID_INPUT="${{ github.event.inputs.uuid }}"
+          UUID_PAYLOAD="${{ github.event.client_payload.uuid }}"
+
+          UUID="${UUID_INPUT:-$UUID_PAYLOAD}"
+          UUID=$(echo "$UUID" | tr -d '\n\r ')
+
+          # 🔥 HARD CHECK
+          if ! echo "$UUID" | grep -Eq '^[a-f0-9-]{36}$'; then
+            echo "❌ UUID invalide: $UUID"
+            exit 1
+          fi
+
+          TOKEN="${{ secrets.XYNO_BUILD_TRIGGER_TOKEN }}"
+
+          if [ -z "$TOKEN" ]; then
+            echo "❌ TOKEN manquant"
+            exit 1
+          fi
+
+          echo "UPLOAD → $FILE"
+
+          TMP=$(mktemp)
+
+          HTTP=$(curl -sS -o "$TMP" -w "%{http_code}" \
+            https://xynocms.xynoweb.fr/api/upload_build.php \
+            -H "X-Build-Token: ${TOKEN}" \
+            --form "file=@${FILE}" \
+            --form "uuid=${UUID}" \
+            --form "platform=mac" || true)
+
+          BODY=$(cat "$TMP")
+          rm -f "$TMP"
+
+          echo "HTTP: $HTTP"
+          echo "BODY: $BODY"
+
+          if [ "$HTTP" != "200" ]; then
+            echo "❌ Upload failed"
+            exit 1
+          fi
+
+          echo "$BODY" | grep -q '"ok":true' || (echo "❌ API error" && exit 1)
+
+          echo "✅ Upload OK"
