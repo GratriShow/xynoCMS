@@ -112,8 +112,26 @@ jobs:
 
           echo "===== UPLOAD ====="
 
-          curl -v https://xynocms.xynoweb.fr/api/upload_build.php \
+          LOCAL_SHA=$(shasum -a 256 "${FILE}" | awk '{print $1}')
+          LOCAL_BYTES=$(stat -f%z "${FILE}")
+          echo "LOCAL sha256=${LOCAL_SHA} bytes=${LOCAL_BYTES}"
+
+          RESP=$(curl -sS https://xynocms.xynoweb.fr/api/upload_build.php \
             --form "file=@${FILE}" \
             --form "uuid=${{ github.event.inputs.uuid }}" \
             --form "platform=${{ matrix.platform }}" \
-            --form "token=8f7sd6f8sd6f8sd6f8sd6f"
+            --form "token=8f7sd6f8sd6f8sd6f8sd6f")
+
+          echo "SERVER RESP: ${RESP}"
+          SERVER_SHA=$(echo "${RESP}" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{try{const j=JSON.parse(s);process.stdout.write(String(j.sha256||""))}catch(e){process.exit(2)}});')
+          SERVER_BYTES=$(echo "${RESP}" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{try{const j=JSON.parse(s);process.stdout.write(String(j.bytes||""))}catch(e){process.exit(2)}});')
+          if [ -z "${SERVER_SHA}" ] || [ -z "${SERVER_BYTES}" ]; then
+            echo "❌ Upload API did not return sha/bytes"
+            exit 1
+          fi
+          echo "SERVER sha256=${SERVER_SHA} bytes=${SERVER_BYTES}"
+          if [ "${SERVER_SHA}" != "${LOCAL_SHA}" ] || [ "${SERVER_BYTES}" != "${LOCAL_BYTES}" ]; then
+            echo "❌ MISMATCH between local and server; upload/storage corruption"
+            exit 1
+          fi
+          echo "✅ Upload verified (sha/bytes match)"
