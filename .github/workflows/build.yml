@@ -28,7 +28,7 @@ jobs:
             platform: linux
           - os: windows-latest
             platform: win
-          - os: macos-latest
+          - os: macos-13   # 🔥 FIX → Intel runner
             platform: mac
 
     steps:
@@ -50,10 +50,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libfuse2 || sudo apt-get install -y libfuse2t64 || true
 
-      # BUILD
+      # 🔥 BUILD FIX MAC UNIVERSAL
       - name: Build launcher
         working-directory: launcher
-        run: npx electron-builder --${{ matrix.platform }} --publish never
+        run: |
+          if [ "${{ matrix.platform }}" = "mac" ]; then
+            npx electron-builder --mac --universal --publish never
+          else
+            npx electron-builder --${{ matrix.platform }} --publish never
+          fi
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
@@ -108,13 +113,10 @@ jobs:
             exit 1
           fi
 
-          # 🔥 UUID SMART (inputs + CMS)
           UUID_INPUT="${{ github.event.inputs.uuid }}"
           UUID_PAYLOAD="${{ github.event.client_payload.uuid }}"
 
           UUID="${UUID_INPUT:-$UUID_PAYLOAD}"
-
-          # nettoyage (très important)
           UUID=$(echo "$UUID" | tr -d '\n\r ')
 
           echo "UUID: '$UUID'"
