@@ -71,16 +71,16 @@ jobs:
         shell: bash
         run: |
           FILE=$(find launcher/release -name "*.dmg" | head -n 1)
-
+        
           if [ -z "$FILE" ]; then
             echo "No dmg found"
             exit 1
           fi
-
+        
           echo "Uploading $FILE"
-
-          curl -v -X POST https://xynocms.xynoweb.fr/api/upload_build.php \
-            -F file=@"$FILE" \
-            -F uuid=${{ github.event.inputs.uuid }} \
-            -F platform="${{ matrix.platform }}" \
-            -F token="8f7sd6f8sd6f8sd6f8sd6f"
+        
+          curl -v https://xynocms.xynoweb.fr/api/upload_build.php \
+            --form "file=@${FILE}" \
+            --form "uuid=${{ github.event.inputs.uuid }}" \
+            --form "platform=${{ matrix.platform }}" \
+            --form "token=8f7sd6f8sd6f8sd6f8sd6f"
