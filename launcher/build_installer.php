@@ -51,6 +51,11 @@ function runner_url_for_platform(string $platform): string
         return '';
     }
 
+    // If the URL points to GitHub's REST API (workflow dispatch), keep it as-is.
+    if (stripos($url, 'api.github.com/') !== false) {
+        return $url;
+    }
+
     if (stripos($url, '/api/build_launcher.php') === false) {
         $url = rtrim($url, '/') . '/api/build_launcher.php';
     }
@@ -58,11 +63,128 @@ function runner_url_for_platform(string $platform): string
     return $url;
 }
 
+function is_github_workflow_dispatch_url(string $url): bool
+{
+    // Example: https://api.github.com/repos/OWNER/REPO/actions/workflows/build.yml/dispatches
+    if (stripos($url, 'api.github.com/') === false) return false;
+    return (bool)preg_match('#/repos/[^/]+/[^/]+/actions/workflows/[^/]+/dispatches$#i', rtrim($url, '/'));
+}
+
+/**
+ * @return array{ok:bool, mode?:string, error?:string}
+ */
+function call_github_workflow_dispatch(string $dispatchUrl, string $githubToken, string $ref, string $uuid): array
+{
+    $payloadArr = [
+        'ref' => $ref,
+        'inputs' => [
+            'uuid' => $uuid,
+        ],
+    ];
+    $payloadJson = json_encode($payloadArr, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    if (!is_string($payloadJson) || $payloadJson === '') {
+        return ['ok' => false, 'error' => 'github_payload_encode_failed'];
+    }
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($dispatchUrl);
+        if ($ch === false) {
+            return ['ok' => false, 'error' => 'curl_init_failed'];
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $payloadJson,
+            CURLOPT_HTTPHEADER => [
+                'Accept: application/vnd.github+json',
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $githubToken,
+                'X-GitHub-Api-Version: 2022-11-28',
+                'User-Agent: xynoCMS',
+            ],
+            CURLOPT_CONNECTTIMEOUT => 20,
+            CURLOPT_TIMEOUT => 60,
+            CURLOPT_HEADER => false,
+        ]);
+
+        $resp = curl_exec($ch);
+        $err = curl_error($ch);
+        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($resp === false) {
+            return ['ok' => false, 'error' => 'curl_exec_failed: ' . $err];
+        }
+
+        // GitHub returns 204 No Content on success.
+        if ($httpCode === 204) {
+            return ['ok' => true, 'mode' => 'github_workflow_dispatch'];
+        }
+
+        // Try JSON error format, fallback to raw.
+        $decoded = json_decode((string)$resp, true);
+        if (is_array($decoded) && isset($decoded['message'])) {
+            return ['ok' => false, 'error' => 'github_http_' . $httpCode . ': ' . (string)$decoded['message']];
+        }
+
+        $prefix = substr(trim((string)$resp), 0, 240);
+        return ['ok' => false, 'error' => 'github_http_' . $httpCode . ': ' . ($prefix !== '' ? $prefix : 'empty_response')];
+    }
+
+    $headers = [
+        "Accept: application/vnd.github+json",
+        "Content-Type: application/json",
+        "Authorization: Bearer {$githubToken}",
+        "X-GitHub-Api-Version: 2022-11-28",
+        "User-Agent: xynoCMS",
+    ];
+    $ctx = stream_context_create([
+        'http' => [
+            'method' => 'POST',
+            'header' => implode("\r\n", $headers) . "\r\n",
+            'content' => $payloadJson,
+            'timeout' => 60,
+            'ignore_errors' => true,
+        ],
+    ]);
+
+    $resp = file_get_contents($dispatchUrl, false, $ctx);
+    $statusLine = is_array($http_response_header ?? null) && isset($http_response_header[0]) ? (string)$http_response_header[0] : '';
+    $httpCode = 0;
+    if (preg_match('#HTTP/\S+\s+(\d{3})#', $statusLine, $m)) {
+        $httpCode = (int)$m[1];
+    }
+
+    if ($httpCode === 204) {
+        return ['ok' => true, 'mode' => 'github_workflow_dispatch'];
+    }
+
+    $decoded = json_decode((string)$resp, true);
+    if (is_array($decoded) && isset($decoded['message'])) {
+        return ['ok' => false, 'error' => 'github_http_' . $httpCode . ': ' . (string)$decoded['message']];
+    }
+
+    $prefix = substr(trim((string)$resp), 0, 240);
+    return ['ok' => false, 'error' => 'github_http_' . $httpCode . ': ' . ($prefix !== '' ? $prefix : 'empty_response')];
+}
+
 /**
  * @return array{ok:bool, uuid?:string, version?:string, url?:string, error?:string}
  */
 function call_remote_runner(string $runnerUrl, string $token, string $uuid, string $platform): array
 {
+    // GitHub Actions workflow dispatch mode: returns 204 No Content on success.
+    if (is_github_workflow_dispatch_url($runnerUrl)) {
+        $ghToken = api_env('XYNO_GITHUB_TOKEN', '');
+        if ($ghToken === '') {
+            return ['ok' => false, 'error' => 'missing_env:XYNO_GITHUB_TOKEN'];
+        }
+        $ref = trim(api_env('XYNO_GITHUB_REF', 'main'));
+        if ($ref === '') $ref = 'main';
+        return call_github_workflow_dispatch($runnerUrl, $ghToken, $ref, $uuid);
+    }
+
     $payload = http_build_query([
         'uuid' => $uuid,
         'platform' => $platform,
@@ -89,13 +211,18 @@ function call_remote_runner(string $runnerUrl, string $token, string $uuid, stri
 
         $resp = curl_exec($ch);
         $err = curl_error($ch);
+        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
         if ($resp === false) {
             return ['ok' => false, 'error' => 'curl_exec_failed: ' . $err];
         }
         $decoded = json_decode((string)$resp, true);
-        return is_array($decoded) ? $decoded : ['ok' => false, 'error' => 'invalid_json_response'];
+        if (is_array($decoded)) {
+            return $decoded;
+        }
+        $prefix = substr(trim((string)$resp), 0, 240);
+        return ['ok' => false, 'error' => 'invalid_json_response http=' . $httpCode . ' body=' . ($prefix !== '' ? $prefix : 'empty')];
     }
 
     $ctx = stream_context_create([
@@ -112,8 +239,17 @@ function call_remote_runner(string $runnerUrl, string $token, string $uuid, stri
     if (!is_string($resp)) {
         return ['ok' => false, 'error' => 'http_request_failed'];
     }
+    $statusLine = is_array($http_response_header ?? null) && isset($http_response_header[0]) ? (string)$http_response_header[0] : '';
+    $httpCode = 0;
+    if (preg_match('#HTTP/\S+\s+(\d{3})#', $statusLine, $m)) {
+        $httpCode = (int)$m[1];
+    }
     $decoded = json_decode((string)$resp, true);
-    return is_array($decoded) ? $decoded : ['ok' => false, 'error' => 'invalid_json_response'];
+    if (is_array($decoded)) {
+        return $decoded;
+    }
+    $prefix = substr(trim((string)$resp), 0, 240);
+    return ['ok' => false, 'error' => 'invalid_json_response http=' . $httpCode . ' body=' . ($prefix !== '' ? $prefix : 'empty')];
 }
 
 try {
@@ -142,10 +278,15 @@ try {
             $msg = (string)($decoded['error'] ?? 'Build failed');
             throw new BuildLauncherException(500, 'remote_runner_failed', $msg);
         }
+        $mode = (string)($decoded['mode'] ?? '');
         $version = (string)($decoded['version'] ?? '');
         $fileUrl = (string)($decoded['url'] ?? '');
 
-        flash_set('success', 'Build terminé (' . strtoupper($platform) . ') ' . ($version !== '' ? '• ' . $version : '') . ($fileUrl !== '' ? ' • OK' : ''));
+        if ($mode === 'github_workflow_dispatch') {
+            flash_set('success', 'Build lancé sur GitHub Actions (' . strtoupper($platform) . ').');
+        } else {
+            flash_set('success', 'Build terminé (' . strtoupper($platform) . ') ' . ($version !== '' ? '• ' . $version : '') . ($fileUrl !== '' ? ' • OK' : ''));
+        }
         redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '#parametres');
     }
 
