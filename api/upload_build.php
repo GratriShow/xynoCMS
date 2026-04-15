@@ -1,38 +1,34 @@
 <?php
 
 require_once __DIR__ . '/../config/bootstrap.php';
+require_once __DIR__ . '/utils.php';
 
 $token = $_POST['token'] ?? '';
 $uuid = $_POST['uuid'] ?? '';
 
 if ($token !== api_env('XYNO_BUILD_TRIGGER_TOKEN', '')) {
-    http_response_code(403);
-    exit('Forbidden');
+    api_json(['ok' => false, 'error' => 'forbidden'], 403);
 }
 
 if (!preg_match('/^[a-f0-9-]+$/', $uuid)) {
-    http_response_code(400);
-    exit('Invalid UUID');
+    api_json(['ok' => false, 'error' => 'invalid_uuid'], 400);
 }
 
 if (!isset($_FILES['file'])) {
-    http_response_code(400);
-    exit('No file uploaded');
+    api_json(['ok' => false, 'error' => 'no_file_uploaded'], 400);
 }
 
 $file = $_FILES['file'];
 
 // sécurité basique
 if ($file['error'] !== UPLOAD_ERR_OK) {
-    http_response_code(500);
-    exit('Upload error');
+    api_json(['ok' => false, 'error' => 'upload_error'], 500);
 }
 
 // extension check
 $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
 if ($ext !== 'dmg') {
-    http_response_code(400);
-    exit('Invalid file type');
+    api_json(['ok' => false, 'error' => 'invalid_file_type'], 400);
 }
 
 // destination
@@ -46,36 +42,31 @@ $filename = "installer-mac-$version.dmg";
 $path = $dir . $filename;
 
 if (!move_uploaded_file($file['tmp_name'], $path)) {
-    http_response_code(500);
-    exit('Failed to save file');
+    api_json(['ok' => false, 'error' => 'failed_to_save_file'], 500);
 }
 
 // Basic DMG sanity check (UDIF footer contains "koly" in the last 512 bytes).
 $fp = @fopen($path, 'rb');
 if ($fp === false) {
     @unlink($path);
-    http_response_code(500);
-    exit('Failed to read file');
+    api_json(['ok' => false, 'error' => 'failed_to_read_file'], 500);
 }
 $size = @filesize($path);
 if ($size === false || $size < 1024) {
     fclose($fp);
     @unlink($path);
-    http_response_code(400);
-    exit('Invalid DMG (too small)');
+    api_json(['ok' => false, 'error' => 'invalid_dmg_too_small'], 400);
 }
 if (@fseek($fp, -512, SEEK_END) !== 0) {
     fclose($fp);
     @unlink($path);
-    http_response_code(400);
-    exit('Invalid DMG');
+    api_json(['ok' => false, 'error' => 'invalid_dmg'], 400);
 }
 $tail = (string)@fread($fp, 512);
 fclose($fp);
 if ($tail === '' || strpos($tail, 'koly') === false) {
     @unlink($path);
-    http_response_code(400);
-    exit('Invalid DMG (signature missing)');
+    api_json(['ok' => false, 'error' => 'invalid_dmg_signature_missing'], 400);
 }
 
 // hash
@@ -100,10 +91,10 @@ $pdo->prepare("
     )
 ")->execute([$uuid, $version, $url, $sha]);
 
-echo json_encode([
+api_json([
     'ok' => true,
     'url' => $url,
     'sha256' => $sha,
     'bytes' => (int)$size,
-    'filename' => $filename
+    'filename' => $filename,
 ]);

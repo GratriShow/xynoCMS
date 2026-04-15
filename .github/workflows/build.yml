@@ -100,6 +100,7 @@ jobs:
         if: matrix.platform == 'mac'
         shell: bash
         run: |
+          set -euo pipefail
           echo "===== FIND FILE ====="
           FILE=$(find launcher/release -type f -name "*.dmg" | head -n 1)
 
@@ -116,15 +117,22 @@ jobs:
           LOCAL_BYTES=$(stat -f%z "${FILE}")
           echo "LOCAL sha256=${LOCAL_SHA} bytes=${LOCAL_BYTES}"
 
-          RESP=$(curl -sS https://xynocms.xynoweb.fr/api/upload_build.php \
+          RESP=$(curl --fail-with-body -sS https://xynocms.xynoweb.fr/api/upload_build.php \
             --form "file=@${FILE}" \
             --form "uuid=${{ github.event.inputs.uuid }}" \
             --form "platform=${{ matrix.platform }}" \
             --form "token=8f7sd6f8sd6f8sd6f8sd6f")
 
           echo "SERVER RESP: ${RESP}"
-          SERVER_SHA=$(echo "${RESP}" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{try{const j=JSON.parse(s);process.stdout.write(String(j.sha256||""))}catch(e){process.exit(2)}});')
-          SERVER_BYTES=$(echo "${RESP}" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{try{const j=JSON.parse(s);process.stdout.write(String(j.bytes||""))}catch(e){process.exit(2)}});')
+
+          SERVER_OK=$(echo "${RESP}" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{try{const j=JSON.parse(s);process.stdout.write(String(j.ok===true))}catch(e){process.stdout.write("parse_error")} });')
+          if [ "${SERVER_OK}" != "true" ]; then
+            echo "❌ Upload API error or non-JSON response"
+            exit 1
+          fi
+
+          SERVER_SHA=$(echo "${RESP}" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const j=JSON.parse(s);process.stdout.write(String(j.sha256||""))});')
+          SERVER_BYTES=$(echo "${RESP}" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const j=JSON.parse(s);process.stdout.write(String(j.bytes||""))});')
           if [ -z "${SERVER_SHA}" ] || [ -z "${SERVER_BYTES}" ]; then
             echo "❌ Upload API did not return sha/bytes"
             exit 1
