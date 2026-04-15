@@ -3,13 +3,22 @@
 require_once __DIR__ . '/../config/bootstrap.php';
 require_once __DIR__ . '/utils.php';
 
-$token = $_POST['token'] ?? '';
+$token = trim((string)($_POST['token'] ?? ''));
+if ($token === '') {
+    $token = api_header('X-Build-Token', 512);
+}
 $uuid = $_POST['uuid'] ?? '';
 
-if ($token !== api_env('XYNO_BUILD_TRIGGER_TOKEN', '')) {
+$expected = trim(api_env('XYNO_BUILD_TRIGGER_TOKEN', ''));
+if ($expected === '') {
+    api_json(['ok' => false, 'error' => 'forbidden_server_token_not_configured'], 403);
+}
+
+if (!hash_equals($expected, $token)) {
     api_json(['ok' => false, 'error' => 'forbidden'], 403);
 }
 
+$uuid = trim((string)$uuid);
 if (!preg_match('/^[a-f0-9-]+$/', $uuid)) {
     api_json(['ok' => false, 'error' => 'invalid_uuid'], 400);
 }
