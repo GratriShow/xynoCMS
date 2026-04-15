@@ -1,39 +1,477 @@
-- name: Upload build
-  run: |
-    set -euo pipefail
+name: Build & publish launcher
 
-    FILE=$(find launcher/release -type f -name "*.dmg" | head -n 1)
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
 
-    if [ -z "$FILE" ] || [ ! -f "$FILE" ]; then
-      echo "❌ Aucun fichier trouvé"
-      exit 1
-    fi
+  # Manual / VPS-triggered builds.
+  workflow_dispatch:
+    inputs:
+      uuid:
+        description: 'Launcher UUID (defaults to secret LAUNCHER_UUID)'
+        required: false
+        type: string
+      platform:
+        description: 'Installer platform (win|mac|linux)'
+        required: false
+        default: 'mac'
+        type: choice
+        options:
+          - win
+          - mac
+          - linux
 
-    UUID="f6b3df0e-a41a-49ca-98ed-c42e07049bdb"
-    UUID=$(echo "$UUID" | tr -d '\n\r ')
+  # Bonus: allow external triggers.
+  repository_dispatch:
+    types: [cms_rebuild]
 
-    echo "UUID DEBUG: [$UUID]"
+permissions:
+  contents: write
 
-    TOKEN="${{ secrets.XYNO_BUILD_TRIGGER_TOKEN }}"
+env:
+  NODE_VERSION: '20'
 
-    TMP=$(mktemp)
+jobs:
+  bump_version:
+    name: Bump version (main)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, 'chore(release):')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    HTTP=$(curl -sS -o "$TMP" -w "%{http_code}" -X POST "https://xynocms.xynoweb.fr/api/upload_build.php" \
-      -H "X-Build-Token: ${TOKEN}" \
-      -F "file=@${FILE};type=application/octet-stream" \
-      -F "uuid=${UUID}" \
-      -F "platform=mac" \
-      || true)
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
-    BODY=$(cat "$TMP")
-    rm -f "$TMP"
+      - name: Bump patch + commit + tag
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cd launcher
+          npm version patch -m "chore(release): v%s [skip ci]"
 
-    echo "HTTP: $HTTP"
-    echo "BODY: $BODY"
+      - name: Push commit + tags
+        run: |
+          set -euo pipefail
+          git push origin HEAD:main --follow-tags
 
-    if [ "$HTTP" != "200" ]; then
-      echo "❌ Upload failed"
-      exit 1
-    fi
+  release_update_zip:
+    name: Build & upload update zip (tag)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    echo "✅ Upload OK"
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: launcher/package-lock.json
+
+      - name: Install deps
+        run: |
+          set -euo pipefail
+          cd launcher
+          npm ci
+
+      - name: Build directory (for app.asar)
+        run: |
+          set -euo pipefail
+          cd launcher
+          npx electron-builder --linux --dir
+
+      - name: Make update zip
+        run: |
+          set -euo pipefail
+          cd launcher
+          VERSION="${GITHUB_REF_NAME#v}"
+          node tools/makeUpdateZip.js --asar "release/linux-unpacked/resources/app.asar" --out "release/update-${VERSION}.zip"
+
+      - name: Upload update zip to CMS
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          FILE="launcher/release/update-${VERSION}.zip"
+          test -f "$FILE"
+
+          curl -sS -f -X POST "${{ secrets.CMS_BASE_URL }}/api/release_upload.php" \
+            -H "X-Upload-Token: ${{ secrets.RELEASE_UPLOAD_TOKEN }}" \
+            -F "uuid=${{ secrets.LAUNCHER_UUID }}" \
+            -F "type=update" \
+            -F "version=${VERSION}" \
+            -F "required=1" \
+            -F "active=1" \
+            -F "file=@${FILE};type=application/zip"
+
+  release_installers:
+    name: Build & upload installers (tag)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+            npm_script: build:win
+            ext_glob: "*.exe"
+            mime: application/octet-stream
+          - os: macos-latest
+            platform: mac
+            npm_script: build:mac
+            ext_glob: "*.dmg"
+            mime: application/octet-stream
+          - os: ubuntu-latest
+            platform: linux
+            npm_script: build:linux
+            ext_glob: "*.AppImage"
+            mime: application/octet-stream
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: launcher/package-lock.json
+
+      - name: Install deps
+        run: |
+          set -euo pipefail
+          cd launcher
+          npm ci
+
+      - name: Build installer
+        run: |
+          set -euo pipefail
+          cd launcher
+          npm run ${{ matrix.npm_script }}
+
+      - name: Upload installer to CMS
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          # Find newest matching artifact under launcher/release
+          mapfile -d '' CANDIDATES < <(find launcher/release -type f -name "${{ matrix.ext_glob }}" -print0)
+          if [ "${#CANDIDATES[@]}" -eq 0 ]; then
+            echo "No artifact found matching ${{ matrix.ext_glob }}"
+            exit 1
+          fi
+          FILE=$(ls -t "${CANDIDATES[@]}" | head -n 1)
+          test -f "$FILE"
+
+          curl -sS -f -X POST "${{ secrets.CMS_BASE_URL }}/api/release_upload.php" \
+            -H "X-Upload-Token: ${{ secrets.RELEASE_UPLOAD_TOKEN }}" \
+            -F "uuid=${{ secrets.LAUNCHER_UUID }}" \
+            -F "type=installer" \
+            -F "platform=${{ matrix.platform }}" \
+            -F "version=${VERSION}" \
+            -F "active=1" \
+            -F "file=@${FILE};type=${{ matrix.mime }}"
+
+  repo_dispatch_update_zip:
+    name: Rebuild & upload update zip (dispatch)
+    if: github.event_name == 'repository_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: launcher/package-lock.json
+
+      - name: Install deps
+        run: |
+          set -euo pipefail
+          cd launcher
+          npm ci
+
+      - name: Build directory (for app.asar)
+        run: |
+          set -euo pipefail
+          cd launcher
+          npx electron-builder --linux --dir
+
+      - name: Make update zip
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./launcher/package.json').version")
+          node launcher/tools/makeUpdateZip.js --asar "launcher/release/linux-unpacked/resources/app.asar" --out "launcher/release/update-${VERSION}.zip"
+
+      - name: Upload update zip to CMS
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./launcher/package.json').version")
+          FILE="launcher/release/update-${VERSION}.zip"
+          test -f "$FILE"
+
+          curl -sS -f -X POST "${{ secrets.CMS_BASE_URL }}/api/release_upload.php" \
+            -H "X-Upload-Token: ${{ secrets.RELEASE_UPLOAD_TOKEN }}" \
+            -F "uuid=${{ secrets.LAUNCHER_UUID }}" \
+            -F "type=update" \
+            -F "version=${VERSION}" \
+            -F "required=1" \
+            -F "active=1" \
+            -F "file=@${FILE};type=application/zip"
+
+  repo_dispatch_installers:
+    name: Rebuild & upload installers (dispatch)
+    if: github.event_name == 'repository_dispatch'
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+            npm_script: build:win
+            ext_glob: "*.exe"
+            mime: application/octet-stream
+          - os: macos-latest
+            platform: mac
+            npm_script: build:mac
+            ext_glob: "*.dmg"
+            mime: application/octet-stream
+          - os: ubuntu-latest
+            platform: linux
+            npm_script: build:linux
+            ext_glob: "*.AppImage"
+            mime: application/octet-stream
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: launcher/package-lock.json
+
+      - name: Install deps
+        run: |
+          set -euo pipefail
+          cd launcher
+          npm ci
+
+      - name: Build installer
+        run: |
+          set -euo pipefail
+          cd launcher
+          npm run ${{ matrix.npm_script }}
+
+      - name: Upload installer to CMS
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./launcher/package.json').version")
+
+          mapfile -d '' CANDIDATES < <(find launcher/release -type f -name "${{ matrix.ext_glob }}" -print0)
+          if [ "${#CANDIDATES[@]}" -eq 0 ]; then
+            echo "No artifact found matching ${{ matrix.ext_glob }}"
+            exit 1
+          fi
+          FILE=$(ls -t "${CANDIDATES[@]}" | head -n 1)
+          test -f "$FILE"
+
+          curl -sS -f -X POST "${{ secrets.CMS_BASE_URL }}/api/release_upload.php" \
+            -H "X-Upload-Token: ${{ secrets.RELEASE_UPLOAD_TOKEN }}" \
+            -F "uuid=${{ secrets.LAUNCHER_UUID }}" \
+            -F "type=installer" \
+            -F "platform=${{ matrix.platform }}" \
+            -F "version=${VERSION}" \
+            -F "active=1" \
+            -F "file=@${FILE};type=${{ matrix.mime }}"
+
+  dispatch_installer_mac:
+    name: VPS-triggered installer (mac)
+    if: github.event_name == 'workflow_dispatch' && inputs.platform == 'mac'
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: launcher/package-lock.json
+
+      - name: Install deps
+        run: |
+          set -euo pipefail
+          cd launcher
+          npm ci
+
+      - name: Build DMG
+        run: |
+          set -euo pipefail
+          cd launcher
+          npm run build:mac
+
+      - name: Upload to CMS
+        shell: bash
+        run: |
+          set -euo pipefail
+          UUID="${{ inputs.uuid }}"
+          if [ -z "$UUID" ]; then
+            UUID="${{ secrets.LAUNCHER_UUID }}"
+          fi
+
+          VERSION=$(node -e "console.log(new Date().toISOString().replace(/[-:TZ.]/g,'').slice(0,14))")
+
+          mapfile -d '' CANDIDATES < <(find launcher/release -type f -name "*.dmg" -print0)
+          [ "${#CANDIDATES[@]}" -gt 0 ]
+          FILE=$(ls -t "${CANDIDATES[@]}" | head -n 1)
+
+          curl -sS -f -X POST "${{ secrets.CMS_BASE_URL }}/api/release_upload.php" \
+            -H "X-Upload-Token: ${{ secrets.RELEASE_UPLOAD_TOKEN }}" \
+            -F "uuid=${UUID}" \
+            -F "type=installer" \
+            -F "platform=mac" \
+            -F "version=${VERSION}" \
+            -F "active=1" \
+            -F "file=@${FILE};type=application/octet-stream"
+
+  dispatch_installer_win:
+    name: VPS-triggered installer (win)
+    if: github.event_name == 'workflow_dispatch' && inputs.platform == 'win'
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: launcher/package-lock.json
+
+      - name: Install deps
+        run: |
+          set -euo pipefail
+          cd launcher
+          npm ci
+
+      - name: Build EXE
+        run: |
+          set -euo pipefail
+          cd launcher
+          npm run build:win
+
+      - name: Upload to CMS
+        shell: bash
+        run: |
+          set -euo pipefail
+          UUID="${{ inputs.uuid }}"
+          if [ -z "$UUID" ]; then
+            UUID="${{ secrets.LAUNCHER_UUID }}"
+          fi
+
+          VERSION=$(node -e "console.log(new Date().toISOString().replace(/[-:TZ.]/g,'').slice(0,14))")
+
+          mapfile -d '' CANDIDATES < <(find launcher/release -type f -name "*.exe" -print0)
+          [ "${#CANDIDATES[@]}" -gt 0 ]
+          FILE=$(ls -t "${CANDIDATES[@]}" | head -n 1)
+
+          curl -sS -f -X POST "${{ secrets.CMS_BASE_URL }}/api/release_upload.php" \
+            -H "X-Upload-Token: ${{ secrets.RELEASE_UPLOAD_TOKEN }}" \
+            -F "uuid=${UUID}" \
+            -F "type=installer" \
+            -F "platform=win" \
+            -F "version=${VERSION}" \
+            -F "active=1" \
+            -F "file=@${FILE};type=application/octet-stream"
+
+  dispatch_installer_linux:
+    name: VPS-triggered installer (linux)
+    if: github.event_name == 'workflow_dispatch' && inputs.platform == 'linux'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: launcher/package-lock.json
+
+      - name: Install deps
+        run: |
+          set -euo pipefail
+          cd launcher
+          npm ci
+
+      - name: Build AppImage
+        run: |
+          set -euo pipefail
+          cd launcher
+          npm run build:linux
+
+      - name: Upload to CMS
+        shell: bash
+        run: |
+          set -euo pipefail
+          UUID="${{ inputs.uuid }}"
+          if [ -z "$UUID" ]; then
+            UUID="${{ secrets.LAUNCHER_UUID }}"
+          fi
+
+          VERSION=$(node -e "console.log(new Date().toISOString().replace(/[-:TZ.]/g,'').slice(0,14))")
+
+          mapfile -d '' CANDIDATES < <(find launcher/release -type f -name "*.AppImage" -print0)
+          [ "${#CANDIDATES[@]}" -gt 0 ]
+          FILE=$(ls -t "${CANDIDATES[@]}" | head -n 1)
+
+          curl -sS -f -X POST "${{ secrets.CMS_BASE_URL }}/api/release_upload.php" \
+            -H "X-Upload-Token: ${{ secrets.RELEASE_UPLOAD_TOKEN }}" \
+            -F "uuid=${UUID}" \
+            -F "type=installer" \
+            -F "platform=linux" \
+            -F "version=${VERSION}" \
+            -F "active=1" \
+            -F "file=@${FILE};type=application/octet-stream"

@@ -73,12 +73,13 @@ function is_github_workflow_dispatch_url(string $url): bool
 /**
  * @return array{ok:bool, mode?:string, error?:string}
  */
-function call_github_workflow_dispatch(string $dispatchUrl, string $githubToken, string $ref, string $uuid): array
+function call_github_workflow_dispatch(string $dispatchUrl, string $githubToken, string $ref, string $uuid, string $platform): array
 {
     $payloadArr = [
         'ref' => $ref,
         'inputs' => [
             'uuid' => $uuid,
+            'platform' => $platform,
         ],
     ];
     $payloadJson = json_encode($payloadArr, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
@@ -182,7 +183,7 @@ function call_remote_runner(string $runnerUrl, string $token, string $uuid, stri
         }
         $ref = trim(api_env('XYNO_GITHUB_REF', 'main'));
         if ($ref === '') $ref = 'main';
-        return call_github_workflow_dispatch($runnerUrl, $ghToken, $ref, $uuid);
+        return call_github_workflow_dispatch($runnerUrl, $ghToken, $ref, $uuid, $platform);
     }
 
     $payload = http_build_query([
@@ -265,14 +266,16 @@ try {
     $ip = api_client_ip();
     $endpoint = 'build_installer';
 
-    $token = api_env('XYNO_BUILD_TRIGGER_TOKEN', '');
-    if ($token === '') {
-        flash_set('error', 'Build non configuré (token manquant).');
-        redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '#parametres');
-    }
-
     $runnerUrl = runner_url_for_platform($platform);
     if ($runnerUrl !== '') {
+        // For HTTP runners (non-GitHub), we require the shared build token.
+        // For GitHub workflow dispatch, we authenticate with `XYNO_GITHUB_TOKEN` instead.
+        $token = api_env('XYNO_BUILD_TRIGGER_TOKEN', '');
+        if (!is_github_workflow_dispatch_url($runnerUrl) && $token === '') {
+            flash_set('error', 'Build non configuré (token manquant).');
+            redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '#parametres');
+        }
+
         $decoded = call_remote_runner($runnerUrl, $token, $launcherUuid, $platform);
         if (($decoded['ok'] ?? false) !== true) {
             $msg = (string)($decoded['error'] ?? 'Build failed');
