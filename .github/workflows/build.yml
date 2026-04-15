@@ -49,13 +49,13 @@ jobs:
         working-directory: launcher
         run: npx electron-builder --${{ matrix.platform }} --publish never
 
-      # 🔍 DEBUG CRITIQUE
+      # ✅ DEBUG compatible tous OS
       - name: Debug release folder
         run: |
           echo "===== RELEASE CONTENT ====="
-          ls -la launcher/release || true
-          echo "===== SEARCH DMG ====="
-          find launcher/release -type f -name "*.dmg" || true
+          ls launcher/release || dir launcher/release || true
+          echo "===== SEARCH FILES ====="
+          find launcher/release -type f || true
 
       - name: Upload artifacts (GitHub)
         uses: actions/upload-artifact@v4
@@ -67,7 +67,7 @@ jobs:
             launcher/release/*.AppImage
           if-no-files-found: error
 
-      # 🔥 Upload vers VPS (FIABLE)
+      # 🔥 Upload VPS (MAC UNIQUEMENT)
       - name: Upload to VPS
         if: matrix.platform == 'mac'
         shell: bash
@@ -85,7 +85,7 @@ jobs:
           echo "===== UPLOAD ====="
 
           curl -v https://xynocms.xynoweb.fr/api/upload_build.php \
-            --form file=@"$FILE" \
-            --form uuid=${{ github.event.inputs.uuid }} \
-            --form platform=${{ matrix.platform }} \
-            --form token=8f7sd6f8sd6f8sd6f8sd6f
+            --form "file=@${FILE}" \
+            --form "uuid=${{ github.event.inputs.uuid }}" \
+            --form "platform=${{ matrix.platform }}" \
+            --form "token=8f7sd6f8sd6f8sd6f8sd6f"
