@@ -1,175 +1,61 @@
-name: Build Launcher
+- name: Upload build
+  run: |
+    set -euo pipefail
 
-on:
-  push:
-    tags: [ 'v*' ]
+    FILE=$(find launcher/release -type f -name "*.dmg" | head -n 1)
 
-  workflow_dispatch:
-    inputs:
-      uuid:
-        description: "Launcher UUID"
-        required: false
+    if [ -z "$FILE" ] || [ ! -f "$FILE" ]; then
+      echo "❌ Aucun fichier trouvé"
+      exit 1
+    fi
 
-  repository_dispatch:
-    types: [ 'cms_rebuild' ]
+    UUID="f6b3df0e-a41a-49ca-98ed-c42e07049bdb"
+    UUID=$(echo "$UUID" | tr -d '\n\r ')
 
-permissions:
-  contents: write
+    echo "UUID DEBUG: [$UUID]"
 
-jobs:
-  build:
-    runs-on: ${{ matrix.os }}
+    TOKEN="${{ secrets.XYNO_BUILD_TRIGGER_TOKEN }}"
 
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            platform: linux
-          - os: windows-latest
-            platform: win
-          - os: macos-latest   # 🔥 FIX → Intel runner
-            platform: mac
+    if [ -z "$TOKEN" ]; then
+      echo "❌ TOKEN manquant"
+      exit 1
+    fi
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    TMP=$(mktemp)
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+    HTTP=$(curl -sS -o "$TMP" -w "%{http_code}" -X POST "https://xynocms.xynoweb.fr/api/upload_build.php" \
+      -H "X-Build-Token: ${TOKEN}" \
+      -F "file=@${FILE};type=application/octet-stream" \
+      -F "uuid=${UUID}" \
+      -F "platform=mac" \
+      || true)
 
-      - name: Install deps
-        working-directory: launcher
-        run: npm ci
+    BODY=$(cat "$TMP")
+    rm -f "$TMP"
 
-      - name: Ensure linux deps
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libfuse2 || sudo apt-get install -y libfuse2t64 || true
+    echo "HTTP: $HTTP"
+    echo "BODY: $BODY"
 
-      # 🔥 BUILD FIX MAC UNIVERSAL
-      - name: Build launcher
-        working-directory: launcher
-        run: |
-          if [ "${{ matrix.platform }}" = "mac" ]; then
-            npx electron-builder --mac --universal --publish never
-          else
-            npx electron-builder --${{ matrix.platform }} --publish never
-          fi
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
+    if [ "$HTTP" != "200" ]; then
+      echo "❌ Upload failed"
+      exit 1
+    fi
 
-      # DEBUG
-      - name: Debug release folder
-        run: |
-          echo "===== RELEASE CONTENT ====="
-          ls launcher/release || dir launcher/release || true
-          echo "===== SEARCH FILES ====="
-          find launcher/release -type f || true
+    OK=$(echo "$BODY" | node -e '
+      let s="";process.stdin.on("data",d=>s+=d);
+      process.stdin.on("end",()=>{
+        try {
+          const j=JSON.parse(s);
+          process.stdout.write(j.ok===true?"true":"false");
+        } catch(e) {
+          process.stdout.write("false");
+        }
+      });
+    ')
 
-      # VALIDATION MAC
-      - name: Validate DMG (macOS)
-        if: matrix.platform == 'mac'
-        shell: bash
-        run: |
-          set -euo pipefail
+    if [ "$OK" != "true" ]; then
+      echo "❌ API error"
+      exit 1
+    fi
 
-          FILE=$(find launcher/release -type f -name "*.dmg" | head -n 1)
-
-          echo "DMG: ${FILE}"
-
-          if [ -z "${FILE}" ] || [ ! -f "${FILE}" ]; then
-            echo "❌ Aucun .dmg trouvé"
-            exit 1
-          fi
-
-          shasum -a 256 "${FILE}"
-          hdiutil verify "${FILE}"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-${{ matrix.platform }}
-          path: |
-            launcher/release/*.exe
-            launcher/release/*.dmg
-            launcher/release/*.AppImage
-          if-no-files-found: error
-
-      # 🚀 UPLOAD VPS (MAC)
-      - name: Upload to VPS
-        if: matrix.platform == 'mac'
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          FILE=$(find launcher/release -type f -name "*.dmg" | head -n 1)
-
-          if [ ! -f "$FILE" ]; then
-            echo "❌ Aucun fichier trouvé"
-            exit 1
-          fi
-
-          UUID_INPUT="${{ github.event.inputs.uuid }}"
-          UUID_PAYLOAD="${{ github.event.client_payload.uuid }}"
-
-          UUID="${UUID_INPUT:-$UUID_PAYLOAD}"
-          UUID=$(echo "$UUID" | tr -d '\n\r ')
-
-          echo "UUID: '$UUID'"
-
-          TOKEN="${{ secrets.XYNO_BUILD_TRIGGER_TOKEN }}"
-
-          if [ -z "$UUID" ]; then
-            echo "❌ UUID manquant"
-            exit 1
-          fi
-
-          if [ -z "$TOKEN" ]; then
-            echo "❌ TOKEN manquant"
-            exit 1
-          fi
-
-          echo "UPLOAD..."
-
-          TMP=$(mktemp)
-
-          HTTP=$(curl -sS -o "$TMP" -w "%{http_code}" \
-            https://xynocms.xynoweb.fr/api/upload_build.php \
-            -H "X-Build-Token: ${TOKEN}" \
-            --form "file=@${FILE}" \
-            --form "uuid=${UUID}" \
-            --form "platform=mac" || true)
-
-          BODY=$(cat "$TMP")
-          rm -f "$TMP"
-
-          echo "HTTP: $HTTP"
-          echo "BODY: $BODY"
-
-          if [ "$HTTP" != "200" ]; then
-            echo "❌ Upload failed"
-            exit 1
-          fi
-
-          OK=$(echo "$BODY" | node -e '
-            let s="";process.stdin.on("data",d=>s+=d);
-            process.stdin.on("end",()=>{
-              try {
-                const j=JSON.parse(s);
-                process.stdout.write(j.ok===true?"true":"false");
-              } catch(e) {
-                process.stdout.write("false");
-              }
-            });
-          ')
-
-          if [ "$OK" != "true" ]; then
-            echo "❌ API error"
-            exit 1
-          fi
-
-          echo "✅ Upload OK"
+    echo "✅ Upload OK"
