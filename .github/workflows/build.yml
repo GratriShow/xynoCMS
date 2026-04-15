@@ -3,11 +3,13 @@ name: Build Launcher
 on:
   push:
     tags: [ 'v*' ]
+
   workflow_dispatch:
     inputs:
       uuid:
         description: "Launcher UUID"
-        required: true
+        required: false
+
   repository_dispatch:
     types: [ 'cms_rebuild' ]
 
@@ -48,14 +50,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libfuse2 || sudo apt-get install -y libfuse2t64 || true
 
-      # ✅ BUILD (fix mac)
+      # BUILD
       - name: Build launcher
         working-directory: launcher
         run: npx electron-builder --${{ matrix.platform }} --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      # ✅ DEBUG cross-platform
+      # DEBUG
       - name: Debug release folder
         run: |
           echo "===== RELEASE CONTENT ====="
@@ -63,7 +65,7 @@ jobs:
           echo "===== SEARCH FILES ====="
           find launcher/release -type f || true
 
-      # ✅ VALIDATION DMG (MAC)
+      # VALIDATION MAC
       - name: Validate DMG (macOS)
         if: matrix.platform == 'mac'
         shell: bash
@@ -71,6 +73,7 @@ jobs:
           set -euo pipefail
 
           FILE=$(find launcher/release -type f -name "*.dmg" | head -n 1)
+
           echo "DMG: ${FILE}"
 
           if [ -z "${FILE}" ] || [ ! -f "${FILE}" ]; then
@@ -78,13 +81,10 @@ jobs:
             exit 1
           fi
 
-          echo "sha256:"
           shasum -a 256 "${FILE}"
-
-          echo "verify:"
           hdiutil verify "${FILE}"
 
-      - name: Upload artifacts (GitHub)
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.platform }}
@@ -94,7 +94,7 @@ jobs:
             launcher/release/*.AppImage
           if-no-files-found: error
 
-      # 🚀 UPLOAD VPS (FIX FINAL)
+      # 🚀 UPLOAD VPS (MAC)
       - name: Upload to VPS
         if: matrix.platform == 'mac'
         shell: bash
@@ -103,14 +103,22 @@ jobs:
 
           FILE=$(find launcher/release -type f -name "*.dmg" | head -n 1)
 
-          echo "FILE: $FILE"
-
           if [ ! -f "$FILE" ]; then
             echo "❌ Aucun fichier trouvé"
             exit 1
           fi
 
-          UUID="${{ github.event.inputs.uuid }}"
+          # 🔥 UUID SMART (inputs + CMS)
+          UUID_INPUT="${{ github.event.inputs.uuid }}"
+          UUID_PAYLOAD="${{ github.event.client_payload.uuid }}"
+
+          UUID="${UUID_INPUT:-$UUID_PAYLOAD}"
+
+          # nettoyage (très important)
+          UUID=$(echo "$UUID" | tr -d '\n\r ')
+
+          echo "UUID: '$UUID'"
+
           TOKEN="${{ secrets.XYNO_BUILD_TRIGGER_TOKEN }}"
 
           if [ -z "$UUID" ]; then
@@ -128,10 +136,11 @@ jobs:
           TMP=$(mktemp)
 
           HTTP=$(curl -sS -o "$TMP" -w "%{http_code}" \
-            "https://xynocms.xynoweb.fr/api/upload_build.php?token=${TOKEN}" \
+            https://xynocms.xynoweb.fr/api/upload_build.php \
+            -H "X-Build-Token: ${TOKEN}" \
             --form "file=@${FILE}" \
             --form "uuid=${UUID}" \
-            --form "platform=${{ matrix.platform }}" || true)
+            --form "platform=mac" || true)
 
           BODY=$(cat "$TMP")
           rm -f "$TMP"
