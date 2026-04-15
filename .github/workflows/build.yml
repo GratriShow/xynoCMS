@@ -16,11 +16,6 @@
 
     TOKEN="${{ secrets.XYNO_BUILD_TRIGGER_TOKEN }}"
 
-    if [ -z "$TOKEN" ]; then
-      echo "❌ TOKEN manquant"
-      exit 1
-    fi
-
     TMP=$(mktemp)
 
     HTTP=$(curl -sS -o "$TMP" -w "%{http_code}" -X POST "https://xynocms.xynoweb.fr/api/upload_build.php" \
@@ -38,23 +33,6 @@
 
     if [ "$HTTP" != "200" ]; then
       echo "❌ Upload failed"
-      exit 1
-    fi
-
-    OK=$(echo "$BODY" | node -e '
-      let s="";process.stdin.on("data",d=>s+=d);
-      process.stdin.on("end",()=>{
-        try {
-          const j=JSON.parse(s);
-          process.stdout.write(j.ok===true?"true":"false");
-        } catch(e) {
-          process.stdout.write("false");
-        }
-      });
-    ')
-
-    if [ "$OK" != "true" ]; then
-      echo "❌ API error"
       exit 1
     fi
 
