@@ -52,9 +52,19 @@ jobs:
             exit 1
           fi
 
+          UUID="${{ github.event.inputs.uuid }}"
+          UUID=$(echo "$UUID" | tr -d '\n\r ')
+
+          if [ -z "$UUID" ]; then
+            echo "❌ UUID vide"
+            exit 1
+          fi
+
+          echo "UUID: $UUID"
           echo "UPLOAD $FILE"
 
-          curl -X POST https://xynocms.xynoweb.fr/api/upload_build.php \
+          curl -sS -X POST "https://xynocms.xynoweb.fr/api/upload_build.php" \
             -H "X-Build-Token: ${{ secrets.XYNO_BUILD_TRIGGER_TOKEN }}" \
             -F "file=@${FILE}" \
-            -F "uuid=${{ github.event.inputs.uuid }}"
+            -F "uuid=${UUID}" \
+            -F "platform=mac"
