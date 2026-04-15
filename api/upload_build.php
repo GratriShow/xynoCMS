@@ -5,9 +5,6 @@ require_once __DIR__ . '/utils.php';
 
 /**
  * TOKEN (FIX CRITIQUE)
- * - accepte POST
- * - accepte GET
- * - accepte HEADER
  */
 $token = trim((string)(
     $_POST['token']
@@ -27,12 +24,25 @@ if (!hash_equals($expected, $token)) {
 }
 
 /**
- * UUID
+ * UUID (FIX)
  */
-$uuid = trim((string)($_POST['uuid'] ?? ''));
+$uuid = trim((string)(
+    $_POST['uuid']
+    ?? $_GET['uuid']
+    ?? api_header('X-Launcher-UUID', 128)
+    ?? ''
+));
 
-if (!preg_match('/^[a-f0-9-]+$/', $uuid)) {
-    api_json(['ok' => false, 'error' => 'invalid_uuid'], 400);
+if ($uuid === '') {
+    api_json(['ok' => false, 'error' => 'missing_uuid'], 400);
+}
+
+if (!preg_match('/^[a-f0-9-]{36}$/', $uuid)) {
+    api_json([
+        'ok' => false,
+        'error' => 'invalid_uuid',
+        'debug' => $uuid
+    ], 400);
 }
 
 /**
@@ -45,7 +55,11 @@ if (!isset($_FILES['file'])) {
 $file = $_FILES['file'];
 
 if ($file['error'] !== UPLOAD_ERR_OK) {
-    api_json(['ok' => false, 'error' => 'upload_error'], 500);
+    api_json([
+        'ok' => false,
+        'error' => 'upload_error',
+        'debug' => $file['error']
+    ], 500);
 }
 
 /**
@@ -54,7 +68,11 @@ if ($file['error'] !== UPLOAD_ERR_OK) {
 $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
 
 if ($ext !== 'dmg') {
-    api_json(['ok' => false, 'error' => 'invalid_file_type'], 400);
+    api_json([
+        'ok' => false,
+        'error' => 'invalid_file_type',
+        'debug' => $ext
+    ], 400);
 }
 
 /**
@@ -78,7 +96,7 @@ if (!move_uploaded_file($file['tmp_name'], $path)) {
 }
 
 /**
- * DMG CHECK (sécurité basique)
+ * DMG CHECK
  */
 $fp = @fopen($path, 'rb');
 
@@ -124,25 +142,33 @@ $url = api_public_url("/files/$uuid/client/installer/mac/$filename");
  */
 $pdo = db();
 
+$launcherId = $pdo->prepare("SELECT id FROM launchers WHERE uuid = ?");
+$launcherId->execute([$uuid]);
+$launcherId = $launcherId->fetchColumn();
+
+if (!$launcherId) {
+    api_json([
+        'ok' => false,
+        'error' => 'launcher_not_found',
+        'debug' => $uuid
+    ], 404);
+}
+
 // désactiver anciens
 $pdo->prepare("
     UPDATE launcher_downloads 
     SET is_active = 0 
     WHERE platform = 'mac' 
-    AND launcher_id = (SELECT id FROM launchers WHERE uuid = ?)
-")->execute([$uuid]);
+    AND launcher_id = ?
+")->execute([$launcherId]);
 
 // insert nouveau
 $pdo->prepare("
     INSERT INTO launcher_downloads 
     (launcher_id, platform, version_name, file_url, file_sha256, is_active, created_at)
-    VALUES (
-        (SELECT id FROM launchers WHERE uuid = ?),
-        'mac',
-        ?, ?, ?, 1, NOW()
-    )
+    VALUES (?, 'mac', ?, ?, ?, 1, NOW())
 ")->execute([
-    $uuid,
+    $launcherId,
     $version,
     $url,
     $sha
