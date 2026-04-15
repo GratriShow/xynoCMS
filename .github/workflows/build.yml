@@ -184,14 +184,32 @@ jobs:
 
           VERSION="${GITHUB_REF_NAME#v}"
 
-          # Find newest matching artifact under launcher/release
-          mapfile -d '' CANDIDATES < <(find launcher/release -type f -name "${{ matrix.ext_glob }}" -print0)
-          if [ "${#CANDIDATES[@]}" -eq 0 ]; then
-            echo "No artifact found matching ${{ matrix.ext_glob }}"
+          # Find newest matching artifact under launcher/release (portable; macOS runner uses bash 3.2)
+          PATTERN="${{ matrix.ext_glob }}"
+          FILE=$(PATTERN="$PATTERN" python3 - <<'PY'
+import os, fnmatch
+root = 'launcher/release'
+pat = os.environ.get('PATTERN','')
+best = ''
+best_m = -1.0
+for dirpath, _, filenames in os.walk(root):
+    for fn in filenames:
+        if pat and fnmatch.fnmatch(fn, pat):
+            p = os.path.join(dirpath, fn)
+            try:
+                m = os.path.getmtime(p)
+            except OSError:
+                continue
+            if m > best_m:
+                best_m = m
+                best = p
+print(best)
+PY
+)
+          if [ -z "$FILE" ] || [ ! -f "$FILE" ]; then
+            echo "No artifact found matching ${PATTERN}"
             exit 1
           fi
-          FILE=$(ls -t "${CANDIDATES[@]}" | head -n 1)
-          test -f "$FILE"
 
           curl -sS -f -X POST "${{ secrets.CMS_BASE_URL }}/api/release_upload.php" \
             -H "X-Upload-Token: ${{ secrets.RELEASE_UPLOAD_TOKEN }}" \
@@ -321,13 +339,31 @@ jobs:
 
           VERSION=$(node -p "require('./launcher/package.json').version")
 
-          mapfile -d '' CANDIDATES < <(find launcher/release -type f -name "${{ matrix.ext_glob }}" -print0)
-          if [ "${#CANDIDATES[@]}" -eq 0 ]; then
-            echo "No artifact found matching ${{ matrix.ext_glob }}"
+          PATTERN="${{ matrix.ext_glob }}"
+          FILE=$(PATTERN="$PATTERN" python3 - <<'PY'
+import os, fnmatch
+root = 'launcher/release'
+pat = os.environ.get('PATTERN','')
+best = ''
+best_m = -1.0
+for dirpath, _, filenames in os.walk(root):
+    for fn in filenames:
+        if pat and fnmatch.fnmatch(fn, pat):
+            p = os.path.join(dirpath, fn)
+            try:
+                m = os.path.getmtime(p)
+            except OSError:
+                continue
+            if m > best_m:
+                best_m = m
+                best = p
+print(best)
+PY
+)
+          if [ -z "$FILE" ] || [ ! -f "$FILE" ]; then
+            echo "No artifact found matching ${PATTERN}"
             exit 1
           fi
-          FILE=$(ls -t "${CANDIDATES[@]}" | head -n 1)
-          test -f "$FILE"
 
           curl -sS -f -X POST "${{ secrets.CMS_BASE_URL }}/api/release_upload.php" \
             -H "X-Upload-Token: ${{ secrets.RELEASE_UPLOAD_TOKEN }}" \
@@ -379,9 +415,31 @@ jobs:
 
           VERSION=$(node -e "console.log(new Date().toISOString().replace(/[-:TZ.]/g,'').slice(0,14))")
 
-          mapfile -d '' CANDIDATES < <(find launcher/release -type f -name "*.dmg" -print0)
-          [ "${#CANDIDATES[@]}" -gt 0 ]
-          FILE=$(ls -t "${CANDIDATES[@]}" | head -n 1)
+          PATTERN="*.dmg"
+          FILE=$(PATTERN="$PATTERN" python3 - <<'PY'
+import os, fnmatch
+root = 'launcher/release'
+pat = os.environ.get('PATTERN','')
+best = ''
+best_m = -1.0
+for dirpath, _, filenames in os.walk(root):
+    for fn in filenames:
+        if pat and fnmatch.fnmatch(fn, pat):
+            p = os.path.join(dirpath, fn)
+            try:
+                m = os.path.getmtime(p)
+            except OSError:
+                continue
+            if m > best_m:
+                best_m = m
+                best = p
+print(best)
+PY
+)
+          if [ -z "$FILE" ] || [ ! -f "$FILE" ]; then
+            echo "No artifact found matching ${PATTERN}"
+            exit 1
+          fi
 
           curl -sS -f -X POST "${{ secrets.CMS_BASE_URL }}/api/release_upload.php" \
             -H "X-Upload-Token: ${{ secrets.RELEASE_UPLOAD_TOKEN }}" \
@@ -436,9 +494,31 @@ jobs:
 
           VERSION=$(node -e "console.log(new Date().toISOString().replace(/[-:TZ.]/g,'').slice(0,14))")
 
-          mapfile -d '' CANDIDATES < <(find launcher/release -type f -name "*.exe" -print0)
-          [ "${#CANDIDATES[@]}" -gt 0 ]
-          FILE=$(ls -t "${CANDIDATES[@]}" | head -n 1)
+          PATTERN="*.exe"
+          FILE=$(PATTERN="$PATTERN" python3 - <<'PY'
+import os, fnmatch
+root = 'launcher/release'
+pat = os.environ.get('PATTERN','')
+best = ''
+best_m = -1.0
+for dirpath, _, filenames in os.walk(root):
+    for fn in filenames:
+        if pat and fnmatch.fnmatch(fn, pat):
+            p = os.path.join(dirpath, fn)
+            try:
+                m = os.path.getmtime(p)
+            except OSError:
+                continue
+            if m > best_m:
+                best_m = m
+                best = p
+print(best)
+PY
+)
+          if [ -z "$FILE" ] || [ ! -f "$FILE" ]; then
+            echo "No artifact found matching ${PATTERN}"
+            exit 1
+          fi
 
           curl -sS -f -X POST "${{ secrets.CMS_BASE_URL }}/api/release_upload.php" \
             -H "X-Upload-Token: ${{ secrets.RELEASE_UPLOAD_TOKEN }}" \
@@ -490,9 +570,31 @@ jobs:
 
           VERSION=$(node -e "console.log(new Date().toISOString().replace(/[-:TZ.]/g,'').slice(0,14))")
 
-          mapfile -d '' CANDIDATES < <(find launcher/release -type f -name "*.AppImage" -print0)
-          [ "${#CANDIDATES[@]}" -gt 0 ]
-          FILE=$(ls -t "${CANDIDATES[@]}" | head -n 1)
+          PATTERN="*.AppImage"
+          FILE=$(PATTERN="$PATTERN" python3 - <<'PY'
+import os, fnmatch
+root = 'launcher/release'
+pat = os.environ.get('PATTERN','')
+best = ''
+best_m = -1.0
+for dirpath, _, filenames in os.walk(root):
+    for fn in filenames:
+        if pat and fnmatch.fnmatch(fn, pat):
+            p = os.path.join(dirpath, fn)
+            try:
+                m = os.path.getmtime(p)
+            except OSError:
+                continue
+            if m > best_m:
+                best_m = m
+                best = p
+print(best)
+PY
+)
+          if [ -z "$FILE" ] || [ ! -f "$FILE" ]; then
+            echo "No artifact found matching ${PATTERN}"
+            exit 1
+          fi
 
           curl -sS -f -X POST "${{ secrets.CMS_BASE_URL }}/api/release_upload.php" \
             -H "X-Upload-Token: ${{ secrets.RELEASE_UPLOAD_TOKEN }}" \
