@@ -29,6 +29,138 @@ function detect_platform_from_ua(string $ua): string
     return 'linux';
 }
 
+function sanitize_download_basename(string $name): string
+{
+  $name = trim($name);
+  if ($name === '') return 'Launcher';
+  $name = preg_replace('/\s+/', ' ', $name) ?? $name;
+  // Keep it filesystem/browser friendly
+  $name = preg_replace('/[^A-Za-z0-9._ -]/', '-', $name) ?? $name;
+  $name = trim($name, " .-");
+  return $name !== '' ? $name : 'Launcher';
+}
+
+function parse_range(?string $header, int $size): ?array
+{
+  if ($header === null || $header === '') {
+    return null;
+  }
+
+  // Only support single range: bytes=start-end
+  if (!preg_match('/^bytes=(\d*)-(\d*)$/', trim($header), $m)) {
+    return null;
+  }
+
+  $startRaw = $m[1];
+  $endRaw = $m[2];
+
+  if ($startRaw === '' && $endRaw === '') {
+    return null;
+  }
+
+  if ($startRaw === '') {
+    // suffix range: last N bytes
+    $suffix = (int)$endRaw;
+    if ($suffix <= 0) {
+      return null;
+    }
+    $suffix = min($suffix, $size);
+    $start = $size - $suffix;
+    $end = $size - 1;
+    return [$start, $end];
+  }
+
+  $start = (int)$startRaw;
+  $end = ($endRaw === '') ? ($size - 1) : (int)$endRaw;
+
+  if ($start < 0 || $end < 0 || $start > $end) {
+    return null;
+  }
+
+  if ($start >= $size) {
+    return null;
+  }
+
+  $end = min($end, $size - 1);
+  return [$start, $end];
+}
+
+function send_file_download(string $diskPath, string $downloadName): never
+{
+  if (!is_file($diskPath)) {
+    http_response_code(404);
+    echo 'File not found.';
+    exit;
+  }
+
+  $size = filesize($diskPath);
+  if ($size === false) {
+    http_response_code(500);
+    echo 'Server error.';
+    exit;
+  }
+
+  // Avoid corrupting binary downloads via output buffering/compression
+  @ini_set('zlib.output_compression', '0');
+  if (function_exists('ob_get_level')) {
+    while (ob_get_level() > 0) {
+      @ob_end_clean();
+    }
+  }
+  @set_time_limit(0);
+
+  $ext = strtolower(pathinfo($diskPath, PATHINFO_EXTENSION));
+  $contentType = match ($ext) {
+    'dmg' => 'application/x-apple-diskimage',
+    'exe' => 'application/vnd.microsoft.portable-executable',
+    'appimage' => 'application/octet-stream',
+    default => 'application/octet-stream',
+  };
+
+  header('X-Content-Type-Options: nosniff');
+  header('Content-Type: ' . $contentType);
+  header('Content-Disposition: attachment; filename="' . str_replace('"', '', $downloadName) . '"');
+  header('Accept-Ranges: bytes');
+
+  $range = parse_range((string)($_SERVER['HTTP_RANGE'] ?? ''), (int)$size);
+  $fh = fopen($diskPath, 'rb');
+  if ($fh === false) {
+    http_response_code(500);
+    echo 'Server error.';
+    exit;
+  }
+
+  if ($range) {
+    [$start, $end] = $range;
+    $length = $end - $start + 1;
+
+    http_response_code(206);
+    header('Content-Range: bytes ' . $start . '-' . $end . '/' . $size);
+    header('Content-Length: ' . $length);
+    fseek($fh, $start);
+
+    $remaining = $length;
+    while ($remaining > 0 && !feof($fh)) {
+      $chunk = fread($fh, (int)min(1024 * 1024, $remaining));
+      if ($chunk === false || $chunk === '') break;
+      echo $chunk;
+      $remaining -= strlen($chunk);
+    }
+    fclose($fh);
+    exit;
+  }
+
+  http_response_code(200);
+  header('Content-Length: ' . $size);
+  while (!feof($fh)) {
+    $chunk = fread($fh, 1024 * 1024);
+    if ($chunk === false) break;
+    echo $chunk;
+  }
+  fclose($fh);
+  exit;
+}
+
 if ($platform === '') {
     $platform = detect_platform_from_ua((string)($_SERVER['HTTP_USER_AGENT'] ?? ''));
 }
@@ -89,9 +221,28 @@ try {
     }
 
     if ($row && isset($row['file_url']) && is_string($row['file_url']) && trim($row['file_url']) !== '') {
-        $url = trim((string)$row['file_url']);
-        header('Location: ' . $url, true, 302);
-        exit;
+      $url = trim((string)$row['file_url']);
+
+      // Prefer serving locally so we can control the download name.
+      $urlPath = (string)(parse_url($url, PHP_URL_PATH) ?? '');
+      if ($urlPath !== '' && str_starts_with($urlPath, '/files/') && strpos($urlPath, '..') === false) {
+        $filesRoot = realpath(__DIR__ . '/files');
+        $candidate = realpath(__DIR__ . $urlPath);
+        if ($filesRoot && $candidate && str_starts_with($candidate, $filesRoot . DIRECTORY_SEPARATOR)) {
+          $ext = strtolower(pathinfo($candidate, PATHINFO_EXTENSION));
+          $base = sanitize_download_basename($launcherName);
+          $compact = preg_replace('/\s+/', '', $base) ?? $base;
+          if (!preg_match('/launcher$/i', $compact)) {
+            $base .= 'Launcher';
+          }
+          $downloadName = $base . ($ext !== '' ? ('.' . $ext) : '');
+          send_file_download($candidate, $downloadName);
+        }
+      }
+
+      // Fallback: external URL (or not on local disk)
+      header('Location: ' . $url, true, 302);
+      exit;
     }
 
     // No installer for this platform: show fallback page with whatever is available.

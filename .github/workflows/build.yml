@@ -60,6 +60,31 @@ jobs:
           echo "===== SEARCH FILES ====="
           find launcher/release -type f || true
 
+      - name: Validate DMG (macOS)
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE=$(find launcher/release -type f -name "*.dmg" | head -n 1)
+          echo "DMG: ${FILE}"
+          if [ -z "${FILE}" ] || [ ! -f "${FILE}" ]; then
+            echo "❌ Aucun .dmg trouvé"
+            exit 1
+          fi
+          echo "sha256:"; shasum -a 256 "${FILE}"
+          echo "hdiutil verify..."; hdiutil verify "${FILE}"
+          echo "hdiutil attach (readonly)..."
+          MOUNT_OUTPUT=$(hdiutil attach -nobrowse -readonly "${FILE}")
+          echo "${MOUNT_OUTPUT}"
+          MOUNT_POINT=$(echo "${MOUNT_OUTPUT}" | awk -F'\t' 'NF>=3{print $NF}' | tail -n 1)
+          if [ -n "${MOUNT_POINT}" ] && [ -d "${MOUNT_POINT}" ]; then
+            echo "Mounted at: ${MOUNT_POINT}"
+            ls "${MOUNT_POINT}" || true
+            hdiutil detach "${MOUNT_POINT}" || true
+          else
+            echo "⚠️ Mount point not detected; skipping detach"
+          fi
+
       - name: Upload artifacts (GitHub)
         uses: actions/upload-artifact@v4
         with:
