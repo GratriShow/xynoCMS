@@ -9,8 +9,8 @@ on:
   workflow_dispatch:
     inputs:
       uuid:
-        description: 'Launcher UUID (defaults to secret LAUNCHER_UUID)'
-        required: false
+        description: 'Launcher UUID'
+        required: true
         type: string
       platform:
         description: 'Installer platform (win|mac|linux)'
@@ -100,6 +100,7 @@ jobs:
           node tools/makeUpdateZip.js --asar "release/linux-unpacked/resources/app.asar" --out "release/update-${VERSION}.zip"
 
       - name: Upload update zip to CMS
+        if: ${{ secrets.LAUNCHER_UUID != '' }}
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
@@ -167,6 +168,7 @@ jobs:
           npm run ${{ matrix.npm_script }}
 
       - name: Upload installer to CMS
+        if: ${{ secrets.LAUNCHER_UUID != '' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -228,13 +230,19 @@ jobs:
       - name: Upload update zip to CMS
         run: |
           set -euo pipefail
+          UUID="${{ github.event.client_payload.uuid }}"
+          if [ -z "$UUID" ]; then
+            echo "Missing client_payload.uuid"
+            exit 1
+          fi
+
           VERSION=$(node -p "require('./launcher/package.json').version")
           FILE="launcher/release/update-${VERSION}.zip"
           test -f "$FILE"
 
           curl -sS -f -X POST "${{ secrets.CMS_BASE_URL }}/api/release_upload.php" \
             -H "X-Upload-Token: ${{ secrets.RELEASE_UPLOAD_TOKEN }}" \
-            -F "uuid=${{ secrets.LAUNCHER_UUID }}" \
+            -F "uuid=${UUID}" \
             -F "type=update" \
             -F "version=${VERSION}" \
             -F "required=1" \
@@ -295,6 +303,12 @@ jobs:
       - name: Upload installer to CMS
         run: |
           set -euo pipefail
+          UUID="${{ github.event.client_payload.uuid }}"
+          if [ -z "$UUID" ]; then
+            echo "Missing client_payload.uuid"
+            exit 1
+          fi
+
           VERSION=$(node -p "require('./launcher/package.json').version")
 
           mapfile -d '' CANDIDATES < <(find launcher/release -type f -name "${{ matrix.ext_glob }}" -print0)
@@ -307,7 +321,7 @@ jobs:
 
           curl -sS -f -X POST "${{ secrets.CMS_BASE_URL }}/api/release_upload.php" \
             -H "X-Upload-Token: ${{ secrets.RELEASE_UPLOAD_TOKEN }}" \
-            -F "uuid=${{ secrets.LAUNCHER_UUID }}" \
+            -F "uuid=${UUID}" \
             -F "type=installer" \
             -F "platform=${{ matrix.platform }}" \
             -F "version=${VERSION}" \
@@ -349,7 +363,8 @@ jobs:
           set -euo pipefail
           UUID="${{ inputs.uuid }}"
           if [ -z "$UUID" ]; then
-            UUID="${{ secrets.LAUNCHER_UUID }}"
+            echo "Missing input: uuid"
+            exit 1
           fi
 
           VERSION=$(node -e "console.log(new Date().toISOString().replace(/[-:TZ.]/g,'').slice(0,14))")
@@ -405,7 +420,8 @@ jobs:
           set -euo pipefail
           UUID="${{ inputs.uuid }}"
           if [ -z "$UUID" ]; then
-            UUID="${{ secrets.LAUNCHER_UUID }}"
+            echo "Missing input: uuid"
+            exit 1
           fi
 
           VERSION=$(node -e "console.log(new Date().toISOString().replace(/[-:TZ.]/g,'').slice(0,14))")
@@ -458,7 +474,8 @@ jobs:
           set -euo pipefail
           UUID="${{ inputs.uuid }}"
           if [ -z "$UUID" ]; then
-            UUID="${{ secrets.LAUNCHER_UUID }}"
+            echo "Missing input: uuid"
+            exit 1
           fi
 
           VERSION=$(node -e "console.log(new Date().toISOString().replace(/[-:TZ.]/g,'').slice(0,14))")
