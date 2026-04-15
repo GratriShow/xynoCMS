@@ -45,11 +45,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libfuse2 || sudo apt-get install -y libfuse2t64 || true
 
+      # ✅ FIX ICI (env ajouté)
       - name: Build launcher
         working-directory: launcher
         run: npx electron-builder --${{ matrix.platform }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      # ✅ DEBUG compatible tous OS
+      # ✅ DEBUG cross-platform
       - name: Debug release folder
         run: |
           echo "===== RELEASE CONTENT ====="
