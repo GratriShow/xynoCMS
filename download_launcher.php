@@ -2,6 +2,13 @@
 
 declare(strict_types=1);
 
+// Capture any accidental output (BOM/notice) that would corrupt binary downloads.
+@ini_set('display_errors', '0');
+@ini_set('output_buffering', '1');
+@ini_set('implicit_flush', '0');
+@error_reporting(0);
+ob_start();
+
 require_once __DIR__ . '/config/bootstrap.php';
 
 $uuid = trim((string)($_GET['uuid'] ?? ''));
@@ -120,6 +127,8 @@ function send_file_download(string $diskPath, string $downloadName): never
   header('X-Content-Type-Options: nosniff');
   header('Content-Type: ' . $contentType);
   header('Content-Disposition: attachment; filename="' . str_replace('"', '', $downloadName) . '"');
+  header('Content-Transfer-Encoding: binary');
+  header('Cache-Control: no-transform');
   header('Accept-Ranges: bytes');
 
   $range = parse_range((string)($_SERVER['HTTP_RANGE'] ?? ''), (int)$size);

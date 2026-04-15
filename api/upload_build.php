@@ -50,6 +50,34 @@ if (!move_uploaded_file($file['tmp_name'], $path)) {
     exit('Failed to save file');
 }
 
+// Basic DMG sanity check (UDIF footer contains "koly" in the last 512 bytes).
+$fp = @fopen($path, 'rb');
+if ($fp === false) {
+    @unlink($path);
+    http_response_code(500);
+    exit('Failed to read file');
+}
+$size = @filesize($path);
+if ($size === false || $size < 1024) {
+    fclose($fp);
+    @unlink($path);
+    http_response_code(400);
+    exit('Invalid DMG (too small)');
+}
+if (@fseek($fp, -512, SEEK_END) !== 0) {
+    fclose($fp);
+    @unlink($path);
+    http_response_code(400);
+    exit('Invalid DMG');
+}
+$tail = (string)@fread($fp, 512);
+fclose($fp);
+if ($tail === '' || strpos($tail, 'koly') === false) {
+    @unlink($path);
+    http_response_code(400);
+    exit('Invalid DMG (signature missing)');
+}
+
 // hash
 $sha = hash_file('sha256', $path);
 
@@ -74,5 +102,8 @@ $pdo->prepare("
 
 echo json_encode([
     'ok' => true,
-    'url' => $url
+    'url' => $url,
+    'sha256' => $sha,
+    'bytes' => (int)$size,
+    'filename' => $filename
 ]);
