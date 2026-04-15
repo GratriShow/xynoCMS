@@ -8,6 +8,8 @@ on:
       uuid:
         description: "Launcher UUID"
         required: true
+  repository_dispatch:
+    types: [ 'cms_rebuild' ]
 
 permissions:
   contents: write
@@ -117,13 +119,37 @@ jobs:
           LOCAL_BYTES=$(stat -f%z "${FILE}")
           echo "LOCAL sha256=${LOCAL_SHA} bytes=${LOCAL_BYTES}"
 
-          RESP=$(curl --fail-with-body -sS https://xynocms.xynoweb.fr/api/upload_build.php \
-            --form "file=@${FILE}" \
-            --form "uuid=${{ github.event.inputs.uuid }}" \
-            --form "platform=${{ matrix.platform }}" \
-            --form "token=8f7sd6f8sd6f8sd6f8sd6f")
+          UUID_INPUT="${{ github.event.inputs.uuid }}"
+          UUID_PAYLOAD="${{ github.event.client_payload.uuid }}"
+          UUID_SECRET="${{ secrets.LAUNCHER_UUID }}"
+          UUID="${UUID_INPUT:-$UUID_SECRET}"
+          if [ -z "${UUID}" ]; then UUID="${UUID_PAYLOAD:-}"; fi
+          if [ -z "${UUID}" ]; then UUID="${UUID_SECRET:-}"; fi
+          TOKEN="${{ secrets.XYNO_BUILD_TRIGGER_TOKEN }}"
+          if [ -z "${UUID}" ]; then
+            echo "ℹ️ No UUID provided for this run; skipping VPS upload."
+            exit 0
+          fi
+          if [ -z "${TOKEN}" ]; then
+            echo "❌ Missing secret: XYNO_BUILD_TRIGGER_TOKEN"
+            exit 1
+          fi
 
+          TMP_BODY=$(mktemp)
+          HTTP_CODE=$(curl -sS -o "${TMP_BODY}" -w "%{http_code}" https://xynocms.xynoweb.fr/api/upload_build.php \
+            --form "file=@${FILE}" \
+            --form "uuid=${UUID}" \
+            --form "platform=${{ matrix.platform }}" \
+            --form "token=${TOKEN}" || true)
+          RESP=$(cat "${TMP_BODY}")
+          rm -f "${TMP_BODY}"
+
+          echo "SERVER HTTP: ${HTTP_CODE}"
           echo "SERVER RESP: ${RESP}"
+          if [ "${HTTP_CODE}" != "200" ]; then
+            echo "❌ Upload failed"
+            exit 1
+          fi
 
           SERVER_OK=$(echo "${RESP}" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{try{const j=JSON.parse(s);process.stdout.write(String(j.ok===true))}catch(e){process.stdout.write("parse_error")} });')
           if [ "${SERVER_OK}" != "true" ]; then
