@@ -28,7 +28,7 @@ jobs:
             platform: linux
           - os: windows-latest
             platform: win
-          - os: macos-13   # 🔥 FIX → Intel runner
+          - os: macos-latest   # 🔥 FIX → Intel runner
             platform: mac
 
     steps:
