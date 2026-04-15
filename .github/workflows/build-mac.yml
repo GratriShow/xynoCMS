@@ -2,6 +2,10 @@ name: Build Mac
 
 on:
   workflow_dispatch:
+    inputs:
+      uuid:
+        description: "Launcher UUID"
+        required: true
 
 jobs:
   build:
@@ -16,7 +20,7 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install
+      - name: Install dependencies
         run: |
           cd launcher
           npm ci
@@ -26,8 +30,31 @@ jobs:
           cd launcher
           npx electron-builder --mac --universal --publish never
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-mac
-          path: launcher/release/*.dmg
+      - name: Verify build
+        run: |
+          FILE=$(find launcher/release -type f -name "*.dmg" | head -n 1)
+
+          if [ -z "$FILE" ]; then
+            echo "❌ Aucun fichier dmg trouvé"
+            exit 1
+          fi
+
+          echo "DMG: $FILE"
+          shasum -a 256 "$FILE"
+          hdiutil verify "$FILE"
+
+      - name: Upload to API
+        run: |
+          FILE=$(find launcher/release -type f -name "*.dmg" | head -n 1)
+
+          if [ -z "$FILE" ]; then
+            echo "❌ Aucun dmg"
+            exit 1
+          fi
+
+          echo "UPLOAD $FILE"
+
+          curl -X POST https://xynocms.xynoweb.fr/api/upload_build.php \
+            -H "X-Build-Token: ${{ secrets.XYNO_BUILD_TRIGGER_TOKEN }}" \
+            -F "file=@${FILE}" \
+            -F "uuid=${{ github.event.inputs.uuid }}"
