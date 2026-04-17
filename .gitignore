@@ -7,3 +7,9 @@ __MACOSX/
 .DS_Store
 *.log
 *.lock
+node_modules/
+dist/
+build/
+out/
+.env
+*.log
