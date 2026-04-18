@@ -32,9 +32,8 @@ if (api_method() !== 'POST') {
     api_json(['error' => 'Method Not Allowed'], 405);
 }
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+// Utiliser la session custom du CMS (cookie "xyno_session") — pas session_start() nu.
+start_secure_session();
 if (!isset($_SESSION['user_id'])) {
     api_json(['error' => 'Non autorisé. Veuillez vous connecter.'], 401);
 }

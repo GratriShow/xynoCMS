@@ -332,23 +332,25 @@ $error = flash_get('error');
         btn.disabled = true;
 
         try {
-            const response = await fetch('api/trigger_build.php', {
+            const response = await fetch('/api/trigger_build.php', {
                 method: 'POST',
+                credentials: 'same-origin',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
                 },
-                body: JSON.stringify({ uuid: uuid, target_os: os })
+                body: JSON.stringify({ uuid: uuid, targets: [os] })
             });
 
-            const result = await response.json();
+            const result = await response.json().catch(() => ({}));
 
             if (response.ok) {
-                alert("Build " + os.toUpperCase() + " lancé avec succès sur GitHub Actions !");
+                alert("Build " + os.toUpperCase() + " lancé (version " + (result.version || "?") + "). Suivi dans l'onglet Actions de GitHub.");
             } else {
-                alert("Erreur : " + (result.error || "Impossible de lancer le build."));
+                alert("Erreur : " + (result.error || ("HTTP " + response.status)));
             }
         } catch (e) {
-            alert("Erreur de connexion au serveur.");
+            alert("Erreur de connexion au serveur : " + e.message);
         } finally {
             btn.innerText = originalText;
             btn.disabled = false;
