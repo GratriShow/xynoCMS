@@ -1,0 +1,29 @@
+{
+  "_comment": "Template. Le vrai config.json est généré par GitHub Actions à partir de /api/build_config.php ou par launcher/build-multi-launchers.js. NE PAS COMMITTER un config.json avec de vraies clés.",
+
+  "uuid": "00000000-0000-0000-0000-000000000000",
+  "name": "XynoLauncher",
+  "version": "0.0.0",
+
+  "api_base_url": "https://votre-cms.tld",
+  "api_key": "REPLACE_WITH_REAL_KEY",
+  "renew_url": "https://votre-cms.tld/pricing.php",
+  "license_recheck_minutes": 5,
+  "expected_asar_sha256": "",
+
+  "theme": "default",
+  "modules": ["news", "settings"],
+
+  "branding": {
+    "primaryColor": "#6d6dff",
+    "accentColor": "#ff3366",
+    "discordUrl": "",
+    "websiteUrl": ""
+  },
+
+  "assets": {
+    "logo": "https://votre-cms.tld/files/<uuid>/client/assets/logo.png",
+    "background": "https://votre-cms.tld/files/<uuid>/client/assets/bg.jpg",
+    "icon": "https://votre-cms.tld/files/<uuid>/client/assets/icon.ico"
+  }
+}

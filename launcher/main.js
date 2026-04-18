@@ -1,3 +1,6 @@
+// MUST be first: populates process.env from bundled src/config.json.
+require('./src/bootstrap-env');
+
 const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');

@@ -1,0 +1,250 @@
+name: Build Launcher (per-tenant)
+
+on:
+  repository_dispatch:
+    types: [build_custom_launcher]
+  workflow_dispatch:
+    inputs:
+      uuid:
+        description: "Launcher UUID"
+        required: true
+      version:
+        description: "Version tag (ex: 20260418-1530)"
+        required: true
+      targets:
+        description: "Which OS to build (comma-separated: windows,linux,mac)"
+        required: false
+        default: "windows,linux,mac"
+      cms_base_url:
+        description: "CMS base URL (https://...)"
+        required: true
+
+# One build per UUID+version at a time; queue the rest.
+concurrency:
+  group: build-${{ github.event.client_payload.uuid || github.event.inputs.uuid }}-${{ github.event.client_payload.version || github.event.inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1) Resolve the build payload (UUID, version, cms_base_url, targets, config).
+  # ---------------------------------------------------------------------------
+  prepare:
+    name: Prepare build payload
+    runs-on: ubuntu-latest
+    outputs:
+      uuid: ${{ steps.resolve.outputs.uuid }}
+      version: ${{ steps.resolve.outputs.version }}
+      cms_base_url: ${{ steps.resolve.outputs.cms_base_url }}
+      matrix: ${{ steps.resolve.outputs.matrix }}
+    steps:
+      - id: resolve
+        name: Resolve inputs
+        shell: bash
+        env:
+          CP_UUID: ${{ github.event.client_payload.uuid }}
+          CP_VERSION: ${{ github.event.client_payload.version }}
+          CP_CMS: ${{ github.event.client_payload.cms_base_url }}
+          CP_TARGETS: ${{ github.event.client_payload.targets }}
+          IN_UUID: ${{ github.event.inputs.uuid }}
+          IN_VERSION: ${{ github.event.inputs.version }}
+          IN_CMS: ${{ github.event.inputs.cms_base_url }}
+          IN_TARGETS: ${{ github.event.inputs.targets }}
+        run: |
+          set -euo pipefail
+          UUID="${CP_UUID:-$IN_UUID}"
+          VERSION="${CP_VERSION:-$IN_VERSION}"
+          CMS="${CP_CMS:-$IN_CMS}"
+          TARGETS="${CP_TARGETS:-${IN_TARGETS:-windows,linux,mac}}"
+
+          if [[ -z "$UUID" || -z "$VERSION" || -z "$CMS" ]]; then
+            echo "Missing uuid/version/cms_base_url" >&2
+            exit 1
+          fi
+          if [[ ! "$UUID" =~ ^[a-f0-9-]{36}$ ]]; then
+            echo "Invalid UUID format: $UUID" >&2
+            exit 1
+          fi
+          if [[ ! "$VERSION" =~ ^[0-9A-Za-z._-]{1,64}$ ]]; then
+            echo "Invalid version format: $VERSION" >&2
+            exit 1
+          fi
+
+          # Build a JSON matrix from the comma-separated target list.
+          MATRIX_JSON=$(python3 - <<PY
+          import json, os, sys
+          targets = [t.strip() for t in os.environ["TARGETS"].split(",") if t.strip()]
+          mapping = {
+              "windows": {"os": "windows-latest", "target": "windows"},
+              "linux":   {"os": "ubuntu-latest",  "target": "linux"},
+              "mac":     {"os": "macos-latest",   "target": "mac"},
+          }
+          include = [mapping[t] for t in targets if t in mapping]
+          if not include:
+              print("No valid target requested", file=sys.stderr); sys.exit(1)
+          print(json.dumps({"include": include}))
+          PY
+          )
+          echo "matrix=$MATRIX_JSON" >> "$GITHUB_OUTPUT"
+          echo "uuid=$UUID" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "cms_base_url=$CMS" >> "$GITHUB_OUTPUT"
+        env:
+          TARGETS: ${{ github.event.client_payload.targets || github.event.inputs.targets || 'windows,linux,mac' }}
+
+  # ---------------------------------------------------------------------------
+  # 2) Build matrix: one runner per OS, all in parallel.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build ${{ matrix.target }}
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: launcher/package-lock.json
+
+      # Fetch per-launcher config (uuid, api_key, theme, modules, asset URLs, etc.)
+      # from the CMS. The CMS returns a JSON blob signed with BUILD_FETCH_TOKEN.
+      - name: Fetch launcher config from CMS
+        shell: bash
+        env:
+          CMS: ${{ needs.prepare.outputs.cms_base_url }}
+          UUID: ${{ needs.prepare.outputs.uuid }}
+          TOKEN: ${{ secrets.BUILD_FETCH_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p launcher/src
+          curl -fsS \
+            -H "X-Build-Token: $TOKEN" \
+            -H "Accept: application/json" \
+            "$CMS/api/build_config.php?uuid=$UUID" \
+            -o launcher/src/config.json
+          echo "--- config.json (sanitized) ---"
+          node -e "const c=require('./launcher/src/config.json'); const {api_key, ...safe}=c; console.log(JSON.stringify(safe,null,2));"
+
+      - name: Override version in config
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          node -e "
+            const fs=require('fs');
+            const p='launcher/src/config.json';
+            const c=JSON.parse(fs.readFileSync(p,'utf8'));
+            c.version='$VERSION';
+            fs.writeFileSync(p, JSON.stringify(c,null,2));
+          "
+
+      - name: Download assets (logo, background, icons)
+        shell: bash
+        env:
+          CMS: ${{ needs.prepare.outputs.cms_base_url }}
+          UUID: ${{ needs.prepare.outputs.uuid }}
+          TOKEN: ${{ secrets.BUILD_FETCH_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p launcher/src/assets
+          # Assets list is inside config.json under "assets": { "logo": "url", ... }
+          node -e "
+            const fs=require('fs');
+            const c=JSON.parse(fs.readFileSync('launcher/src/config.json','utf8'));
+            const a=c.assets||{};
+            for (const [k,url] of Object.entries(a)) {
+              if (!url) continue;
+              console.log('DL '+k+' '+url);
+              require('child_process').execSync(
+                'curl -fsSL -H \"X-Build-Token: $TOKEN\" \"'+url+'\" -o launcher/src/assets/'+k+'.'+(url.split(\".\").pop().split(\"?\")[0]),
+                {stdio:'inherit'}
+              );
+            }
+          "
+
+      - name: Install dependencies
+        shell: bash
+        working-directory: launcher
+        run: npm ci
+
+      - name: Obfuscate (optional, skip if it breaks on windows)
+        shell: bash
+        working-directory: launcher
+        continue-on-error: true
+        run: npm run build:obfuscate
+
+      - name: Build Electron app (${{ matrix.target }})
+        shell: bash
+        working-directory: launcher
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false" # no code signing in CI for now
+        run: |
+          case "${{ matrix.target }}" in
+            windows) npx electron-builder --win   --publish never ;;
+            linux)   npx electron-builder --linux --publish never ;;
+            mac)     npx electron-builder --mac   --publish never ;;
+          esac
+
+      - name: Locate installer file
+        id: artifact
+        shell: bash
+        working-directory: launcher/release
+        run: |
+          set -euo pipefail
+          case "${{ matrix.target }}" in
+            windows) FILE=$(ls *.exe      | head -n1) ;;
+            linux)   FILE=$(ls *.AppImage | head -n1) ;;
+            mac)     FILE=$(ls *.dmg      | head -n1) ;;
+          esac
+          if [[ -z "$FILE" ]]; then
+            echo "No installer produced for ${{ matrix.target }}" >&2
+            ls -la
+            exit 1
+          fi
+          echo "file=$FILE" >> "$GITHUB_OUTPUT"
+          echo "path=$(pwd)/$FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Upload installer to CMS
+        shell: bash
+        env:
+          CMS: ${{ needs.prepare.outputs.cms_base_url }}
+          UUID: ${{ needs.prepare.outputs.uuid }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TOKEN: ${{ secrets.RELEASE_UPLOAD_TOKEN }}
+          PLATFORM: ${{ matrix.target == 'windows' && 'win' || matrix.target }}
+          FILEPATH: ${{ steps.artifact.outputs.path }}
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST "$CMS/api/release_upload.php" \
+            -H "X-Upload-Token: $TOKEN" \
+            -F "uuid=$UUID" \
+            -F "type=installer" \
+            -F "platform=$PLATFORM" \
+            -F "version=$VERSION" \
+            -F "active=1" \
+            -F "file=@$FILEPATH"
+
+      - name: Notify CMS (build status)
+        if: always()
+        shell: bash
+        env:
+          CMS: ${{ needs.prepare.outputs.cms_base_url }}
+          UUID: ${{ needs.prepare.outputs.uuid }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TOKEN: ${{ secrets.BUILD_FETCH_TOKEN }}
+          PLATFORM: ${{ matrix.target == 'windows' && 'win' || matrix.target }}
+          STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          curl -fsS -X POST "$CMS/api/build_status.php" \
+            -H "X-Build-Token: $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"uuid\":\"$UUID\",\"version\":\"$VERSION\",\"platform\":\"$PLATFORM\",\"status\":\"$STATUS\",\"run_url\":\"$RUN_URL\"}" \
+            || true

@@ -231,28 +231,13 @@ $error = flash_get('error');
 
               <div class="card" style="margin-top:12px; padding:14px">
                 <p class="badge">Build</p>
-                <p class="section-desc" style="margin-top:8px">Génère un installer et active-le pour le téléchargement.</p>
+                <p class="section-desc" style="margin-top:8px">Génère un installer via GitHub Actions et envoie-le sur le VPS.</p>
                 <div class="cta-row" style="margin:12px 0 0">
-                  <form action="build_installer.php" method="post" style="margin:0">
-                    <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
-                    <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
-                    <input type="hidden" name="platform" value="mac" />
-                    <button class="btn btn-primary" type="submit">Générer macOS</button>
-                  </form>
-                  <form action="build_installer.php" method="post" style="margin:0">
-                    <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
-                    <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
-                    <input type="hidden" name="platform" value="win" />
-                    <button class="btn" type="submit">Générer Windows</button>
-                  </form>
-                  <form action="build_installer.php" method="post" style="margin:0">
-                    <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
-                    <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
-                    <input type="hidden" name="platform" value="linux" />
-                    <button class="btn" type="submit">Générer Linux</button>
-                  </form>
+                  <button class="btn btn-primary" type="button" onclick="triggerLauncherBuild('<?php echo e((string)$selected['uuid']); ?>', 'mac')">Générer macOS</button>
+                  <button class="btn" type="button" onclick="triggerLauncherBuild('<?php echo e((string)$selected['uuid']); ?>', 'windows')">Générer Windows</button>
+                  <button class="btn" type="button" onclick="triggerLauncherBuild('<?php echo e((string)$selected['uuid']); ?>', 'linux')">Générer Linux</button>
                 </div>
-                <p class="small" style="margin:10px 0 0;color:rgba(255,255,255,.72)">Le build peut prendre plusieurs minutes.</p>
+                <p class="small" style="margin:10px 0 0;color:rgba(255,255,255,.72)">Le build peut prendre plusieurs minutes. Vous pourrez le télécharger une fois terminé.</p>
               </div>
             <?php endif; ?>
           </div>
@@ -339,6 +324,36 @@ $error = flash_get('error');
 
   <script>
     document.getElementById('year').textContent = String(new Date().getFullYear());
+
+    async function triggerLauncherBuild(uuid, os) {
+        const btn = event.target;
+        const originalText = btn.innerText;
+        btn.innerText = "Génération en cours...";
+        btn.disabled = true;
+
+        try {
+            const response = await fetch('api/trigger_build.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ uuid: uuid, target_os: os })
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                alert("Build " + os.toUpperCase() + " lancé avec succès sur GitHub Actions !");
+            } else {
+                alert("Erreur : " + (result.error || "Impossible de lancer le build."));
+            }
+        } catch (e) {
+            alert("Erreur de connexion au serveur.");
+        } finally {
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
+    }
   </script>
 </body>
 </html>

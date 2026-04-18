@@ -1,7 +1,11 @@
 node_modules/
 launcher/node_modules/
+launcher/src/config.json
+launcher/src/assets/
+launcher/release/
 .env
 .env.local
+config/.env.local
 files/
 __MACOSX/
 .DS_Store
