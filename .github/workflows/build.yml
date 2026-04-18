@@ -55,6 +55,7 @@ jobs:
           VERSION="${CP_VERSION:-$IN_VERSION}"
           CMS="${CP_CMS:-$IN_CMS}"
           TARGETS="${CP_TARGETS:-${IN_TARGETS:-windows,linux,mac}}"
+          export TARGETS
 
           if [[ -z "$UUID" || -z "$VERSION" || -z "$CMS" ]]; then
             echo "Missing uuid/version/cms_base_url" >&2
@@ -70,7 +71,7 @@ jobs:
           fi
 
           # Build a JSON matrix from the comma-separated target list.
-          MATRIX_JSON=$(python3 - <<PY
+          MATRIX_JSON=$(python3 - <<'PY'
           import json, os, sys
           targets = [t.strip() for t in os.environ["TARGETS"].split(",") if t.strip()]
           mapping = {
@@ -88,8 +89,6 @@ jobs:
           echo "uuid=$UUID" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "cms_base_url=$CMS" >> "$GITHUB_OUTPUT"
-        env:
-          TARGETS: ${{ github.event.client_payload.targets || github.event.inputs.targets || 'windows,linux,mac' }}
 
   # ---------------------------------------------------------------------------
   # 2) Build matrix: one runner per OS, all in parallel.
