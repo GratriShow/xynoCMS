@@ -109,6 +109,12 @@ try {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
 
+    // Seed per-platform status in the same "per:xxx=queued;... | global:in_progress"
+    // format used by api/build_status.php, so the public status endpoint can render
+    // a coherent progress bar from the very first poll.
+    $shortTargets = array_map(fn($t) => $t === 'windows' ? 'win' : $t, $targets);
+    $seededStatus = 'per:' . implode(';', array_map(fn($t) => "$t=queued", $shortTargets)) . '|global:in_progress';
+
     $ins = $pdo->prepare(
         'INSERT INTO launcher_builds (launcher_id, uuid, version, targets, status, requested_by)
          VALUES (?, ?, ?, ?, ?, ?)'
@@ -118,7 +124,7 @@ try {
         $uuid,
         $version,
         implode(',', $targets),
-        'queued',
+        $seededStatus,
         $userId,
     ]);
 } catch (Throwable $e) {

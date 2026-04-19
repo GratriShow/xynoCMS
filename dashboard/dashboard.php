@@ -287,12 +287,61 @@ $error = flash_get('error');
                 <p class="badge">Build</p>
                 <p class="section-desc" style="margin-top:8px">Génère un installer via GitHub Actions et envoie-le sur le VPS.</p>
                 <div class="cta-row" style="margin:12px 0 0">
-                  <button class="btn btn-primary" type="button" onclick="triggerLauncherBuild('<?php echo e((string)$selected['uuid']); ?>', 'mac')">Générer macOS</button>
-                  <button class="btn" type="button" onclick="triggerLauncherBuild('<?php echo e((string)$selected['uuid']); ?>', 'windows')">Générer Windows</button>
-                  <button class="btn" type="button" onclick="triggerLauncherBuild('<?php echo e((string)$selected['uuid']); ?>', 'linux')">Générer Linux</button>
+                  <button class="btn btn-primary" type="button" onclick="triggerLauncherBuild('<?php echo e((string)$selected['uuid']); ?>', 'mac', event)">Générer macOS</button>
+                  <button class="btn" type="button" onclick="triggerLauncherBuild('<?php echo e((string)$selected['uuid']); ?>', 'windows', event)">Générer Windows</button>
+                  <button class="btn" type="button" onclick="triggerLauncherBuild('<?php echo e((string)$selected['uuid']); ?>', 'linux', event)">Générer Linux</button>
                 </div>
-                <p class="small" style="margin:10px 0 0;color:rgba(255,255,255,.72)">Le build peut prendre plusieurs minutes. Vous pourrez le télécharger une fois terminé.</p>
+                <p class="small" style="margin:10px 0 0;color:rgba(255,255,255,.72)">Le build peut prendre plusieurs minutes. Suivez l'avancement en temps réel ci-dessous.</p>
+
+                <!-- Live build progress panel -->
+                <div id="build-progress" class="build-progress" data-uuid="<?php echo e((string)$selected['uuid']); ?>" hidden style="margin-top:14px">
+                  <div class="nav-row" style="align-items:center;gap:10px;margin-bottom:10px">
+                    <p class="badge" id="build-progress-title" style="margin:0">Build en cours</p>
+                    <span class="small" id="build-progress-version" style="color:rgba(255,255,255,.72)"></span>
+                    <span class="small" id="build-progress-elapsed" style="color:rgba(255,255,255,.55)"></span>
+                    <a id="build-progress-runlink" class="small" href="#" target="_blank" rel="noopener" style="margin-left:auto;display:none">Voir sur GitHub →</a>
+                  </div>
+                  <div id="build-progress-list" style="display:grid;gap:8px"></div>
+                </div>
               </div>
+
+              <style>
+                .build-progress .bp-row{
+                  display:grid;grid-template-columns:88px 1fr 140px;gap:12px;align-items:center;
+                  padding:10px 12px;background:rgba(255,255,255,.03);border-radius:10px;
+                }
+                .build-progress .bp-label{font-weight:600}
+                .build-progress .bp-bar{
+                  height:8px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;position:relative
+                }
+                .build-progress .bp-fill{
+                  position:absolute;inset:0;border-radius:999px;
+                  background:linear-gradient(90deg,rgba(124,58,237,.85),rgba(34,211,238,.85));
+                  width:40%;
+                  animation:bpPulse 1.6s ease-in-out infinite;
+                }
+                .build-progress .bp-row[data-state="success"] .bp-fill{
+                  animation:none;width:100%;background:linear-gradient(90deg,#10b981,#34d399)
+                }
+                .build-progress .bp-row[data-state="failure"] .bp-fill,
+                .build-progress .bp-row[data-state="cancelled"] .bp-fill{
+                  animation:none;width:100%;background:linear-gradient(90deg,#ef4444,#f87171)
+                }
+                .build-progress .bp-row[data-state="skipped"] .bp-fill{
+                  animation:none;width:100%;background:rgba(255,255,255,.18)
+                }
+                .build-progress .bp-state{
+                  text-align:right;font-size:13px;color:rgba(255,255,255,.78);font-variant-numeric:tabular-nums
+                }
+                .build-progress .bp-row[data-state="success"] .bp-state{color:#34d399}
+                .build-progress .bp-row[data-state="failure"] .bp-state,
+                .build-progress .bp-row[data-state="cancelled"] .bp-state{color:#f87171}
+                @keyframes bpPulse{
+                  0%{transform:translateX(-60%);width:40%}
+                  50%{transform:translateX(40%);width:60%}
+                  100%{transform:translateX(120%);width:40%}
+                }
+              </style>
             <?php endif; ?>
           </div>
         </section>
@@ -379,11 +428,29 @@ $error = flash_get('error');
   <script>
     document.getElementById('year').textContent = String(new Date().getFullYear());
 
-    async function triggerLauncherBuild(uuid, os) {
-        const btn = event.target;
-        const originalText = btn.innerText;
-        btn.innerText = "Génération en cours...";
-        btn.disabled = true;
+    // ----------- Build trigger + live progress polling -----------
+
+    const PLATFORM_LABELS = { win: 'Windows', mac: 'macOS', linux: 'Linux' };
+    const STATE_LABELS = {
+      queued: 'En attente…',
+      in_progress: 'Build en cours…',
+      success: 'Terminé',
+      failure: 'Échec',
+      cancelled: 'Annulé',
+      skipped: 'Ignoré',
+    };
+    const TERMINAL_GLOBAL = new Set(['success', 'failure', 'partial', 'cancelled']);
+
+    let buildPoller = null;
+    let buildStartTs = 0;
+
+    async function triggerLauncherBuild(uuid, os, evt) {
+        const btn = evt && evt.target;
+        const originalText = btn ? btn.innerText : null;
+        if (btn) {
+          btn.innerText = 'Démarrage…';
+          btn.disabled = true;
+        }
 
         try {
             const response = await fetch('/api/trigger_build.php', {
@@ -398,18 +465,158 @@ $error = flash_get('error');
 
             const result = await response.json().catch(() => ({}));
 
-            if (response.ok) {
-                alert("Build " + os.toUpperCase() + " lancé (version " + (result.version || "?") + "). Suivi dans l'onglet Actions de GitHub.");
-            } else {
-                alert("Erreur : " + (result.error || ("HTTP " + response.status)));
+            if (!response.ok) {
+                alert('Erreur : ' + (result.error || ('HTTP ' + response.status)));
+                return;
             }
+
+            // Kick off the live progress panel.
+            startBuildProgress(uuid, result.version || '', [osToShort(os)]);
         } catch (e) {
-            alert("Erreur de connexion au serveur : " + e.message);
+            alert('Erreur de connexion au serveur : ' + e.message);
         } finally {
-            btn.innerText = originalText;
-            btn.disabled = false;
+            if (btn) {
+              btn.innerText = originalText;
+              btn.disabled = false;
+            }
         }
     }
+
+    function osToShort(os) {
+      if (os === 'windows') return 'win';
+      return os;
+    }
+
+    function startBuildProgress(uuid, version, targetsShort) {
+      const panel = document.getElementById('build-progress');
+      if (!panel) return;
+      panel.hidden = false;
+      panel.dataset.uuid = uuid;
+      panel.dataset.version = version || '';
+
+      document.getElementById('build-progress-version').textContent = version ? ('Version ' + version) : '';
+      document.getElementById('build-progress-title').textContent = 'Build en cours';
+      const runLink = document.getElementById('build-progress-runlink');
+      runLink.style.display = 'none';
+      runLink.removeAttribute('href');
+
+      // Seed rows for the requested platforms.
+      const list = document.getElementById('build-progress-list');
+      list.innerHTML = '';
+      for (const p of targetsShort) {
+        list.appendChild(renderRow(p, 'queued'));
+      }
+
+      buildStartTs = Date.now();
+      tickElapsed();
+      if (buildPoller) clearInterval(buildPoller);
+      buildPoller = setInterval(() => pollBuildStatus(uuid, version), 3000);
+      // Immediate first poll so the UI doesn't sit stale for 3s.
+      pollBuildStatus(uuid, version);
+    }
+
+    function renderRow(platform, state) {
+      const row = document.createElement('div');
+      row.className = 'bp-row';
+      row.dataset.platform = platform;
+      row.dataset.state = state;
+      row.innerHTML = `
+        <div class="bp-label">${PLATFORM_LABELS[platform] || platform}</div>
+        <div class="bp-bar"><div class="bp-fill"></div></div>
+        <div class="bp-state">${STATE_LABELS[state] || state}</div>
+      `;
+      return row;
+    }
+
+    function setRowState(platform, state) {
+      const row = document.querySelector('.bp-row[data-platform="' + platform + '"]');
+      if (!row) {
+        const list = document.getElementById('build-progress-list');
+        if (list) list.appendChild(renderRow(platform, state));
+        return;
+      }
+      row.dataset.state = state;
+      const stateCell = row.querySelector('.bp-state');
+      if (stateCell) stateCell.textContent = STATE_LABELS[state] || state;
+    }
+
+    function tickElapsed() {
+      const el = document.getElementById('build-progress-elapsed');
+      if (!el || !buildStartTs) return;
+      const s = Math.max(0, Math.floor((Date.now() - buildStartTs) / 1000));
+      const m = Math.floor(s / 60);
+      const rem = s % 60;
+      el.textContent = m > 0 ? (m + 'm ' + rem + 's écoulées') : (rem + 's écoulées');
+    }
+
+    async function pollBuildStatus(uuid, version) {
+      tickElapsed();
+      try {
+        const qs = new URLSearchParams({ uuid });
+        if (version) qs.set('version', version);
+        const r = await fetch('/api/build_status_public.php?' + qs.toString(), {
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
+        });
+        if (!r.ok) return;
+        const data = await r.json();
+
+        if (data.run_url) {
+          const link = document.getElementById('build-progress-runlink');
+          link.href = data.run_url;
+          link.style.display = '';
+        }
+
+        const per = data.per_platform || {};
+        for (const [plat, state] of Object.entries(per)) {
+          setRowState(plat, state);
+        }
+
+        const global = data.global || 'queued';
+        if (TERMINAL_GLOBAL.has(global)) {
+          clearInterval(buildPoller);
+          buildPoller = null;
+          const title = document.getElementById('build-progress-title');
+          if (global === 'success') {
+            title.textContent = 'Build terminé ✓';
+          } else if (global === 'failure') {
+            title.textContent = 'Build échoué ✗';
+          } else if (global === 'cancelled') {
+            title.textContent = 'Build annulé';
+          } else {
+            title.textContent = 'Build terminé (partiel)';
+          }
+          // Give the user a way to refresh the installers section.
+          setTimeout(() => {
+            const installersSection = document.querySelector('.card p.badge');
+            // Soft refresh to reload download links:
+            if (global === 'success' || global === 'partial') {
+              location.reload();
+            }
+          }, 1500);
+        }
+      } catch (_) {
+        // Network blip — keep polling silently.
+      }
+    }
+
+    // If the page loads and there's already a build in flight for the selected
+    // launcher, auto-attach the progress panel so the user sees status on reload.
+    (function restoreProgressOnLoad() {
+      const panel = document.getElementById('build-progress');
+      if (!panel) return;
+      const uuid = panel.dataset.uuid;
+      if (!uuid) return;
+      fetch('/api/build_status_public.php?' + new URLSearchParams({ uuid }).toString(), {
+        credentials: 'same-origin',
+      }).then(r => r.ok ? r.json() : null).then(data => {
+        if (!data || !data.version) return;
+        const targets = data.targets && data.targets.length ? data.targets : Object.keys(data.per_platform || {});
+        if (!targets.length) return;
+        if (TERMINAL_GLOBAL.has(data.global)) return; // Don't resurrect finished builds.
+        startBuildProgress(uuid, data.version, targets);
+      }).catch(() => {});
+    })();
   </script>
 </body>
 </html>
