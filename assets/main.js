@@ -227,16 +227,13 @@ function initBuilder() {
     if (el.total) el.total.textContent = formatEUR(total);
 
     if (el.summary) {
+      // Le builder ne gère plus le pricing (plan, facturation, hébergement, promo).
+      // On n'affiche que les infos de configuration du launcher.
       el.summary.innerHTML = `
-        <div class="summary-row"><span>Offre</span><strong>${state.plan.toUpperCase()} (${state.billing === 'yearly' ? 'Annuel' : 'Mensuel'})</strong></div>
         <div class="summary-row"><span>Thème</span><strong>${state.theme ? state.theme : '—'}</strong></div>
         <div class="summary-row"><span>Connexion</span><strong>${state.connection}</strong></div>
         <div class="summary-row"><span>Modules</span><strong>${state.modules.size ? Array.from(state.modules).join(', ') : 'Aucun'}</strong></div>
         <div class="summary-row"><span>Minecraft</span><strong>${state.mcVersion} • ${state.loader}</strong></div>
-        <div class="summary-row"><span>Hébergement</span><strong>${state.hosting === 'yes' ? 'Oui' : 'Non'}</strong></div>
-        <div class="summary-row"><span>Sous-total</span><strong>${formatEUR(subtotal)}</strong></div>
-        <div class="summary-row"><span>Promo</span><strong>${promoApplied ? '-' + formatEUR(discount) : '—'}</strong></div>
-        <div class="summary-row"><span>Total</span><strong class="total">${formatEUR(total)}</strong></div>
       `;
     }
 

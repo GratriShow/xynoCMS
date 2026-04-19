@@ -17,7 +17,7 @@ $error = flash_get('error');
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Builder — XynoLauncher</title>
-  <meta name="description" content="Tunnel de configuration : thème, modules, version, hébergement, récap." />
+  <meta name="description" content="Tunnel de configuration : thème, modules, version, récap." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -38,6 +38,7 @@ $error = flash_get('error');
         <a href="index.php">Accueil</a>
         <a href="pricing.php">Tarifs</a>
         <a href="builder.php">Builder</a>
+        <a href="self-hosting.php">Auto-hébergement</a>
         <a href="dashboard.php">Dashboard</a>
       </nav>
 
@@ -59,12 +60,9 @@ $error = flash_get('error');
         <div class="callout" style="margin-bottom:14px">
           <div>
             <h1 class="section-title" style="margin:0">Tunnel de configuration</h1>
-            <p class="section-desc" style="margin-top:8px">Configure ton launcher puis enregistre-le dans ton compte.</p>
+            <p class="section-desc" style="margin-top:8px">Configure ton launcher en 4 étapes puis enregistre-le dans ton compte. La facturation et l’hébergement se gèrent séparément depuis les <a href="pricing.php" style="color:#a78bfa">tarifs</a>.</p>
           </div>
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-            <span class="badge">Offre : <strong data-plan-pill style="color:rgba(255,255,255,.92)">PRO</strong></span>
-            <span class="badge">Facturation : <strong data-billing-pill style="color:rgba(255,255,255,.92)">Mensuel</strong></span>
-          </div>
+          <div class="badge">4 étapes</div>
         </div>
 
         <?php if ($success): ?>
@@ -100,13 +98,6 @@ $error = flash_get('error');
             <a class="step" href="#" data-step-link="4">
               <span class="step-num">4</span>
               <span>
-                <strong style="color:rgba(255,255,255,.92)">Hébergement</strong><br>
-                <span class="small">Oui / non</span>
-              </span>
-            </a>
-            <a class="step" href="#" data-step-link="5">
-              <span class="step-num">5</span>
-              <span>
                 <strong style="color:rgba(255,255,255,.92)">Récap</strong><br>
                 <span class="small">Enregistrement</span>
               </span>
@@ -116,7 +107,7 @@ $error = flash_get('error');
           <section class="card" aria-label="Contenu du builder">
             <div class="notice" data-notice data-show="false"></div>
 
-            <!-- Step 1 -->
+            <!-- Step 1 : Thème -->
             <section data-step="1">
               <h2 class="section-title" style="margin:0">Étape 1 — Choisis un thème</h2>
               <p class="section-desc">Clique sur une carte pour sélectionner.</p>
@@ -140,12 +131,12 @@ $error = flash_get('error');
               </div>
 
               <div class="nav-row">
-                <span class="small">Astuce : tu peux venir depuis la page tarifs (plan + mensuel/annuel pré-sélectionnés).</span>
+                <span class="small">Tu peux changer de thème plus tard depuis le dashboard.</span>
                 <button class="btn btn-primary" type="button" data-next>Continuer</button>
               </div>
             </section>
 
-            <!-- Step 2 -->
+            <!-- Step 2 : Configuration -->
             <section data-step="2" hidden>
               <h2 class="section-title" style="margin:0">Étape 2 — Configuration</h2>
               <p class="section-desc">Définis la connexion et active les modules utiles.</p>
@@ -157,15 +148,6 @@ $error = flash_get('error');
                     <option value="microsoft">Microsoft</option>
                     <option value="mojang">Mojang (legacy)</option>
                     <option value="offline">Offline</option>
-                  </select>
-                </label>
-
-                <label class="label">
-                  <span>Offre (depuis tarifs)</span>
-                  <select data-plan-select>
-                    <option value="basic">Basic</option>
-                    <option value="pro">Pro</option>
-                    <option value="premium">Premium</option>
                   </select>
                 </label>
               </div>
@@ -218,7 +200,7 @@ $error = flash_get('error');
               </div>
             </section>
 
-            <!-- Step 3 -->
+            <!-- Step 3 : Minecraft -->
             <section data-step="3" hidden>
               <h2 class="section-title" style="margin:0">Étape 3 — Version + loader</h2>
               <p class="section-desc">Choisis la version Minecraft et le loader principal.</p>
@@ -249,40 +231,10 @@ $error = flash_get('error');
               </div>
             </section>
 
-            <!-- Step 4 -->
+            <!-- Step 4 : Récap -->
             <section data-step="4" hidden>
-              <h2 class="section-title" style="margin:0">Étape 4 — Hébergement</h2>
-              <p class="section-desc">Active l’hébergement si tu veux une solution clé-en-main.</p>
-
-              <div class="grid-2" style="margin-top:14px" aria-label="Hébergement">
-                <article class="card choice" role="button" tabindex="0" data-hosting="no" aria-selected="true">
-                  <p class="badge">Non</p>
-                  <h3>Je gère mon hébergement</h3>
-                  <p>Tu gardes la main sur l’infrastructure et le stockage.</p>
-                </article>
-                <article class="card choice" role="button" tabindex="0" data-hosting="yes" aria-selected="false">
-                  <p class="badge">Oui</p>
-                  <h3>Hébergement Xyno</h3>
-                  <p>CDN + stockage, simple à connecter au launcher.</p>
-                </article>
-              </div>
-
-              <div class="nav-row">
-                <button class="btn" type="button" data-back>Retour</button>
-                <button class="btn btn-primary" type="button" data-next>Continuer</button>
-              </div>
-            </section>
-
-            <!-- Step 5 -->
-            <section data-step="5" hidden>
-              <h2 class="section-title" style="margin:0">Étape 5 — Récapitulatif</h2>
+              <h2 class="section-title" style="margin:0">Étape 4 — Récapitulatif</h2>
               <p class="section-desc">Vérifie la configuration puis enregistre le launcher.</p>
-
-              <div class="toggle" data-billing-toggle aria-label="Facturation" style="margin-top:14px">
-                <button type="button" data-billing="monthly" aria-pressed="true">Mensuel</button>
-                <button type="button" data-billing="yearly" aria-pressed="false">Annuel</button>
-                <span class="badge">-20% en annuel</span>
-              </div>
 
               <div class="two-col" style="margin-top:14px">
                 <div class="summary" data-summary aria-label="Récapitulatif"></div>
@@ -308,24 +260,17 @@ $error = flash_get('error');
                         <input class="input" name="description" placeholder="(optionnel)" />
                       </label>
 
-                      <label class="label">
-                        <span>Code promo</span>
-                        <input class="input" data-promo placeholder="Ex: FREE100" />
-                        <span class="help">Démo : <strong style="color:rgba(255,255,255,.92)">FREE100</strong> (100%).</span>
-                      </label>
-
                       <input type="hidden" name="theme" value="" data-out-theme />
                       <input type="hidden" name="version" value="" data-out-version />
                       <input type="hidden" name="loader" value="" data-out-loader />
                       <input type="hidden" name="modules" value="" data-out-modules />
-                      <input type="hidden" name="promo" value="" data-out-promo />
 
                       <div class="cta-row" style="margin-top:14px">
                         <button class="btn btn-primary" type="submit">Créer le launcher</button>
                         <a class="btn" href="dashboard.php">Aller au dashboard</a>
                       </div>
 
-                      <p class="small" style="margin:10px 0 0">Le paiement n’est pas géré ici : ceci enregistre uniquement le launcher.</p>
+                      <p class="small" style="margin:10px 0 0">La facturation et l’hébergement se gèrent séparément depuis les <a href="pricing.php">tarifs</a>.</p>
                     </form>
                   <?php endif; ?>
                 </div>
@@ -355,6 +300,7 @@ $error = flash_get('error');
         <h4>Produit</h4>
         <p class="small"><a href="pricing.php">Tarifs</a></p>
         <p class="small"><a href="builder.php">Builder</a></p>
+        <p class="small"><a href="self-hosting.php">Auto-hébergement</a></p>
         <p class="small"><a href="dashboard.php">Dashboard</a></p>
       </div>
       <div>

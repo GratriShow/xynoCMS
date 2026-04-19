@@ -87,6 +87,7 @@ $hostingMonthly = 5;
       <nav class="nav-links" aria-label="Navigation principale">
         <a href="index.php">Accueil</a>
         <a href="pricing.php">Tarifs</a>
+        <a href="builder.php">Builder</a>
         <a href="self-hosting.php">Auto-hébergement</a>
         <a href="dashboard.php">Dashboard</a>
       </nav>
@@ -287,6 +288,7 @@ $hostingMonthly = 5;
       <div>
         <h4>Produit</h4>
         <p class="small"><a href="pricing.php">Tarifs</a></p>
+        <p class="small"><a href="builder.php">Builder</a></p>
         <p class="small"><a href="self-hosting.php">Auto-hébergement</a></p>
         <p class="small"><a href="dashboard.php">Dashboard</a></p>
       </div>
