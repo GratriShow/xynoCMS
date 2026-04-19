@@ -16,41 +16,35 @@ $supportEmail = 'support@xynoweb.fr';
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="assets/style.css" />
-  <script src="assets/main.js" defer></script>
   <style>
-    /* --- Billing toggle (mensuel/trim/sem/annuel) --- */
+    /* --- Billing toggle (mensuel/trim/sem/annuel) : aligné sur .toggle --- */
     .billing-toggle{
-      display:inline-flex; flex-wrap:wrap; gap:6px;
-      padding:6px; margin-top:14px;
-      background:rgba(255,255,255,.04);
-      border:1px solid rgba(255,255,255,.08);
-      border-radius:999px;
+      display:inline-flex; flex-wrap:wrap; gap: 4px;
+      padding: 5px; margin-top: 14px;
+      background: var(--surface);
+      border: 1px solid var(--border-2);
+      border-radius: 999px;
     }
     .bt-btn{
       appearance:none; cursor:pointer;
-      padding:8px 14px; border-radius:999px;
-      background:transparent; color:rgba(255,255,255,.75);
-      border:1px solid transparent;
-      font:600 13px/1 'Inter', system-ui, sans-serif;
-      display:inline-flex; align-items:center; gap:6px;
-      transition:background .15s ease, color .15s ease, border-color .15s ease;
+      padding: 9px 14px; border-radius: 999px;
+      background: transparent; color: var(--muted);
+      border: 0;
+      font: 700 13px/1 Inter, system-ui, sans-serif;
+      display:inline-flex; align-items:center; gap: 6px;
+      transition: background .15s, color .15s;
     }
-    .bt-btn:hover{ color:#fff; background:rgba(255,255,255,.04); }
+    .bt-btn:hover{ color:#fff; }
     .bt-btn.is-active{
       color:#fff;
-      background:linear-gradient(135deg, rgba(124,58,237,.35), rgba(34,211,238,.2));
-      border-color:rgba(124,58,237,.45);
-      box-shadow:0 0 0 1px rgba(124,58,237,.35) inset;
+      background: var(--grad-primary);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.14);
     }
     .bt-btn .pill{
-      font-size:11px; font-weight:700;
-      padding:2px 6px; border-radius:999px;
-      background:rgba(34,211,238,.15); color:#7de4ff;
-      border:1px solid rgba(34,211,238,.35);
-    }
-    .billing-note{
-      margin:4px 0 0; color:rgba(255,255,255,.55);
-      font-size:13px;
+      font-size: 11px; font-weight: 700;
+      padding: 2px 7px; border-radius: 999px;
+      background: rgba(34,211,238,.15); color:#7de4ff;
+      border: 1px solid rgba(34,211,238,.35);
     }
   </style>
 </head>
@@ -66,10 +60,9 @@ $supportEmail = 'support@xynoweb.fr';
 
       <nav class="nav-links" aria-label="Navigation principale">
         <a href="index.php">Accueil</a>
-        <a href="pricing.php">Tarifs</a>
-        <a href="builder.php">Builder</a>
+        <a href="pricing.php" aria-current="page">Tarifs</a>
         <a href="self-hosting.php">Auto-hébergement</a>
-        <a href="dashboard.php">Dashboard</a>
+        <a href="builder.php">Builder</a>
       </nav>
 
       <div class="nav-actions">
@@ -82,8 +75,11 @@ $supportEmail = 'support@xynoweb.fr';
   <main id="contenu">
     <section class="section">
       <div class="container">
-        <h1 class="h-title" style="font-size:clamp(30px,3.4vw,44px)">Des offres claires, sans surprise</h1>
-        <p class="section-desc">Trois formules, quatre fréquences de facturation. Choisis la cadence qui te convient, change d’avis à tout moment.</p>
+        <div class="section-head" style="max-width:820px">
+          <span class="section-eyebrow">Tarifs</span>
+          <h1 class="section-title">Des offres claires, sans surprise.</h1>
+          <p class="section-desc">Trois formules, quatre fréquences de facturation. Choisis la cadence qui te convient, change d’avis à tout moment.</p>
+        </div>
 
         <!-- =================== Billing toggle =================== -->
         <div class="billing-toggle" role="tablist" aria-label="Fréquence de facturation">
@@ -93,105 +89,104 @@ $supportEmail = 'support@xynoweb.fr';
           <button type="button" class="bt-btn" data-period="yearly" role="tab" aria-selected="false">Annuel <span class="pill">−15%</span></button>
         </div>
 
-        <div class="callout" style="margin-top:14px; padding:16px">
+        <div class="callout" style="margin-top:18px">
           <div>
-            <p class="badge">Règle simple</p>
+            <span class="section-eyebrow">Règle simple</span>
             <p class="section-desc" style="margin-top:8px">
-              <strong style="color:rgba(255,255,255,.92)">Abonnement par launcher.</strong>
-              Chaque formule couvre un launcher. Tu choisis ensuite ton hébergement (Xyno ou auto) directement dans l’étape de configuration.
+              <strong style="color:#fff">Un abonnement par launcher.</strong>
+              Toutes les formules donnent déjà accès aux 3 thèmes et à tous les modules. Tu choisis ton hébergement (Xyno ou auto) au moment de la création.
             </p>
           </div>
-          <div class="badge">TVA incluse • Sans engagement</div>
+          <span class="badge">TVA incluse · Sans engagement</span>
         </div>
 
         <div class="pricing-grid" aria-label="Cartes de prix" style="margin-top:24px">
 
           <!-- =================== STARTER =================== -->
-          <article class="card" data-plan="starter"
+          <article class="pricing-card" data-plan="starter"
             data-price-monthly="9"      data-billed-monthly="Facturé 9€ chaque mois"
             data-price-quarterly="8,55" data-billed-quarterly="Soit 25,65€ facturés tous les 3 mois"
             data-price-semestrial="8,10" data-billed-semestrial="Soit 48,60€ facturés tous les 6 mois"
             data-price-yearly="7,65"    data-billed-yearly="Soit 91,80€ facturés une fois par an">
-            <p class="badge">Starter</p>
+            <span class="badge">Starter</span>
             <p class="price"><span class="price-amount">9</span>€ <small class="price-period">/mois</small></p>
-            <p class="billing-note">Facturé 9€ chaque mois</p>
-            <p class="section-desc" style="margin-top:10px">Parfait pour démarrer un premier launcher sans prise de tête.</p>
+            <span class="billing-note">Facturé 9€ chaque mois</span>
+            <p class="section-desc" style="margin-top:12px">Parfait pour démarrer un premier launcher sans prise de tête.</p>
             <ul class="list">
-              <li><span class="check" aria-hidden="true"></span>1 launcher inclus</li>
-              <li><span class="check" aria-hidden="true"></span>1 plateforme au choix (Windows, macOS ou Linux)</li>
-              <li><span class="check" aria-hidden="true"></span>1 thème au choix parmi Violet Neon / Glacier / Cosmic</li>
-              <li><span class="check" aria-hidden="true"></span>Modules essentiels : Play, Paramètres</li>
-              <li><span class="check" aria-hidden="true"></span>Auto-update du launcher</li>
-              <li><span class="check" aria-hidden="true"></span>Support communautaire</li>
+              <li><span class="check" aria-hidden="true"></span><span>1 launcher inclus</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>1 plateforme au choix (Windows, macOS ou Linux)</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>1 thème au choix parmi Violet Neon / Glacier / Cosmic</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Modules essentiels : Play, Paramètres</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Auto-update du launcher</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Support communautaire</span></li>
             </ul>
             <div class="cta-row">
-              <a class="btn btn-primary cta-subscribe" data-base="builder.php?plan=starter" href="builder.php?plan=starter&amp;period=monthly">Choisir Starter</a>
+              <a class="btn cta-subscribe" data-base="builder.php?plan=starter" href="builder.php?plan=starter&amp;period=monthly">Choisir Starter</a>
             </div>
-            <p class="small" style="margin:10px 0 0">Tu configures ton launcher dans la foulée.</p>
+            <p class="small" style="margin:12px 0 0">Tu configures ton launcher dans la foulée.</p>
           </article>
 
           <!-- =================== PRO (highlight) =================== -->
-          <article class="card" data-plan="pro"
+          <article class="pricing-card is-featured" data-plan="pro"
             data-price-monthly="19"      data-billed-monthly="Facturé 19€ chaque mois"
             data-price-quarterly="18,05" data-billed-quarterly="Soit 54,15€ facturés tous les 3 mois"
             data-price-semestrial="17,10" data-billed-semestrial="Soit 102,60€ facturés tous les 6 mois"
-            data-price-yearly="16,15"    data-billed-yearly="Soit 193,80€ facturés une fois par an"
-            style="border-color:rgba(124,58,237,.5); box-shadow:0 0 0 1px rgba(124,58,237,.25), 0 20px 60px -20px rgba(124,58,237,.35)">
-            <p class="badge">Pro • Le plus populaire</p>
+            data-price-yearly="16,15"    data-billed-yearly="Soit 193,80€ facturés une fois par an">
+            <span class="badge badge-accent">Pro · Le plus choisi</span>
             <p class="price"><span class="price-amount">19</span>€ <small class="price-period">/mois</small></p>
-            <p class="billing-note">Facturé 19€ chaque mois</p>
-            <p class="section-desc" style="margin-top:10px">Le bon équilibre pour une vraie communauté active.</p>
+            <span class="billing-note">Facturé 19€ chaque mois</span>
+            <p class="section-desc" style="margin-top:12px">Le bon équilibre pour une vraie communauté active.</p>
             <ul class="list">
-              <li><span class="check" aria-hidden="true"></span>1 launcher inclus</li>
-              <li><span class="check" aria-hidden="true"></span>Les 3 plateformes (Windows + macOS + Linux)</li>
-              <li><span class="check" aria-hidden="true"></span>Les 3 thèmes débloqués</li>
-              <li><span class="check" aria-hidden="true"></span>Tous les modules : Play, Paramètres, News, Discord, Mods</li>
-              <li><span class="check" aria-hidden="true"></span>Auto-update + rollback sur version précédente</li>
-              <li><span class="check" aria-hidden="true"></span>Analytics de base (téléchargements, lancements)</li>
-              <li><span class="check" aria-hidden="true"></span>Support par email (réponse sous 48 h)</li>
+              <li><span class="check" aria-hidden="true"></span><span>1 launcher inclus</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Les 3 plateformes (Windows + macOS + Linux)</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Les 3 thèmes débloqués</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Tous les modules : Play, Paramètres, News, Discord, Mods</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Auto-update + rollback sur version précédente</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Analytics de base (téléchargements, lancements)</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Support par email (réponse sous 48 h)</span></li>
             </ul>
             <div class="cta-row">
               <a class="btn btn-primary cta-subscribe" data-base="builder.php?plan=pro" href="builder.php?plan=pro&amp;period=monthly">Choisir Pro</a>
             </div>
-            <p class="small" style="margin:10px 0 0">Tu configures ton launcher dans la foulée.</p>
+            <p class="small" style="margin:12px 0 0">Tu configures ton launcher dans la foulée.</p>
           </article>
 
           <!-- =================== PREMIUM =================== -->
-          <article class="card" data-plan="premium"
+          <article class="pricing-card" data-plan="premium"
             data-price-monthly="39"      data-billed-monthly="Facturé 39€ chaque mois"
             data-price-quarterly="37,05" data-billed-quarterly="Soit 111,15€ facturés tous les 3 mois"
             data-price-semestrial="35,10" data-billed-semestrial="Soit 210,60€ facturés tous les 6 mois"
             data-price-yearly="33,15"    data-billed-yearly="Soit 397,80€ facturés une fois par an">
-            <p class="badge">Premium</p>
+            <span class="badge">Premium</span>
             <p class="price"><span class="price-amount">39</span>€ <small class="price-period">/mois</small></p>
-            <p class="billing-note">Facturé 39€ chaque mois</p>
-            <p class="section-desc" style="margin-top:10px">Tout le Pro + branding complet et support prioritaire.</p>
+            <span class="billing-note">Facturé 39€ chaque mois</span>
+            <p class="section-desc" style="margin-top:12px">Tout le Pro + branding complet et support prioritaire.</p>
             <ul class="list">
-              <li><span class="check" aria-hidden="true"></span>Tout ce qui est inclus dans Pro</li>
-              <li><span class="check" aria-hidden="true"></span>Branding complet (logo, splashscreen, icônes de l’app)</li>
-              <li><span class="check" aria-hidden="true"></span>Personnalisation des couleurs du thème</li>
-              <li><span class="check" aria-hidden="true"></span>Analytics avancés (joueurs actifs, rétention, crash reports)</li>
-              <li><span class="check" aria-hidden="true"></span>Canal bêta pour pré-publier des mises à jour</li>
-              <li><span class="check" aria-hidden="true"></span>Support prioritaire (réponse sous 24 h)</li>
-              <li><span class="check" aria-hidden="true"></span>Accès anticipé aux nouvelles fonctionnalités</li>
+              <li><span class="check" aria-hidden="true"></span><span>Tout ce qui est inclus dans Pro</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Branding complet (logo, splashscreen, icônes de l’app)</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Personnalisation des couleurs du thème</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Analytics avancés (joueurs actifs, rétention, crash reports)</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Canal bêta pour pré-publier des mises à jour</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Support prioritaire (réponse sous 24 h)</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Accès anticipé aux nouvelles fonctionnalités</span></li>
             </ul>
             <div class="cta-row">
-              <a class="btn btn-primary cta-subscribe" data-base="builder.php?plan=premium" href="builder.php?plan=premium&amp;period=monthly">Choisir Premium</a>
+              <a class="btn cta-subscribe" data-base="builder.php?plan=premium" href="builder.php?plan=premium&amp;period=monthly">Choisir Premium</a>
             </div>
-            <p class="small" style="margin:10px 0 0">Tu configures ton launcher dans la foulée.</p>
+            <p class="small" style="margin:12px 0 0">Tu configures ton launcher dans la foulée.</p>
           </article>
 
         </div>
 
         <!-- =================== DESIGN SUR-MESURE =================== -->
-        <div class="callout" style="margin-top:28px; padding:20px; background:linear-gradient(135deg,rgba(124,58,237,.12),rgba(34,211,238,.06)); border-color:rgba(124,58,237,.3)">
+        <div class="callout" style="margin-top:32px">
           <div>
-            <p class="badge">Design sur-mesure</p>
-            <h2 class="section-title" style="margin:10px 0 6px">Tu veux un design personnalisé&nbsp;?</h2>
-            <p class="section-desc" style="margin-top:6px">
-              Thème unique, interface sur-mesure, illustrations spécifiques, identité de marque complète&nbsp;:
-              on travaille directement avec toi pour créer un launcher qui te ressemble à 100&nbsp;%.
-              Contacte notre support pour obtenir un devis personnalisé.
+            <span class="section-eyebrow">Design sur-mesure</span>
+            <h2 class="section-title" style="margin-top:10px;font-size:24px">Tu veux un design personnalisé ?</h2>
+            <p class="section-desc" style="margin-top:8px">
+              Thème unique, interface sur-mesure, illustrations spécifiques, identité de marque complète :
+              on travaille directement avec toi pour créer un launcher qui te ressemble à 100 %.
+              Contacte-nous pour un devis.
             </p>
           </div>
           <div class="cta-row" style="margin:0">
@@ -239,7 +234,7 @@ $supportEmail = 'support@xynoweb.fr';
     // --- Billing toggle ------------------------------------------------------
     (function () {
       var btns  = document.querySelectorAll('.bt-btn');
-      var cards = document.querySelectorAll('.card[data-plan]');
+      var cards = document.querySelectorAll('[data-plan]');
       var ctas  = document.querySelectorAll('.cta-subscribe');
 
       function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
