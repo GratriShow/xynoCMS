@@ -137,20 +137,20 @@ $hostingMonthly = 5;
                 </label>
 
                 <fieldset class="card" style="margin-top:6px;background:var(--surface-2)">
-                  <legend class="small" style="padding:0 8px;color:var(--muted)">Hébergement</legend>
+                  <legend class="small" style="padding:0 8px;color:var(--muted)">Hébergement des fichiers de jeu</legend>
                   <div style="display:grid;gap:10px;margin-top:4px">
                     <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
                       <input type="radio" name="hosting" value="no" checked />
                       <span>
                         <strong style="color:#fff">Auto-hébergement — gratuit</strong><br>
-                        <span class="small">Tu télécharges le CMS et tu le déploies sur ton propre VPS. <a href="self-hosting.php" target="_blank" rel="noopener">Guide complet →</a></span>
+                        <span class="small">Tu héberges toi-même tes mods et assets (S3, Cloudflare R2, VPS, hébergement mutualisé…). L'API du launcher reste chez nous. <a href="self-hosting.php" target="_blank" rel="noopener">Comment ça marche →</a></span>
                       </span>
                     </label>
                     <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
                       <input type="radio" name="hosting" value="yes" />
                       <span>
                         <strong style="color:#fff">Hébergement Xyno — +<?= (int)$hostingMonthly ?>€/mois</strong><br>
-                        <span class="small">Sous-domaine, HTTPS, sauvegardes et mises à jour gérés pour toi.</span>
+                        <span class="small">On héberge aussi tes mods : tu n'as rien à configurer, pas de stockage tiers à gérer.</span>
                       </span>
                     </label>
                   </div>
@@ -184,7 +184,7 @@ $hostingMonthly = 5;
               <li><span class="check" aria-hidden="true"></span><span>Tous les modules : auto-update, news, Discord, modpack, analytics</span></li>
               <li><span class="check" aria-hidden="true"></span><span>Support Fabric · Forge · Quilt, versions 1.19 → 1.21</span></li>
               <li><span class="check" aria-hidden="true"></span><span>Builds Windows · macOS · Linux signés via GitHub Actions</span></li>
-              <li><span class="check" aria-hidden="true"></span><span>CMS backend et API HMAC inclus</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Dashboard admin et API Xyno gérés côté plateforme — rien à installer</span></li>
               <li><span class="check" aria-hidden="true"></span><span>Tout est modifiable depuis le dashboard, à tout moment</span></li>
             </ul>
 
