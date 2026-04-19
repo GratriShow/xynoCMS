@@ -11,6 +11,27 @@ $user = current_user();
 $success = flash_get('success');
 $error = flash_get('error');
 
+// Plan / fréquence récupérés depuis la page tarifs (lecture seule ici).
+$planFromUrl   = strtolower((string)($_GET['plan']   ?? ''));
+$periodFromUrl = strtolower((string)($_GET['period'] ?? ''));
+
+$planLabels = [
+    'starter' => 'Starter',
+    'pro'     => 'Pro',
+    'premium' => 'Premium',
+];
+$periodLabels = [
+    'monthly'    => 'Mensuel',
+    'quarterly'  => 'Trimestriel',
+    'semestrial' => 'Semestriel',
+    'yearly'     => 'Annuel',
+];
+$planLabel   = $planLabels[$planFromUrl]     ?? '';
+$periodLabel = $periodLabels[$periodFromUrl] ?? '';
+
+// Prix placeholder hébergement Xyno (même valeur que sur la page tarifs).
+$hostingMonthly = 5;
+
 ?><!doctype html>
 <html lang="fr">
 <head>
@@ -60,9 +81,17 @@ $error = flash_get('error');
         <div class="callout" style="margin-bottom:14px">
           <div>
             <h1 class="section-title" style="margin:0">Tunnel de configuration</h1>
-            <p class="section-desc" style="margin-top:8px">Configure ton launcher en 4 étapes puis enregistre-le dans ton compte. La facturation et l’hébergement se gèrent séparément depuis les <a href="pricing.php" style="color:#a78bfa">tarifs</a>.</p>
+            <p class="section-desc" style="margin-top:8px">Configure ton launcher en 5 étapes puis enregistre-le dans ton compte.</p>
           </div>
-          <div class="badge">4 étapes</div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <?php if ($planLabel !== ''): ?>
+              <span class="badge">Offre choisie : <strong style="color:rgba(255,255,255,.92)"><?php echo e($planLabel); ?></strong></span>
+            <?php endif; ?>
+            <?php if ($periodLabel !== ''): ?>
+              <span class="badge">Facturation : <strong style="color:rgba(255,255,255,.92)"><?php echo e($periodLabel); ?></strong></span>
+            <?php endif; ?>
+            <span class="badge">5 étapes</span>
+          </div>
         </div>
 
         <?php if ($success): ?>
@@ -97,6 +126,13 @@ $error = flash_get('error');
             </a>
             <a class="step" href="#" data-step-link="4">
               <span class="step-num">4</span>
+              <span>
+                <strong style="color:rgba(255,255,255,.92)">Hébergement</strong><br>
+                <span class="small">Xyno / auto</span>
+              </span>
+            </a>
+            <a class="step" href="#" data-step-link="5">
+              <span class="step-num">5</span>
               <span>
                 <strong style="color:rgba(255,255,255,.92)">Récap</strong><br>
                 <span class="small">Enregistrement</span>
@@ -231,9 +267,48 @@ $error = flash_get('error');
               </div>
             </section>
 
-            <!-- Step 4 : Récap -->
+            <!-- Step 4 : Hébergement -->
             <section data-step="4" hidden>
-              <h2 class="section-title" style="margin:0">Étape 4 — Récapitulatif</h2>
+              <h2 class="section-title" style="margin:0">Étape 4 — Hébergement</h2>
+              <p class="section-desc">Choisis qui héberge le backend de ton launcher.</p>
+
+              <div class="grid-2" style="margin-top:14px" aria-label="Hébergement">
+                <article class="card choice" role="button" tabindex="0" data-hosting="yes" aria-selected="false">
+                  <p class="badge">Oui — hébergé par Xyno (+<?= (int)$hostingMonthly ?>€/mois)</p>
+                  <h3>Hébergement Xyno</h3>
+                  <p>On s’occupe de tout&nbsp;: sous-domaine, HTTPS, sauvegardes, mises à jour CMS, CDN. Zéro serveur à gérer.</p>
+                  <ul class="list" style="margin-top:10px">
+                    <li><span class="check" aria-hidden="true"></span>Installation immédiate</li>
+                    <li><span class="check" aria-hidden="true"></span>HTTPS + sauvegardes auto</li>
+                    <li><span class="check" aria-hidden="true"></span>Support inclus</li>
+                  </ul>
+                  <p class="small" style="margin-top:10px">Ajouté à la même fréquence de facturation que ton abonnement.</p>
+                </article>
+
+                <article class="card choice" role="button" tabindex="0" data-hosting="no" aria-selected="true">
+                  <p class="badge">Non — je m’héberge moi-même (0€)</p>
+                  <h3>Auto-hébergement</h3>
+                  <p>Tu télécharges le CMS et tu l’installes sur ton propre VPS. Tu gardes le contrôle total de tes données.</p>
+                  <ul class="list" style="margin-top:10px">
+                    <li><span class="check" aria-hidden="true"></span>Archive CMS complète (ZIP)</li>
+                    <li><span class="check" aria-hidden="true"></span>README pas-à-pas inclus</li>
+                    <li><span class="check" aria-hidden="true"></span>VPS Linux + PHP 8.3 + MySQL</li>
+                  </ul>
+                  <p class="small" style="margin-top:10px">
+                    <a href="self-hosting.php" target="_blank" rel="noopener">Voir le guide complet &amp; télécharger l’archive →</a>
+                  </p>
+                </article>
+              </div>
+
+              <div class="nav-row">
+                <button class="btn" type="button" data-back>Retour</button>
+                <button class="btn btn-primary" type="button" data-next>Continuer</button>
+              </div>
+            </section>
+
+            <!-- Step 5 : Récap -->
+            <section data-step="5" hidden>
+              <h2 class="section-title" style="margin:0">Étape 5 — Récapitulatif</h2>
               <p class="section-desc">Vérifie la configuration puis enregistre le launcher.</p>
 
               <div class="two-col" style="margin-top:14px">
@@ -264,6 +339,9 @@ $error = flash_get('error');
                       <input type="hidden" name="version" value="" data-out-version />
                       <input type="hidden" name="loader" value="" data-out-loader />
                       <input type="hidden" name="modules" value="" data-out-modules />
+                      <input type="hidden" name="hosting" value="no" data-out-hosting />
+                      <input type="hidden" name="plan" value="<?php echo e($planFromUrl); ?>" />
+                      <input type="hidden" name="period" value="<?php echo e($periodFromUrl); ?>" />
 
                       <div class="cta-row" style="margin-top:14px">
                         <button class="btn btn-primary" type="submit">Créer le launcher</button>

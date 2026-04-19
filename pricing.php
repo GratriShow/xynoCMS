@@ -5,9 +5,6 @@ declare(strict_types=1);
 // Adresse de support. Remplace par ton adresse réelle si besoin.
 $supportEmail = 'support@xynoweb.fr';
 
-// Prix placeholder pour l'hébergement Xyno. À ajuster quand on aura le vrai coût d'infra.
-$hostingMonthly = 5;
-
 ?><!doctype html>
 <html lang="fr">
 <head>
@@ -55,23 +52,6 @@ $hostingMonthly = 5;
       margin:4px 0 0; color:rgba(255,255,255,.55);
       font-size:13px;
     }
-
-    /* --- Hosting grid --- */
-    .hosting-grid{
-      display:grid; gap:16px; margin-top:16px;
-      grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
-    }
-    .hosting-card{
-      padding:20px; border-radius:16px;
-      background:rgba(255,255,255,.03);
-      border:1px solid rgba(255,255,255,.08);
-      display:flex; flex-direction:column; gap:10px;
-    }
-    .hosting-card.highlight{
-      border-color:rgba(124,58,237,.4);
-      background:linear-gradient(135deg, rgba(124,58,237,.10), rgba(34,211,238,.04));
-      box-shadow:0 0 0 1px rgba(124,58,237,.2), 0 16px 40px -20px rgba(124,58,237,.3);
-    }
   </style>
 </head>
 <body>
@@ -118,7 +98,7 @@ $hostingMonthly = 5;
             <p class="badge">Règle simple</p>
             <p class="section-desc" style="margin-top:8px">
               <strong style="color:rgba(255,255,255,.92)">Abonnement par launcher.</strong>
-              Chaque formule couvre un launcher. Tu en veux plusieurs&nbsp;? Un abonnement par launcher. La configuration du launcher (thème, modules, assets) se fait ensuite dans ton <a href="dashboard.php" style="color:#a78bfa">dashboard</a>.
+              Chaque formule couvre un launcher. Tu choisis ensuite ton hébergement (Xyno ou auto) directement dans l’étape de configuration.
             </p>
           </div>
           <div class="badge">TVA incluse • Sans engagement</div>
@@ -145,9 +125,9 @@ $hostingMonthly = 5;
               <li><span class="check" aria-hidden="true"></span>Support communautaire</li>
             </ul>
             <div class="cta-row">
-              <a class="btn btn-primary cta-subscribe" data-base="register.php?plan=starter" href="register.php?plan=starter&amp;period=monthly">Choisir Starter</a>
+              <a class="btn btn-primary cta-subscribe" data-base="builder.php?plan=starter" href="builder.php?plan=starter&amp;period=monthly">Choisir Starter</a>
             </div>
-            <p class="small" style="margin:10px 0 0">Configuration dans le dashboard après inscription.</p>
+            <p class="small" style="margin:10px 0 0">Tu configures ton launcher dans la foulée.</p>
           </article>
 
           <!-- =================== PRO (highlight) =================== -->
@@ -171,9 +151,9 @@ $hostingMonthly = 5;
               <li><span class="check" aria-hidden="true"></span>Support par email (réponse sous 48 h)</li>
             </ul>
             <div class="cta-row">
-              <a class="btn btn-primary cta-subscribe" data-base="register.php?plan=pro" href="register.php?plan=pro&amp;period=monthly">Choisir Pro</a>
+              <a class="btn btn-primary cta-subscribe" data-base="builder.php?plan=pro" href="builder.php?plan=pro&amp;period=monthly">Choisir Pro</a>
             </div>
-            <p class="small" style="margin:10px 0 0">Configuration dans le dashboard après inscription.</p>
+            <p class="small" style="margin:10px 0 0">Tu configures ton launcher dans la foulée.</p>
           </article>
 
           <!-- =================== PREMIUM =================== -->
@@ -196,60 +176,11 @@ $hostingMonthly = 5;
               <li><span class="check" aria-hidden="true"></span>Accès anticipé aux nouvelles fonctionnalités</li>
             </ul>
             <div class="cta-row">
-              <a class="btn btn-primary cta-subscribe" data-base="register.php?plan=premium" href="register.php?plan=premium&amp;period=monthly">Choisir Premium</a>
+              <a class="btn btn-primary cta-subscribe" data-base="builder.php?plan=premium" href="builder.php?plan=premium&amp;period=monthly">Choisir Premium</a>
             </div>
-            <p class="small" style="margin:10px 0 0">Configuration dans le dashboard après inscription.</p>
+            <p class="small" style="margin:10px 0 0">Tu configures ton launcher dans la foulée.</p>
           </article>
 
-        </div>
-
-        <!-- =================== HÉBERGEMENT =================== -->
-        <div class="callout" style="margin-top:28px; padding:20px; flex-direction:column; align-items:stretch">
-          <div>
-            <p class="badge">Hébergement</p>
-            <h2 class="section-title" style="margin:10px 0 6px">Qui héberge le backend de ton launcher&nbsp;?</h2>
-            <p class="section-desc" style="margin-top:6px">
-              Ton launcher a besoin d’un petit backend pour servir les mises à jour, les configs, les assets et les téléchargements. Choisis ce qui t’arrange le plus&nbsp;:
-            </p>
-          </div>
-
-          <div class="hosting-grid">
-            <article class="hosting-card highlight">
-              <p class="badge">Oui, hébergé par Xyno</p>
-              <p class="price"><span>+<?= (int)$hostingMonthly ?></span>€ <small class="price-period">/mois</small></p>
-              <p class="section-desc">Option à ajouter à n’importe quel plan. Zéro serveur à gérer de ton côté.</p>
-              <ul class="list">
-                <li><span class="check" aria-hidden="true"></span>Installation 0 minute — tout est prêt dès l’inscription</li>
-                <li><span class="check" aria-hidden="true"></span>Sous-domaine Xyno inclus (ex&nbsp;: tonlauncher.xynoweb.fr)</li>
-                <li><span class="check" aria-hidden="true"></span>HTTPS + certificats auto-renouvelés</li>
-                <li><span class="check" aria-hidden="true"></span>Sauvegardes quotidiennes</li>
-                <li><span class="check" aria-hidden="true"></span>Mises à jour du CMS automatiques</li>
-                <li><span class="check" aria-hidden="true"></span>Support inclus</li>
-              </ul>
-              <div class="cta-row">
-                <a class="btn btn-primary" href="register.php?hosting=xyno">Ajouter l’hébergement</a>
-              </div>
-              <p class="small">Suivant la même fréquence que ton abonnement (mensuel, trimestriel, etc.).</p>
-            </article>
-
-            <article class="hosting-card">
-              <p class="badge">Non, je m’héberge moi-même</p>
-              <p class="price"><span>0</span>€ <small class="price-period">inclus</small></p>
-              <p class="section-desc">Télécharge le CMS et installe-le sur ton propre serveur. Tu gardes le contrôle total.</p>
-              <ul class="list">
-                <li><span class="check" aria-hidden="true"></span>Archive complète du CMS (ZIP)</li>
-                <li><span class="check" aria-hidden="true"></span>README pas-à-pas (prérequis, install, build)</li>
-                <li><span class="check" aria-hidden="true"></span>Compatible VPS Linux (Debian / Ubuntu)</li>
-                <li><span class="check" aria-hidden="true"></span>PHP 8.3 + MySQL + nginx</li>
-                <li><span class="check" aria-hidden="true"></span>Tu héberges tes propres données</li>
-                <li><span class="check" aria-hidden="true"></span>Support communautaire</li>
-              </ul>
-              <div class="cta-row">
-                <a class="btn btn-ghost" href="self-hosting.php">Guide &amp; téléchargement</a>
-              </div>
-              <p class="small">Compte 30 min à 1 h d’installation selon ton niveau sys-admin.</p>
-            </article>
-          </div>
         </div>
 
         <!-- =================== DESIGN SUR-MESURE =================== -->

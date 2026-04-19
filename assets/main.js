@@ -158,6 +158,7 @@ function initBuilder() {
   const outLoader = qs('[data-out-loader]');
   const outModules = qs('[data-out-modules]');
   const outPromo = qs('[data-out-promo]');
+  const outHosting = qs('[data-out-hosting]');
 
   function syncCreateForm() {
     if (!createForm) return;
@@ -166,6 +167,7 @@ function initBuilder() {
     if (outLoader) outLoader.value = state.loader || '';
     if (outModules) outModules.value = Array.from(state.modules).join(',');
     if (outPromo) outPromo.value = (state.promo || '').trim();
+    if (outHosting) outHosting.value = state.hosting || 'no';
   }
 
   function showNotice(message) {
@@ -227,13 +229,14 @@ function initBuilder() {
     if (el.total) el.total.textContent = formatEUR(total);
 
     if (el.summary) {
-      // Le builder ne gère plus le pricing (plan, facturation, hébergement, promo).
-      // On n'affiche que les infos de configuration du launcher.
+      // Le builder ne gère plus plan/facturation/promo/totaux (ça c'est la page tarifs).
+      // On garde Thème, Connexion, Modules, Minecraft et Hébergement.
       el.summary.innerHTML = `
         <div class="summary-row"><span>Thème</span><strong>${state.theme ? state.theme : '—'}</strong></div>
         <div class="summary-row"><span>Connexion</span><strong>${state.connection}</strong></div>
         <div class="summary-row"><span>Modules</span><strong>${state.modules.size ? Array.from(state.modules).join(', ') : 'Aucun'}</strong></div>
         <div class="summary-row"><span>Minecraft</span><strong>${state.mcVersion} • ${state.loader}</strong></div>
+        <div class="summary-row"><span>Hébergement</span><strong>${state.hosting === 'yes' ? 'Xyno (payant)' : 'Auto-hébergement'}</strong></div>
       `;
     }
 
