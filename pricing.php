@@ -5,18 +5,74 @@ declare(strict_types=1);
 // Adresse de support. Remplace par ton adresse réelle si besoin.
 $supportEmail = 'support@xynoweb.fr';
 
+// Prix placeholder pour l'hébergement Xyno. À ajuster quand on aura le vrai coût d'infra.
+$hostingMonthly = 5;
+
 ?><!doctype html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Tarifs — XynoLauncher</title>
-  <meta name="description" content="3 formules claires, facturation mensuelle, options incluses par plan. Besoin d’un design personnalisé ? Contacte le support." />
+  <meta name="description" content="3 formules, 4 fréquences de facturation (mensuel, trimestriel, semestriel, annuel). Hébergement Xyno ou auto-hébergement. Jusqu’à −15 % en annuel." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="assets/style.css" />
   <script src="assets/main.js" defer></script>
+  <style>
+    /* --- Billing toggle (mensuel/trim/sem/annuel) --- */
+    .billing-toggle{
+      display:inline-flex; flex-wrap:wrap; gap:6px;
+      padding:6px; margin-top:14px;
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:999px;
+    }
+    .bt-btn{
+      appearance:none; cursor:pointer;
+      padding:8px 14px; border-radius:999px;
+      background:transparent; color:rgba(255,255,255,.75);
+      border:1px solid transparent;
+      font:600 13px/1 'Inter', system-ui, sans-serif;
+      display:inline-flex; align-items:center; gap:6px;
+      transition:background .15s ease, color .15s ease, border-color .15s ease;
+    }
+    .bt-btn:hover{ color:#fff; background:rgba(255,255,255,.04); }
+    .bt-btn.is-active{
+      color:#fff;
+      background:linear-gradient(135deg, rgba(124,58,237,.35), rgba(34,211,238,.2));
+      border-color:rgba(124,58,237,.45);
+      box-shadow:0 0 0 1px rgba(124,58,237,.35) inset;
+    }
+    .bt-btn .pill{
+      font-size:11px; font-weight:700;
+      padding:2px 6px; border-radius:999px;
+      background:rgba(34,211,238,.15); color:#7de4ff;
+      border:1px solid rgba(34,211,238,.35);
+    }
+    .billing-note{
+      margin:4px 0 0; color:rgba(255,255,255,.55);
+      font-size:13px;
+    }
+
+    /* --- Hosting grid --- */
+    .hosting-grid{
+      display:grid; gap:16px; margin-top:16px;
+      grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+    }
+    .hosting-card{
+      padding:20px; border-radius:16px;
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.08);
+      display:flex; flex-direction:column; gap:10px;
+    }
+    .hosting-card.highlight{
+      border-color:rgba(124,58,237,.4);
+      background:linear-gradient(135deg, rgba(124,58,237,.10), rgba(34,211,238,.04));
+      box-shadow:0 0 0 1px rgba(124,58,237,.2), 0 16px 40px -20px rgba(124,58,237,.3);
+    }
+  </style>
 </head>
 <body>
   <a class="skip-link" href="#contenu">Aller au contenu</a>
@@ -31,13 +87,13 @@ $supportEmail = 'support@xynoweb.fr';
       <nav class="nav-links" aria-label="Navigation principale">
         <a href="index.php">Accueil</a>
         <a href="pricing.php">Tarifs</a>
-        <a href="builder.php">Builder</a>
+        <a href="self-hosting.php">Auto-hébergement</a>
         <a href="dashboard.php">Dashboard</a>
       </nav>
 
       <div class="nav-actions">
         <a class="btn btn-ghost" href="login.php">Connexion</a>
-        <a class="btn btn-primary" href="builder.php">Commencer</a>
+        <a class="btn btn-primary" href="register.php">Commencer</a>
       </div>
     </div>
   </header>
@@ -46,26 +102,39 @@ $supportEmail = 'support@xynoweb.fr';
     <section class="section">
       <div class="container">
         <h1 class="h-title" style="font-size:clamp(30px,3.4vw,44px)">Des offres claires, sans surprise</h1>
-        <p class="section-desc">Trois formules, facturation mensuelle. Choisis celle qui correspond à ton launcher, upgrade à tout moment.</p>
+        <p class="section-desc">Trois formules, quatre fréquences de facturation. Choisis la cadence qui te convient, change d’avis à tout moment.</p>
+
+        <!-- =================== Billing toggle =================== -->
+        <div class="billing-toggle" role="tablist" aria-label="Fréquence de facturation">
+          <button type="button" class="bt-btn is-active" data-period="monthly" role="tab" aria-selected="true">Mensuel</button>
+          <button type="button" class="bt-btn" data-period="quarterly" role="tab" aria-selected="false">Trimestriel <span class="pill">−5%</span></button>
+          <button type="button" class="bt-btn" data-period="semestrial" role="tab" aria-selected="false">Semestriel <span class="pill">−10%</span></button>
+          <button type="button" class="bt-btn" data-period="yearly" role="tab" aria-selected="false">Annuel <span class="pill">−15%</span></button>
+        </div>
 
         <div class="callout" style="margin-top:14px; padding:16px">
           <div>
             <p class="badge">Règle simple</p>
             <p class="section-desc" style="margin-top:8px">
               <strong style="color:rgba(255,255,255,.92)">Abonnement par launcher.</strong>
-              Chaque formule couvre un launcher. Tu en veux plusieurs ? Un abonnement par launcher.
+              Chaque formule couvre un launcher. Tu en veux plusieurs&nbsp;? Un abonnement par launcher. La configuration du launcher (thème, modules, assets) se fait ensuite dans ton <a href="dashboard.php" style="color:#a78bfa">dashboard</a>.
             </p>
           </div>
-          <div class="badge">Tarifs mensuels • TVA incluse</div>
+          <div class="badge">TVA incluse • Sans engagement</div>
         </div>
 
         <div class="pricing-grid" aria-label="Cartes de prix" style="margin-top:24px">
 
           <!-- =================== STARTER =================== -->
-          <article class="card" data-plan="starter">
+          <article class="card" data-plan="starter"
+            data-price-monthly="9"      data-billed-monthly="Facturé 9€ chaque mois"
+            data-price-quarterly="8,55" data-billed-quarterly="Soit 25,65€ facturés tous les 3 mois"
+            data-price-semestrial="8,10" data-billed-semestrial="Soit 48,60€ facturés tous les 6 mois"
+            data-price-yearly="7,65"    data-billed-yearly="Soit 91,80€ facturés une fois par an">
             <p class="badge">Starter</p>
-            <p class="price"><span>9</span>€ <small>/mois</small></p>
-            <p class="section-desc" style="margin-top:8px">Parfait pour démarrer un premier launcher sans prise de tête.</p>
+            <p class="price"><span class="price-amount">9</span>€ <small class="price-period">/mois</small></p>
+            <p class="billing-note">Facturé 9€ chaque mois</p>
+            <p class="section-desc" style="margin-top:10px">Parfait pour démarrer un premier launcher sans prise de tête.</p>
             <ul class="list">
               <li><span class="check" aria-hidden="true"></span>1 launcher inclus</li>
               <li><span class="check" aria-hidden="true"></span>1 plateforme au choix (Windows, macOS ou Linux)</li>
@@ -75,16 +144,22 @@ $supportEmail = 'support@xynoweb.fr';
               <li><span class="check" aria-hidden="true"></span>Support communautaire</li>
             </ul>
             <div class="cta-row">
-              <a class="btn btn-primary" href="builder.php?plan=starter">Choisir Starter</a>
+              <a class="btn btn-primary cta-subscribe" data-base="register.php?plan=starter" href="register.php?plan=starter&amp;period=monthly">Choisir Starter</a>
             </div>
-            <p class="small" style="margin:10px 0 0">Abonnement par launcher.</p>
+            <p class="small" style="margin:10px 0 0">Configuration dans le dashboard après inscription.</p>
           </article>
 
           <!-- =================== PRO (highlight) =================== -->
-          <article class="card" data-plan="pro" style="border-color:rgba(124,58,237,.5); box-shadow:0 0 0 1px rgba(124,58,237,.25), 0 20px 60px -20px rgba(124,58,237,.35)">
+          <article class="card" data-plan="pro"
+            data-price-monthly="19"      data-billed-monthly="Facturé 19€ chaque mois"
+            data-price-quarterly="18,05" data-billed-quarterly="Soit 54,15€ facturés tous les 3 mois"
+            data-price-semestrial="17,10" data-billed-semestrial="Soit 102,60€ facturés tous les 6 mois"
+            data-price-yearly="16,15"    data-billed-yearly="Soit 193,80€ facturés une fois par an"
+            style="border-color:rgba(124,58,237,.5); box-shadow:0 0 0 1px rgba(124,58,237,.25), 0 20px 60px -20px rgba(124,58,237,.35)">
             <p class="badge">Pro • Le plus populaire</p>
-            <p class="price"><span>19</span>€ <small>/mois</small></p>
-            <p class="section-desc" style="margin-top:8px">Le bon équilibre pour une vraie communauté active.</p>
+            <p class="price"><span class="price-amount">19</span>€ <small class="price-period">/mois</small></p>
+            <p class="billing-note">Facturé 19€ chaque mois</p>
+            <p class="section-desc" style="margin-top:10px">Le bon équilibre pour une vraie communauté active.</p>
             <ul class="list">
               <li><span class="check" aria-hidden="true"></span>1 launcher inclus</li>
               <li><span class="check" aria-hidden="true"></span>Les 3 plateformes (Windows + macOS + Linux)</li>
@@ -95,16 +170,21 @@ $supportEmail = 'support@xynoweb.fr';
               <li><span class="check" aria-hidden="true"></span>Support par email (réponse sous 48 h)</li>
             </ul>
             <div class="cta-row">
-              <a class="btn btn-primary" href="builder.php?plan=pro">Choisir Pro</a>
+              <a class="btn btn-primary cta-subscribe" data-base="register.php?plan=pro" href="register.php?plan=pro&amp;period=monthly">Choisir Pro</a>
             </div>
-            <p class="small" style="margin:10px 0 0">Abonnement par launcher.</p>
+            <p class="small" style="margin:10px 0 0">Configuration dans le dashboard après inscription.</p>
           </article>
 
           <!-- =================== PREMIUM =================== -->
-          <article class="card" data-plan="premium">
+          <article class="card" data-plan="premium"
+            data-price-monthly="39"      data-billed-monthly="Facturé 39€ chaque mois"
+            data-price-quarterly="37,05" data-billed-quarterly="Soit 111,15€ facturés tous les 3 mois"
+            data-price-semestrial="35,10" data-billed-semestrial="Soit 210,60€ facturés tous les 6 mois"
+            data-price-yearly="33,15"    data-billed-yearly="Soit 397,80€ facturés une fois par an">
             <p class="badge">Premium</p>
-            <p class="price"><span>39</span>€ <small>/mois</small></p>
-            <p class="section-desc" style="margin-top:8px">Tout le Pro + branding complet et support prioritaire.</p>
+            <p class="price"><span class="price-amount">39</span>€ <small class="price-period">/mois</small></p>
+            <p class="billing-note">Facturé 39€ chaque mois</p>
+            <p class="section-desc" style="margin-top:10px">Tout le Pro + branding complet et support prioritaire.</p>
             <ul class="list">
               <li><span class="check" aria-hidden="true"></span>Tout ce qui est inclus dans Pro</li>
               <li><span class="check" aria-hidden="true"></span>Branding complet (logo, splashscreen, icônes de l’app)</li>
@@ -115,21 +195,70 @@ $supportEmail = 'support@xynoweb.fr';
               <li><span class="check" aria-hidden="true"></span>Accès anticipé aux nouvelles fonctionnalités</li>
             </ul>
             <div class="cta-row">
-              <a class="btn btn-primary" href="builder.php?plan=premium">Choisir Premium</a>
+              <a class="btn btn-primary cta-subscribe" data-base="register.php?plan=premium" href="register.php?plan=premium&amp;period=monthly">Choisir Premium</a>
             </div>
-            <p class="small" style="margin:10px 0 0">Abonnement par launcher.</p>
+            <p class="small" style="margin:10px 0 0">Configuration dans le dashboard après inscription.</p>
           </article>
 
+        </div>
+
+        <!-- =================== HÉBERGEMENT =================== -->
+        <div class="callout" style="margin-top:28px; padding:20px; flex-direction:column; align-items:stretch">
+          <div>
+            <p class="badge">Hébergement</p>
+            <h2 class="section-title" style="margin:10px 0 6px">Qui héberge le backend de ton launcher&nbsp;?</h2>
+            <p class="section-desc" style="margin-top:6px">
+              Ton launcher a besoin d’un petit backend pour servir les mises à jour, les configs, les assets et les téléchargements. Choisis ce qui t’arrange le plus&nbsp;:
+            </p>
+          </div>
+
+          <div class="hosting-grid">
+            <article class="hosting-card highlight">
+              <p class="badge">Oui, hébergé par Xyno</p>
+              <p class="price"><span>+<?= (int)$hostingMonthly ?></span>€ <small class="price-period">/mois</small></p>
+              <p class="section-desc">Option à ajouter à n’importe quel plan. Zéro serveur à gérer de ton côté.</p>
+              <ul class="list">
+                <li><span class="check" aria-hidden="true"></span>Installation 0 minute — tout est prêt dès l’inscription</li>
+                <li><span class="check" aria-hidden="true"></span>Sous-domaine Xyno inclus (ex&nbsp;: tonlauncher.xynoweb.fr)</li>
+                <li><span class="check" aria-hidden="true"></span>HTTPS + certificats auto-renouvelés</li>
+                <li><span class="check" aria-hidden="true"></span>Sauvegardes quotidiennes</li>
+                <li><span class="check" aria-hidden="true"></span>Mises à jour du CMS automatiques</li>
+                <li><span class="check" aria-hidden="true"></span>Support inclus</li>
+              </ul>
+              <div class="cta-row">
+                <a class="btn btn-primary" href="register.php?hosting=xyno">Ajouter l’hébergement</a>
+              </div>
+              <p class="small">Suivant la même fréquence que ton abonnement (mensuel, trimestriel, etc.).</p>
+            </article>
+
+            <article class="hosting-card">
+              <p class="badge">Non, je m’héberge moi-même</p>
+              <p class="price"><span>0</span>€ <small class="price-period">inclus</small></p>
+              <p class="section-desc">Télécharge le CMS et installe-le sur ton propre serveur. Tu gardes le contrôle total.</p>
+              <ul class="list">
+                <li><span class="check" aria-hidden="true"></span>Archive complète du CMS (ZIP)</li>
+                <li><span class="check" aria-hidden="true"></span>README pas-à-pas (prérequis, install, build)</li>
+                <li><span class="check" aria-hidden="true"></span>Compatible VPS Linux (Debian / Ubuntu)</li>
+                <li><span class="check" aria-hidden="true"></span>PHP 8.3 + MySQL + nginx</li>
+                <li><span class="check" aria-hidden="true"></span>Tu héberges tes propres données</li>
+                <li><span class="check" aria-hidden="true"></span>Support communautaire</li>
+              </ul>
+              <div class="cta-row">
+                <a class="btn btn-ghost" href="self-hosting.php">Guide &amp; téléchargement</a>
+              </div>
+              <p class="small">Compte 30 min à 1 h d’installation selon ton niveau sys-admin.</p>
+            </article>
+          </div>
         </div>
 
         <!-- =================== DESIGN SUR-MESURE =================== -->
         <div class="callout" style="margin-top:28px; padding:20px; background:linear-gradient(135deg,rgba(124,58,237,.12),rgba(34,211,238,.06)); border-color:rgba(124,58,237,.3)">
           <div>
             <p class="badge">Design sur-mesure</p>
-            <h2 class="section-title" style="margin:10px 0 6px">Tu veux un design personnalisé ?</h2>
+            <h2 class="section-title" style="margin:10px 0 6px">Tu veux un design personnalisé&nbsp;?</h2>
             <p class="section-desc" style="margin-top:6px">
               Thème unique, interface sur-mesure, illustrations spécifiques, identité de marque complète&nbsp;:
-              on travaille directement avec toi pour créer un launcher qui te ressemble à 100 %.
+              on travaille directement avec toi pour créer un launcher qui te ressemble à 100&nbsp;%.
               Contacte notre support pour obtenir un devis personnalisé.
             </p>
           </div>
@@ -139,8 +268,7 @@ $supportEmail = 'support@xynoweb.fr';
         </div>
 
         <p class="small" style="margin-top:18px; color:rgba(255,255,255,.55); text-align:center">
-          Les prix affichés sont en euros TTC, facturés mensuellement.
-          Tu peux changer de formule ou résilier à tout moment depuis ton dashboard.
+          Les prix affichés sont en euros TTC. Tu peux changer de formule, de fréquence ou résilier à tout moment depuis ton dashboard.
         </p>
       </div>
     </section>
@@ -159,7 +287,7 @@ $supportEmail = 'support@xynoweb.fr';
       <div>
         <h4>Produit</h4>
         <p class="small"><a href="pricing.php">Tarifs</a></p>
-        <p class="small"><a href="builder.php">Builder</a></p>
+        <p class="small"><a href="self-hosting.php">Auto-hébergement</a></p>
         <p class="small"><a href="dashboard.php">Dashboard</a></p>
       </div>
       <div>
@@ -172,7 +300,49 @@ $supportEmail = 'support@xynoweb.fr';
   </footer>
 
   <script>
+    // Footer year
     document.getElementById('year').textContent = String(new Date().getFullYear());
+
+    // --- Billing toggle ------------------------------------------------------
+    (function () {
+      var btns  = document.querySelectorAll('.bt-btn');
+      var cards = document.querySelectorAll('.card[data-plan]');
+      var ctas  = document.querySelectorAll('.cta-subscribe');
+
+      function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+      function applyPeriod(period) {
+        btns.forEach(function (b) {
+          var on = b.dataset.period === period;
+          b.classList.toggle('is-active', on);
+          b.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+
+        cards.forEach(function (card) {
+          var priceKey  = 'price'  + cap(period);   // ex: priceMonthly
+          var billedKey = 'billed' + cap(period);
+          var priceVal  = card.dataset[priceKey];
+          var billedVal = card.dataset[billedKey];
+
+          var amountEl = card.querySelector('.price-amount');
+          var noteEl   = card.querySelector('.billing-note');
+
+          if (amountEl && priceVal)  amountEl.textContent = priceVal;
+          if (noteEl   && billedVal) noteEl.textContent   = billedVal;
+        });
+
+        ctas.forEach(function (a) {
+          var base = a.dataset.base;
+          if (base) a.href = base + '&period=' + period;
+        });
+      }
+
+      btns.forEach(function (b) {
+        b.addEventListener('click', function () {
+          applyPeriod(b.dataset.period);
+        });
+      });
+    })();
   </script>
 </body>
 </html>
