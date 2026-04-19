@@ -94,7 +94,7 @@ $supportEmail = 'support@xynoweb.fr';
             <span class="section-eyebrow">Règle simple</span>
             <p class="section-desc" style="margin-top:8px">
               <strong style="color:#fff">Un abonnement par launcher.</strong>
-              Toutes les formules donnent déjà accès aux 3 thèmes et à tous les modules. Tu choisis ton hébergement (Xyno ou auto) au moment de la création.
+              Toutes les formules incluent les 3 thèmes, le logo custom, toutes les versions Minecraft (1.7 → 1.21), les logs et l'anti-abus. Tu choisis ton hébergement (Xyno ou auto) au moment de la création, et tu résilies en 1 clic depuis le dashboard.
             </p>
           </div>
           <span class="badge">TVA incluse · Sans engagement</span>
@@ -116,8 +116,12 @@ $supportEmail = 'support@xynoweb.fr';
               <li><span class="check" aria-hidden="true"></span><span>1 launcher inclus</span></li>
               <li><span class="check" aria-hidden="true"></span><span>1 plateforme au choix (Windows, macOS ou Linux)</span></li>
               <li><span class="check" aria-hidden="true"></span><span>1 thème au choix parmi Violet Neon / Glacier / Cosmic</span></li>
-              <li><span class="check" aria-hidden="true"></span><span>Modules essentiels : Play, Paramètres</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Logo custom sur l'app Electron</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Versions Minecraft 1.18 → 1.21.4</span></li>
               <li><span class="check" aria-hidden="true"></span><span>Auto-update du launcher</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Logs launcher (50 dernières entrées)</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Anti-abus intégré (rate-limit par IP)</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Facturation claire · résiliation en 1 clic</span></li>
               <li><span class="check" aria-hidden="true"></span><span>Support communautaire</span></li>
             </ul>
             <div class="cta-row">
@@ -140,9 +144,13 @@ $supportEmail = 'support@xynoweb.fr';
               <li><span class="check" aria-hidden="true"></span><span>1 launcher inclus</span></li>
               <li><span class="check" aria-hidden="true"></span><span>Les 3 plateformes (Windows + macOS + Linux)</span></li>
               <li><span class="check" aria-hidden="true"></span><span>Les 3 thèmes débloqués</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Logo custom sur l'app Electron (PNG / ICO / WebP)</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Toutes les versions Minecraft : <strong style="color:#fff">1.7.10 → 1.21.4</strong></span></li>
               <li><span class="check" aria-hidden="true"></span><span>Tous les modules : Play, Paramètres, News, Discord, Mods</span></li>
               <li><span class="check" aria-hidden="true"></span><span>Auto-update + rollback sur version précédente</span></li>
-              <li><span class="check" aria-hidden="true"></span><span>Analytics de base (téléchargements, lancements)</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Logs launcher détaillés + analytics de base</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Anti-abus : downloads &amp; builds bornés par IP</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Prochain versement visible · résiliation en 1 clic</span></li>
               <li><span class="check" aria-hidden="true"></span><span>Support par email (réponse sous 48 h)</span></li>
             </ul>
             <div class="cta-row">
@@ -166,6 +174,8 @@ $supportEmail = 'support@xynoweb.fr';
               <li><span class="check" aria-hidden="true"></span><span>Branding complet (logo, splashscreen, icônes de l’app)</span></li>
               <li><span class="check" aria-hidden="true"></span><span>Personnalisation des couleurs du thème</span></li>
               <li><span class="check" aria-hidden="true"></span><span>Analytics avancés (joueurs actifs, rétention, crash reports)</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Logs launcher étendus (rétention prolongée + filtres)</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Anti-abus renforcé : quotas personnalisés par launcher</span></li>
               <li><span class="check" aria-hidden="true"></span><span>Canal bêta pour pré-publier des mises à jour</span></li>
               <li><span class="check" aria-hidden="true"></span><span>Support prioritaire (réponse sous 24 h)</span></li>
               <li><span class="check" aria-hidden="true"></span><span>Accès anticipé aux nouvelles fonctionnalités</span></li>

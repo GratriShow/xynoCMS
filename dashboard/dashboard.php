@@ -79,6 +79,87 @@ if ($selectedId && $selectedId > 0) {
   }
 }
 
+// ---- Abonnement : prochain versement, statut ----
+$subscription = null;
+try {
+  $s = $pdo->prepare(
+    "SELECT s.id, s.status, s.expires_at, s.created_at, s.launcher_id, l.name AS launcher_name, l.uuid AS launcher_uuid "
+    . "FROM subscriptions s "
+    . "LEFT JOIN launchers l ON l.id = s.launcher_id "
+    . "WHERE s.user_id = ? "
+    . "ORDER BY (s.status = 'active') DESC, s.created_at DESC "
+    . "LIMIT 1"
+  );
+  $s->execute([$user['id']]);
+  $subscription = $s->fetch() ?: null;
+} catch (Throwable $e) {
+  $subscription = null;
+}
+
+// ---- Logs du launcher sélectionné (graceful fallback si table absente) ----
+$launcherLogs = [];
+$launcherLogsAvailable = true;
+if ($selectedId && $selectedId > 0) {
+  try {
+    $lg = $pdo->prepare(
+      'SELECT created_at, level, source, message FROM launcher_logs '
+      . 'WHERE launcher_id = ? ORDER BY created_at DESC, id DESC LIMIT 50'
+    );
+    $lg->execute([$selectedId]);
+    $launcherLogs = $lg->fetchAll();
+  } catch (Throwable $e) {
+    $launcherLogsAvailable = false;
+    $launcherLogs = [];
+  }
+}
+
+// ---- Compteurs anti-abus (downloads + builds 24h) ----
+$abuse = [
+  'available'  => true,
+  'dl_hour'    => 0,
+  'dl_day'     => 0,
+  'build_day'  => 0,
+  'limit_dl_hour'   => 120,
+  'limit_dl_day'    => 1500,
+  'limit_build_day' => 20,
+];
+if ($selectedId && $selectedId > 0) {
+  try {
+    $aq = $pdo->prepare("SELECT COUNT(*) FROM launcher_downloads_log WHERE launcher_id = ? AND created_at >= (NOW() - INTERVAL 1 HOUR)");
+    $aq->execute([$selectedId]);
+    $abuse['dl_hour'] = (int)$aq->fetchColumn();
+
+    $aq = $pdo->prepare("SELECT COUNT(*) FROM launcher_downloads_log WHERE launcher_id = ? AND created_at >= (NOW() - INTERVAL 1 DAY)");
+    $aq->execute([$selectedId]);
+    $abuse['dl_day'] = (int)$aq->fetchColumn();
+
+    $aq = $pdo->prepare("SELECT COUNT(*) FROM launcher_builds_log WHERE launcher_id = ? AND created_at >= (NOW() - INTERVAL 1 DAY)");
+    $aq->execute([$selectedId]);
+    $abuse['build_day'] = (int)$aq->fetchColumn();
+  } catch (Throwable $e) {
+    $abuse['available'] = false;
+  }
+}
+
+// ---- Liste des versions Minecraft supportées (1.7 → dernière) ----
+$mcVersions = [
+  '1.21.4','1.21.3','1.21.1','1.21',
+  '1.20.6','1.20.4','1.20.2','1.20.1',
+  '1.19.4','1.19.2',
+  '1.18.2',
+  '1.17.1',
+  '1.16.5',
+  '1.15.2',
+  '1.14.4',
+  '1.13.2',
+  '1.12.2',
+  '1.11.2',
+  '1.10.2',
+  '1.9.4',
+  '1.8.9','1.8.8',
+  '1.7.10',
+];
+
 $csrf = csrf_token();
 
 $success = flash_get('success');
@@ -129,8 +210,12 @@ $error = flash_get('error');
         <p class="small" style="margin:6px 0 0">UUID : <?php echo e($user['uuid']); ?></p>
 
         <nav class="side-links" aria-label="Menu dashboard">
+          <a href="#facturation">Facturation</a>
           <a href="#launchers">Launchers</a>
           <a href="#parametres">Paramètres</a>
+          <a href="#versions">Versions</a>
+          <a href="#logs">Logs</a>
+          <a href="#securite">Anti-abus</a>
           <a href="dashboard/upload.php">Fichiers</a>
         </nav>
       </aside>
@@ -153,6 +238,79 @@ $error = flash_get('error');
         <?php if ($error): ?>
           <div class="notice" data-show="true" style="margin: 12px 0"><?php echo e($error); ?></div>
         <?php endif; ?>
+
+        <section id="facturation" class="section-sm">
+          <h2 class="section-title">Facturation</h2>
+          <p class="section-desc">Ton abonnement et ton prochain versement.</p>
+
+          <div class="card">
+            <?php if ($subscription === null): ?>
+              <div class="nav-row" style="align-items:center">
+                <div>
+                  <span class="badge">Aucun abonnement actif</span>
+                  <p class="section-desc" style="margin-top:8px">Tu n’as pas encore souscrit à une offre. Les launchers restent accessibles en auto-hébergement jusqu’à souscription.</p>
+                </div>
+                <div class="cta-row" style="margin:0">
+                  <a class="btn btn-primary" href="pricing.php">Choisir une offre</a>
+                </div>
+              </div>
+            <?php else:
+              $subStatus = strtolower((string)($subscription['status'] ?? ''));
+              $subExpires = (string)($subscription['expires_at'] ?? '');
+              $subExpiresTs = $subExpires ? strtotime($subExpires) : null;
+              $nextPaymentFr = '';
+              $daysLeft = null;
+              if ($subExpiresTs) {
+                $nextPaymentFr = date('d/m/Y', $subExpiresTs);
+                $daysLeft = max(0, (int)floor(($subExpiresTs - time()) / 86400));
+              }
+              $statusLabel = $subStatus === 'active' ? 'Actif'
+                           : ($subStatus === 'cancelled' ? 'Résilié — fin à la date ci-dessous'
+                           : ($subStatus === 'past_due' ? 'Paiement en retard' : ucfirst($subStatus ?: 'inactif')));
+            ?>
+              <div class="two-col" style="gap:18px">
+                <div>
+                  <span class="badge badge-accent"><?php echo e($statusLabel); ?></span>
+                  <p class="section-desc" style="margin-top:8px">
+                    <?php if ($subscription['launcher_name']): ?>
+                      Abonnement pour <strong style="color:#fff"><?php echo e((string)$subscription['launcher_name']); ?></strong>.
+                    <?php else: ?>
+                      Abonnement actif.
+                    <?php endif; ?>
+                  </p>
+                  <?php if ($nextPaymentFr): ?>
+                    <p class="section-desc" style="margin-top:6px">
+                      <?php if ($subStatus === 'cancelled'): ?>
+                        Ton accès reste actif jusqu’au <strong style="color:#fff"><?php echo e($nextPaymentFr); ?></strong>
+                        <?php if ($daysLeft !== null): ?>(<?= (int)$daysLeft ?> jour<?= $daysLeft > 1 ? 's' : '' ?> restant<?= $daysLeft > 1 ? 's' : '' ?>)<?php endif; ?>.
+                      <?php else: ?>
+                        Prochain versement le <strong style="color:#fff"><?php echo e($nextPaymentFr); ?></strong>
+                        <?php if ($daysLeft !== null): ?>(dans <?= (int)$daysLeft ?> jour<?= $daysLeft > 1 ? 's' : '' ?>)<?php endif; ?>.
+                      <?php endif; ?>
+                    </p>
+                  <?php endif; ?>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:10px;align-items:flex-end;justify-content:center">
+                  <a class="btn" href="pricing.php">Changer de formule</a>
+                  <?php if ($subStatus === 'active'): ?>
+                    <form action="cancel_subscription.php" method="post" style="margin:0" onsubmit="return confirm('Résilier ton abonnement ? Tu garderas l’accès jusqu’à la fin de la période en cours.');">
+                      <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
+                      <input type="hidden" name="subscription_id" value="<?php echo e((string)($subscription['id'] ?? '')); ?>" />
+                      <button class="btn btn-ghost" type="submit">Résilier l’abonnement</button>
+                    </form>
+                  <?php elseif ($subStatus === 'cancelled'): ?>
+                    <form action="reactivate_subscription.php" method="post" style="margin:0">
+                      <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
+                      <input type="hidden" name="subscription_id" value="<?php echo e((string)($subscription['id'] ?? '')); ?>" />
+                      <button class="btn btn-primary" type="submit">Réactiver</button>
+                    </form>
+                  <?php endif; ?>
+                </div>
+              </div>
+            <?php endif; ?>
+          </div>
+        </section>
 
         <section id="launchers" class="section-sm">
           <h2 class="section-title">Tes launchers</h2>
@@ -185,8 +343,9 @@ $error = flash_get('error');
             <?php if ($selected === null): ?>
               <p class="small" style="margin:0">Sélectionne un launcher dans la liste pour l’éditer.</p>
             <?php else: ?>
-              <form class="form" aria-label="Configuration launcher" action="update_launcher.php" method="post">
+              <form class="form" aria-label="Configuration launcher" action="update_launcher.php" method="post" enctype="multipart/form-data">
                 <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
+                <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
 
                 <div class="two-col">
                   <label class="label">
@@ -262,10 +421,20 @@ $error = flash_get('error');
                   <label class="label">
                     <span>Version Minecraft</span>
                     <select name="version" required>
-                      <?php foreach (['1.21.4','1.20.6','1.19.4'] as $ver): ?>
-                        <option value="<?php echo e($ver); ?>" <?php echo ((string)$selected['version'] === $ver) ? 'selected' : ''; ?>><?php echo e($ver); ?></option>
+                      <?php
+                        // Si la version actuelle du launcher n'est pas dans la liste,
+                        // on l'ajoute en tête pour ne pas la perdre.
+                        $currentVer = (string)$selected['version'];
+                        $allVersions = $mcVersions;
+                        if ($currentVer !== '' && !in_array($currentVer, $allVersions, true)) {
+                          array_unshift($allVersions, $currentVer);
+                        }
+                      ?>
+                      <?php foreach ($allVersions as $ver): ?>
+                        <option value="<?php echo e($ver); ?>" <?php echo ($currentVer === $ver) ? 'selected' : ''; ?>><?php echo e($ver); ?></option>
                       <?php endforeach; ?>
                     </select>
+                    <span class="help">Toutes les versions supportées de 1.7.10 à 1.21.4.</span>
                   </label>
                   <label class="label">
                     <span>Loader</span>
@@ -275,6 +444,34 @@ $error = flash_get('error');
                       <?php endforeach; ?>
                     </select>
                   </label>
+                </div>
+
+                <div class="card" style="margin-top:6px;padding:14px;background:var(--surface-2)">
+                  <span class="badge">Logo de l’app Electron</span>
+                  <p class="section-desc" style="margin-top:8px">Upload ton logo (PNG 512×512 recommandé). Il sera utilisé comme icône de l’exécutable Windows / macOS / Linux et dans la fenêtre du launcher.</p>
+
+                  <div class="two-col" style="align-items:end;margin-top:10px">
+                    <label class="label">
+                      <span>Fichier logo (PNG / ICO)</span>
+                      <input class="input" type="file" name="logo" accept="image/png,image/x-icon,image/jpeg,image/webp" />
+                      <span class="help">Max 2 Mo · carré recommandé · fond transparent accepté.</span>
+                    </label>
+
+                    <div class="card" style="padding:10px;background:rgba(0,0,0,.25);display:flex;align-items:center;gap:12px">
+                      <div style="width:64px;height:64px;border-radius:14px;border:1px solid var(--border-2);background:
+                        <?php $logoUrl = 'uploads/launchers/' . (int)$selectedId . '/logo.png'; $hasLogo = is_file(__DIR__ . '/../' . $logoUrl); ?>
+                        <?php if ($hasLogo): ?>
+                          url('<?php echo e('/' . $logoUrl . '?v=' . filemtime(__DIR__ . '/../' . $logoUrl)); ?>') center/cover no-repeat, var(--grad-soft);
+                        <?php else: ?>
+                          var(--grad-soft);
+                        <?php endif; ?>
+                      "></div>
+                      <div>
+                        <strong style="color:#fff;font-size:14px">Logo actuel</strong><br>
+                        <span class="small"><?php echo $hasLogo ? 'Personnalisé' : 'Aucun — logo Xyno par défaut'; ?></span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div class="nav-row">
@@ -342,6 +539,109 @@ $error = flash_get('error');
                   100%{transform:translateX(120%);width:40%}
                 }
               </style>
+            <?php endif; ?>
+          </div>
+        </section>
+
+        <section id="logs" class="section-sm">
+          <h2 class="section-title">Logs du launcher</h2>
+          <p class="section-desc">Les 50 derniers événements remontés par le launcher installé chez tes joueurs (crashs, erreurs, infos).</p>
+
+          <div class="card">
+            <?php if ($selected === null): ?>
+              <p class="small" style="margin:0">Sélectionne un launcher pour voir ses logs.</p>
+            <?php elseif (!$launcherLogsAvailable): ?>
+              <p class="small" style="margin:0">Les logs ne sont pas encore activés (table <code>launcher_logs</code> absente). Importe la migration associée pour activer la remontée.</p>
+            <?php elseif (!count($launcherLogs)): ?>
+              <p class="small" style="margin:0">Aucun événement pour l’instant. Les logs apparaissent ici dès qu’un joueur lance le launcher.</p>
+            <?php else: ?>
+              <div style="display:grid;gap:6px;max-height:420px;overflow:auto">
+                <?php foreach ($launcherLogs as $row):
+                  $lvl = strtolower((string)($row['level'] ?? 'info'));
+                  $color = $lvl === 'error' ? '#f87171'
+                        : ($lvl === 'warn' || $lvl === 'warning' ? '#fbbf24'
+                        : ($lvl === 'debug' ? 'rgba(255,255,255,.5)'
+                        : '#60a5fa'));
+                ?>
+                  <div style="display:grid;grid-template-columns:160px 70px 120px 1fr;gap:10px;padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid var(--border-1);border-radius:10px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;line-height:1.5">
+                    <span style="color:var(--muted-2)"><?php echo e((string)($row['created_at'] ?? '')); ?></span>
+                    <span style="color:<?php echo $color; ?>;font-weight:700;text-transform:uppercase"><?php echo e($lvl); ?></span>
+                    <span style="color:var(--muted)"><?php echo e((string)($row['source'] ?? '—')); ?></span>
+                    <span style="color:var(--text);word-break:break-word"><?php echo e((string)($row['message'] ?? '')); ?></span>
+                  </div>
+                <?php endforeach; ?>
+              </div>
+              <p class="small" style="margin:12px 0 0">Les logs sont rotatés automatiquement tous les 30 jours.</p>
+            <?php endif; ?>
+          </div>
+        </section>
+
+        <section id="securite" class="section-sm">
+          <h2 class="section-title">Anti-abus</h2>
+          <p class="section-desc">Limites automatiques sur les downloads et les builds pour éviter l’abus d’API et protéger ta facturation.</p>
+
+          <div class="card">
+            <?php if ($selected === null): ?>
+              <p class="small" style="margin:0">Sélectionne un launcher pour voir ses compteurs anti-abus.</p>
+            <?php elseif (!$abuse['available']): ?>
+              <div class="nav-row" style="align-items:center;margin:0;padding:0;border:0">
+                <div>
+                  <span class="badge">Protection active</span>
+                  <p class="section-desc" style="margin-top:8px">L’API applique déjà des limites globales (IP + clé API) côté passerelle. Les compteurs détaillés s’activent dès que les tables <code>launcher_downloads_log</code> et <code>launcher_builds_log</code> sont importées.</p>
+                </div>
+              </div>
+            <?php else:
+              $pctDlHour   = $abuse['limit_dl_hour']   > 0 ? min(100, ($abuse['dl_hour']   / $abuse['limit_dl_hour'])   * 100) : 0;
+              $pctDlDay    = $abuse['limit_dl_day']    > 0 ? min(100, ($abuse['dl_day']    / $abuse['limit_dl_day'])    * 100) : 0;
+              $pctBuildDay = $abuse['limit_build_day'] > 0 ? min(100, ($abuse['build_day'] / $abuse['limit_build_day']) * 100) : 0;
+
+              $barFn = function(float $pct): string {
+                $color = $pct >= 90 ? 'linear-gradient(90deg,#f87171,#ef4444)'
+                      : ($pct >= 70 ? 'linear-gradient(90deg,#fbbf24,#f59e0b)'
+                      : 'linear-gradient(90deg,#8b5cf6,#22d3ee)');
+                return '<div style="height:8px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden"><div style="width:' . number_format($pct, 1) . '%;height:100%;background:' . $color . ';border-radius:999px"></div></div>';
+              };
+            ?>
+              <div style="display:grid;gap:14px">
+                <div>
+                  <div class="nav-row" style="margin:0;padding:0;border:0;gap:10px">
+                    <strong style="color:#fff">Téléchargements · dernière heure</strong>
+                    <span class="small" style="color:var(--muted)"><?php echo (int)$abuse['dl_hour'] . ' / ' . (int)$abuse['limit_dl_hour']; ?></span>
+                  </div>
+                  <div style="margin-top:6px"><?php echo $barFn($pctDlHour); ?></div>
+                </div>
+
+                <div>
+                  <div class="nav-row" style="margin:0;padding:0;border:0;gap:10px">
+                    <strong style="color:#fff">Téléchargements · dernières 24 h</strong>
+                    <span class="small" style="color:var(--muted)"><?php echo (int)$abuse['dl_day'] . ' / ' . (int)$abuse['limit_dl_day']; ?></span>
+                  </div>
+                  <div style="margin-top:6px"><?php echo $barFn($pctDlDay); ?></div>
+                </div>
+
+                <div>
+                  <div class="nav-row" style="margin:0;padding:0;border:0;gap:10px">
+                    <strong style="color:#fff">Builds · dernières 24 h</strong>
+                    <span class="small" style="color:var(--muted)"><?php echo (int)$abuse['build_day'] . ' / ' . (int)$abuse['limit_build_day']; ?></span>
+                  </div>
+                  <div style="margin-top:6px"><?php echo $barFn($pctBuildDay); ?></div>
+                </div>
+              </div>
+
+              <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-1);display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+                <div>
+                  <span class="badge">Rate-limit par IP</span>
+                  <p class="small" style="margin-top:6px">Max 60 req/min, puis 429.</p>
+                </div>
+                <div>
+                  <span class="badge">HMAC signé</span>
+                  <p class="small" style="margin-top:6px">Chaque requête launcher est signée — anti-replay 5 min.</p>
+                </div>
+                <div>
+                  <span class="badge">Builds bornés</span>
+                  <p class="small" style="margin-top:6px">20 builds / 24 h / launcher par défaut (ajustable).</p>
+                </div>
+              </div>
             <?php endif; ?>
           </div>
         </section>

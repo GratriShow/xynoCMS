@@ -180,12 +180,13 @@ $hostingMonthly = 5;
             <p class="section-desc" style="margin-top:6px">Dès la création, tu disposes de tout ce qui fait un bon launcher.</p>
 
             <ul class="list" style="margin-top:16px">
-              <li><span class="check" aria-hidden="true"></span><span>Les 3 thèmes premium : Violet Neon, Glacier, Cosmic</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Les 3 thèmes premium + ton logo custom sur l'app</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Toutes les versions Minecraft : <strong style="color:#fff">1.7.10 → 1.21.4</strong> (Fabric · Forge · Quilt)</span></li>
               <li><span class="check" aria-hidden="true"></span><span>Tous les modules : auto-update, news, Discord, modpack, analytics</span></li>
-              <li><span class="check" aria-hidden="true"></span><span>Support Fabric · Forge · Quilt, versions 1.19 → 1.21</span></li>
               <li><span class="check" aria-hidden="true"></span><span>Builds Windows · macOS · Linux signés via GitHub Actions</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Logs launcher + anti-abus (downloads &amp; builds) intégrés</span></li>
+              <li><span class="check" aria-hidden="true"></span><span>Facturation transparente · résiliation en 1 clic</span></li>
               <li><span class="check" aria-hidden="true"></span><span>Dashboard admin et API Xyno gérés côté plateforme — rien à installer</span></li>
-              <li><span class="check" aria-hidden="true"></span><span>Tout est modifiable depuis le dashboard, à tout moment</span></li>
             </ul>
 
             <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--border-1)">

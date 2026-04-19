@@ -43,6 +43,8 @@ if (!$row) {
     redirect('/dashboard.php');
 }
 
+$launcherId = (int)($row['id'] ?? 0);
+
 $upd = $pdo->prepare('UPDATE launchers SET name = ?, description = ?, version = ?, loader = ?, theme = ? WHERE uuid = ? AND user_id = ?');
 $upd->execute([
     $name,
@@ -54,5 +56,57 @@ $upd->execute([
     $user['id'],
 ]);
 
-flash_set('success', 'Launcher mis à jour.');
+// ---- Upload logo (optionnel) ----
+$logoNotice = '';
+if (!empty($_FILES['logo']['tmp_name']) && is_uploaded_file($_FILES['logo']['tmp_name'])) {
+    $uploadErr = (int)($_FILES['logo']['error'] ?? UPLOAD_ERR_NO_FILE);
+    $size      = (int)($_FILES['logo']['size'] ?? 0);
+    $maxBytes  = 2 * 1024 * 1024; // 2 Mo
+
+    if ($uploadErr !== UPLOAD_ERR_OK) {
+        $logoNotice = ' (logo non uploadé : erreur ' . $uploadErr . ')';
+    } elseif ($size > $maxBytes) {
+        $logoNotice = ' (logo trop lourd, max 2 Mo)';
+    } else {
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime  = (string)$finfo->file($_FILES['logo']['tmp_name']);
+        $allowed = [
+            'image/png'  => 'png',
+            'image/x-icon' => 'ico',
+            'image/vnd.microsoft.icon' => 'ico',
+            'image/jpeg' => 'jpg',
+            'image/webp' => 'webp',
+        ];
+        if (!isset($allowed[$mime])) {
+            $logoNotice = ' (format de logo non supporté : ' . $mime . ')';
+        } else {
+            $ext = $allowed[$mime];
+            $dir = __DIR__ . '/../uploads/launchers/' . $launcherId;
+            if (!is_dir($dir)) {
+                @mkdir($dir, 0755, true);
+            }
+            // Ecrit toujours en logo.png (extension canonique) pour simplifier l'affichage.
+            // Si l'upload est en .ico / .jpg / .webp, on garde l'extension d'origine aussi.
+            $canonical = $dir . '/logo.png';
+            if ($ext === 'png') {
+                if (@move_uploaded_file($_FILES['logo']['tmp_name'], $canonical)) {
+                    @chmod($canonical, 0644);
+                } else {
+                    $logoNotice = ' (logo non enregistré)';
+                }
+            } else {
+                $target = $dir . '/logo.' . $ext;
+                if (@move_uploaded_file($_FILES['logo']['tmp_name'], $target)) {
+                    @chmod($target, 0644);
+                    // Pas de conversion PNG côté PHP : le build pipeline s'en chargera,
+                    // ou le dashboard affichera le fichier natif.
+                } else {
+                    $logoNotice = ' (logo non enregistré)';
+                }
+            }
+        }
+    }
+}
+
+flash_set('success', 'Launcher mis à jour.' . $logoNotice);
 redirect('/dashboard.php?launcher=' . urlencode($launcherUuid));
