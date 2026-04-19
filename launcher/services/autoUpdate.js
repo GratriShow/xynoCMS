@@ -332,12 +332,20 @@ async function checkForUpdate({ apiBaseUrl, uuid, timeoutMs = 10_000 } = {}) {
   if (!uuidVal) throw new Error('Missing env var: LAUNCHER_UUID');
 
   const candidates = [
+    // Dedicated standalone file — works on any nginx/apache without PATH_INFO.
+    '/api/launcher_update.php',
+    // Pretty URL — requires nginx rewrite to /api/launcher.php/update.
     '/api/launcher/update',
-    // Fallback for PHP PATH_INFO setups without rewrite to /api/launcher/update
+    // PATH_INFO fallback — requires nginx location ~ \.php(/|$).
     '/api/launcher.php/update',
   ];
 
+  // On considère un 200 comme "JSON attendu". Si on reçoit un 200 + HTML
+  // (fallback SPA/index.php du serveur), on ignore ce candidat et on passe
+  // au suivant plutôt que d'échouer tout de suite.
+
   let lastRes = null;
+  let sawMalformed = false;
   for (const p of candidates) {
     const url = new URL(p, base);
     url.searchParams.set('uuid', uuidVal);
@@ -346,11 +354,23 @@ async function checkForUpdate({ apiBaseUrl, uuid, timeoutMs = 10_000 } = {}) {
     lastRes = res;
     if (res.statusCode !== 200) continue;
 
+    // If the server returns 200 with HTML (common when the URL falls through
+    // to a SPA/index.php fallback), res.json will be null. Treat as "wrong
+    // route" and try the next candidate before giving up.
+    if (res.json === null || res.json === undefined) {
+      sawMalformed = true;
+      continue;
+    }
+
     const parsed = validateUpdatePayload(res.json);
-    if (!parsed) throw new Error('update_invalid_payload');
+    if (!parsed) {
+      sawMalformed = true;
+      continue;
+    }
     return parsed;
   }
 
+  if (sawMalformed) throw new Error('update_invalid_payload');
   throw new Error(`Update API error: HTTP ${(lastRes && lastRes.statusCode) || 0}`);
 }
 
