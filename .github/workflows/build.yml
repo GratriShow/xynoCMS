@@ -112,6 +112,34 @@ jobs:
           cache: "npm"
           cache-dependency-path: launcher/package-lock.json
 
+      # ------------------------------------------------------------------------
+      # Caches that dramatically reduce build time (after the first run):
+      #  * Electron / electron-builder binaries (~100-200 MB per platform)
+      #  * launcher/node_modules keyed by package-lock.json
+      # ------------------------------------------------------------------------
+      - name: Cache Electron binaries
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: ${{ runner.os }}-electron-${{ hashFiles('launcher/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-
+
+      - name: Cache launcher/node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: launcher/node_modules
+          key: ${{ runner.os }}-node_modules-${{ hashFiles('launcher/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node_modules-
+
       # Fetch per-launcher config (uuid, api_key, theme, modules, asset URLs, etc.)
       # from the CMS. The CMS returns a JSON blob signed with BUILD_FETCH_TOKEN.
       - name: Fetch launcher config from CMS
@@ -144,6 +172,23 @@ jobs:
             fs.writeFileSync(p, JSON.stringify(c,null,2));
           "
 
+      - name: Patch productName from launcher config
+        shell: bash
+        run: |
+          node -e "
+            const fs=require('fs');
+            const cfg=JSON.parse(fs.readFileSync('launcher/src/config.json','utf8'));
+            const pkg=JSON.parse(fs.readFileSync('launcher/package.json','utf8'));
+            // Sanitize launcher name: keep alphanumerics only, strip spaces/punctuation.
+            const rawName=(cfg.name || 'Xyno').toString().trim();
+            const clean=rawName.replace(/[^A-Za-z0-9]/g,'') || 'Xyno';
+            const productName = clean + 'Launcher';
+            pkg.build = pkg.build || {};
+            pkg.build.productName = productName;
+            fs.writeFileSync('launcher/package.json', JSON.stringify(pkg,null,2));
+            console.log('productName =', productName);
+          "
+
       - name: Download assets (logo, background, icons)
         shell: bash
         env:
@@ -168,12 +213,21 @@ jobs:
             }
           "
 
-      - name: Install dependencies
+      - name: Install dependencies (cache-aware)
         shell: bash
         working-directory: launcher
-        run: npm ci
+        env:
+          NODE_MODULES_CACHE_HIT: ${{ steps.cache-node-modules.outputs.cache-hit }}
+        run: |
+          if [ "$NODE_MODULES_CACHE_HIT" = "true" ]; then
+            echo "node_modules restored from cache — running only install-app-deps"
+            npx --no-install electron-builder install-app-deps || npm rebuild
+          else
+            npm ci --prefer-offline --no-audit --no-fund
+          fi
 
-      - name: Obfuscate (optional, skip if it breaks on windows)
+      - name: Obfuscate (opt-in; skipped by default for speed)
+        if: ${{ vars.XYNO_ENABLE_OBFUSCATE == 'true' }}
         shell: bash
         working-directory: launcher
         continue-on-error: true
