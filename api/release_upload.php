@@ -142,9 +142,37 @@ try {
     $pdo = db();
     $pdo->beginTransaction();
 
+    /**
+     * Helper: convert a public file URL (stored in file_url / zip_url) back to
+     * an on-disk absolute path inside files/, with safe path containment check.
+     * Returns null if the URL is external or does not point to files/.
+     */
+    $resolveLocalFileFromUrl = function (string $url) {
+        $urlPath = (string)(parse_url($url, PHP_URL_PATH) ?? '');
+        if ($urlPath === '' || strpos($urlPath, '..') !== false) return null;
+        if (!str_starts_with($urlPath, '/files/')) return null;
+        $root = realpath(__DIR__ . '/..');
+        if (!$root) return null;
+        $candidate = realpath($root . $urlPath);
+        if (!$candidate) return null;
+        if (!str_starts_with($candidate, $root . DIRECTORY_SEPARATOR . 'files' . DIRECTORY_SEPARATOR)) return null;
+        return $candidate;
+    };
+
     if ($type === 'update') {
+        // Gather previous update zips we're about to replace (only if this
+        // upload is the new active one — otherwise keep history untouched).
         if ($isActive) {
-            $pdo->prepare('UPDATE launcher_client_releases SET is_active = 0 WHERE launcher_id = ?')->execute([$launcherId]);
+            $old = $pdo->prepare('SELECT id, zip_url FROM launcher_client_releases WHERE launcher_id = ?');
+            $old->execute([$launcherId]);
+            foreach ($old->fetchAll() as $r) {
+                $p = $resolveLocalFileFromUrl((string)($r['zip_url'] ?? ''));
+                if ($p && is_file($p)) {
+                    @unlink($p);
+                }
+            }
+            // Wipe old rows entirely so we only keep the current one.
+            $pdo->prepare('DELETE FROM launcher_client_releases WHERE launcher_id = ?')->execute([$launcherId]);
         }
 
         $ins = $pdo->prepare(
@@ -154,8 +182,21 @@ try {
         );
         $ins->execute([$launcherId, $version, $fileUrl, $sha, $required, $isActive]);
     } else {
+        // Installer upload: replace any previous installer for this launcher+platform.
         if ($isActive) {
-            $pdo->prepare('UPDATE launcher_downloads SET is_active = 0 WHERE launcher_id = ? AND platform = ?')->execute([$launcherId, $platform]);
+            $old = $pdo->prepare('SELECT id, file_url FROM launcher_downloads WHERE launcher_id = ? AND platform = ?');
+            $old->execute([$launcherId, $platform]);
+            foreach ($old->fetchAll() as $r) {
+                $p = $resolveLocalFileFromUrl((string)($r['file_url'] ?? ''));
+                // Don't delete a file that coincidentally equals the new one
+                // (same version replay). We haven't moved the new file's row
+                // yet, but the path is already stored in $destAbsPath.
+                if ($p && is_file($p) && $p !== $destAbsPath) {
+                    @unlink($p);
+                }
+            }
+            // Delete DB rows of previous installers for this platform.
+            $pdo->prepare('DELETE FROM launcher_downloads WHERE launcher_id = ? AND platform = ?')->execute([$launcherId, $platform]);
         }
 
         $ins = $pdo->prepare(

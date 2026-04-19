@@ -53,6 +53,32 @@ if ($selected !== null) {
   }
 }
 
+// Latest active installer per platform for the selected launcher.
+$installers = ['win' => null, 'mac' => null, 'linux' => null];
+if ($selectedId && $selectedId > 0) {
+  try {
+    $q = $pdo->prepare(
+      'SELECT platform, version_name, file_url, file_sha256, is_active, created_at '
+      . 'FROM launcher_downloads '
+      . 'WHERE launcher_id = ? '
+      . 'ORDER BY is_active DESC, created_at DESC, id DESC'
+    );
+    $q->execute([$selectedId]);
+    foreach ($q->fetchAll() as $row) {
+      $p = (string)($row['platform'] ?? '');
+      if (!array_key_exists($p, $installers)) continue;
+      if ($installers[$p] !== null) continue; // keep the first (active/latest)
+      $installers[$p] = [
+        'version' => (string)($row['version_name'] ?? ''),
+        'is_active' => (int)($row['is_active'] ?? 0) === 1,
+        'created_at' => (string)($row['created_at'] ?? ''),
+      ];
+    }
+  } catch (Throwable $e) {
+    // Table may be missing; leave installers empty.
+  }
+}
+
 $csrf = csrf_token();
 
 $success = flash_get('success');
@@ -174,13 +200,41 @@ $error = flash_get('error');
                   </label>
                 </div>
 
-                <div class="callout" style="margin-top:14px; padding:14px">
-                  <div>
-                    <p class="badge">Distribution</p>
-                    <p class="section-desc" style="margin-top:8px">Télécharge l’installer adapté à ton OS (détection automatique).</p>
-                  </div>
-                  <div class="cta-row" style="margin:0">
-                    <a class="btn btn-primary" href="download_launcher.php?uuid=<?php echo urlencode((string)$selected['uuid']); ?>">Télécharger launcher</a>
+                <div class="card" style="margin-top:14px; padding:14px">
+                  <p class="badge">Installers disponibles</p>
+                  <p class="section-desc" style="margin-top:8px">Télécharge l’installer propre à chaque OS. Les fichiers sont renommés automatiquement <code><?php echo e((string)$selected['name']); ?>Launcher.{ext}</code>.</p>
+
+                  <div style="margin-top:12px; display:grid; gap:10px">
+                    <?php
+                      $platforms = [
+                        'win'   => ['label' => 'Windows', 'ext' => 'exe'],
+                        'mac'   => ['label' => 'macOS',   'ext' => 'dmg'],
+                        'linux' => ['label' => 'Linux',   'ext' => 'AppImage'],
+                      ];
+                    ?>
+                    <?php foreach ($platforms as $pKey => $pMeta): ?>
+                      <?php $inst = $installers[$pKey] ?? null; ?>
+                      <div class="nav-row" style="align-items:center; gap:12px; padding:10px 12px; background:rgba(255,255,255,.03); border-radius:10px">
+                        <div>
+                          <strong><?php echo e($pMeta['label']); ?></strong>
+                          <?php if ($inst): ?>
+                            <span class="small" style="margin-left:10px; color:rgba(255,255,255,.72)">
+                              Version <?php echo e($inst['version'] ?: '?'); ?>
+                              <?php if ($inst['is_active']): ?> • <span class="badge" style="padding:2px 8px">Actif</span><?php endif; ?>
+                            </span>
+                          <?php else: ?>
+                            <span class="small" style="margin-left:10px; color:rgba(255,255,255,.55)">Pas encore généré</span>
+                          <?php endif; ?>
+                        </div>
+                        <div class="cta-row" style="margin:0">
+                          <?php if ($inst): ?>
+                            <a class="btn btn-primary" href="download_launcher.php?uuid=<?php echo urlencode((string)$selected['uuid']); ?>&amp;platform=<?php echo e($pKey); ?>">Télécharger</a>
+                          <?php else: ?>
+                            <button class="btn" type="button" disabled>Indisponible</button>
+                          <?php endif; ?>
+                        </div>
+                      </div>
+                    <?php endforeach; ?>
                   </div>
                 </div>
 
