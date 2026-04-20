@@ -38,19 +38,40 @@ try {
         redirect('/dashboard.php#facturation');
     }
 
-    // Résiliation "soft" : on passe le statut à "cancelled".
-    // expires_at reste inchangé : l'accès court jusqu'à la fin de la période.
-    $upd = $pdo->prepare("UPDATE subscriptions SET status = 'cancelled', cancelled_at = NOW() WHERE id = ?");
-    $upd->execute([$subId]);
-} catch (PDOException $e) {
-    // Fallback si la colonne cancelled_at n'existe pas encore dans la table.
+    // Tentative 1 : statut 'cancelled' + cancelled_at (schéma v3)
+    // Tentative 2 : statut 'cancelled' seul (schéma v3 sans la colonne)
+    // Tentative 3 : si l'ENUM n'autorise pas 'cancelled' (schéma v1/v2),
+    //   on renvoie un message explicite avec le lien vers la migration SQL.
+    $ok = false;
     try {
-        $upd = $pdo->prepare("UPDATE subscriptions SET status = 'cancelled' WHERE id = ?");
+        $upd = $pdo->prepare("UPDATE subscriptions SET status = 'cancelled', cancelled_at = NOW() WHERE id = ?");
         $upd->execute([$subId]);
-    } catch (Throwable $e2) {
-        flash_set('error', 'Impossible de résilier l’abonnement (erreur base de données).');
+        $ok = true;
+    } catch (PDOException $e1) {
+        try {
+            $upd = $pdo->prepare("UPDATE subscriptions SET status = 'cancelled' WHERE id = ?");
+            $upd->execute([$subId]);
+            $ok = true;
+        } catch (PDOException $e2) {
+            // L'ENUM `status` ne connaît pas 'cancelled' — schéma pas encore migré.
+            flash_set(
+                'error',
+                "Impossible de résilier : ta base de données n'a pas encore la migration v3. "
+              . "Importe `migrations_v3.sql` (phpMyAdmin › Importer) puis réessaie. "
+              . "Détail : " . $e2->getMessage()
+            );
+            redirect('/dashboard.php#sql');
+        }
+    }
+
+    if (!$ok) {
+        flash_set('error', 'Résiliation échouée — réessaie dans une minute.');
         redirect('/dashboard.php#facturation');
     }
+
+} catch (Throwable $e) {
+    flash_set('error', 'Impossible de résilier l’abonnement : ' . $e->getMessage());
+    redirect('/dashboard.php#facturation');
 }
 
 flash_set('success', 'Abonnement résilié. Ton accès reste actif jusqu’à la fin de la période en cours.');

@@ -160,6 +160,77 @@ $mcVersions = [
   '1.7.10',
 ];
 
+// ---- Catalogue d'extensions disponibles pour un launcher Minecraft ----
+// `needs_api` = true  → le client fournit URL + API key de son service
+// `needs_api` = false → on n'a besoin de rien côté client, c'est géré par Xyno
+$availableExtensions = [
+  ['key' => 'news',           'name' => 'News & actualités',      'desc' => "Feed d'actu affiché sur la page Play du launcher.",                'needs_api' => true,  'category' => 'contenu'],
+  ['key' => 'player_count',   'name' => 'Compteur de joueurs',    'desc' => 'Nombre de joueurs en ligne en temps réel.',                         'needs_api' => true,  'category' => 'serveur'],
+  ['key' => 'server_status',  'name' => 'Statut serveur (ping)',  'desc' => "État (online/offline), ping et version côté launcher.",            'needs_api' => true,  'category' => 'serveur'],
+  ['key' => 'discord',        'name' => 'Discord widget',         'desc' => 'Widget live + lien d\'invitation depuis le launcher.',              'needs_api' => true,  'category' => 'social'],
+  ['key' => 'leaderboard',    'name' => 'Classement / Top joueurs','desc' => 'Top kills, tempts, votes — affichage direct dans l\'app.',         'needs_api' => true,  'category' => 'social'],
+  ['key' => 'shop',           'name' => 'Boutique / Shop',        'desc' => "Liens produit + ventes flash + promos visibles à l'ouverture.",   'needs_api' => true,  'category' => 'monétisation'],
+  ['key' => 'voting',         'name' => 'Votes sites serveur',    'desc' => 'Vote-for-rewards : le joueur vote, reçoit ses récompenses.',        'needs_api' => true,  'category' => 'monétisation'],
+  ['key' => 'quests',         'name' => 'Quêtes / missions',      'desc' => 'Objectifs actifs et récompenses, synchronisés avec ton back-end.',   'needs_api' => true,  'category' => 'contenu'],
+  ['key' => 'events',         'name' => 'Events à venir',         'desc' => 'Agenda des prochains events in-game affiché à l\'ouverture.',       'needs_api' => true,  'category' => 'contenu'],
+  ['key' => 'skin_api',       'name' => 'API Skins custom',       'desc' => 'Charge les skins depuis ton propre serveur (endpoint skin).',       'needs_api' => true,  'category' => 'gameplay'],
+  ['key' => 'capes',          'name' => 'Capes & accessoires',    'desc' => 'Système de capes custom par UUID (API renvoie les accessoires).',    'needs_api' => true,  'category' => 'gameplay'],
+  ['key' => 'social_feed',    'name' => 'Feed YouTube / Twitch',  'desc' => 'Dernières vidéos ou lives de tes créateurs affichés en slider.',    'needs_api' => true,  'category' => 'social'],
+  ['key' => 'crash_reporter', 'name' => 'Rapport de crashs',      'desc' => 'Remonte automatiquement les crashs dans le dashboard.',             'needs_api' => false, 'category' => 'système'],
+  ['key' => 'analytics',      'name' => 'Analytics de lancement', 'desc' => 'Stats anonymisées (versions, OS, temps de chargement).',            'needs_api' => false, 'category' => 'système'],
+  ['key' => 'modpack',        'name' => 'Gestion modpacks',       'desc' => 'Sélecteur de modpacks (plusieurs profils de mods par version).',    'needs_api' => false, 'category' => 'gameplay'],
+  ['key' => 'changelog',      'name' => 'Changelog auto',         'desc' => 'Affiche le dernier changelog à la première ouverture après update.', 'needs_api' => false, 'category' => 'contenu'],
+  ['key' => 'ram_slider',     'name' => 'Slider RAM avancé',      'desc' => 'Permet au joueur de choisir la RAM allouée (min/max) au lancement.','needs_api' => false, 'category' => 'gameplay'],
+  ['key' => 'java_manager',   'name' => 'Manager Java',           'desc' => 'Télécharge et sélectionne la bonne version de Java automatiquement.','needs_api' => false, 'category' => 'système'],
+];
+
+// ---- Extensions activées pour le launcher sélectionné ----
+$launcherExtensions = [];
+$extensionsAvailable = true;
+if ($selectedId && $selectedId > 0) {
+  try {
+    $eq = $pdo->prepare('SELECT ext_key, enabled, api_url, api_key FROM launcher_extensions WHERE launcher_id = ?');
+    $eq->execute([$selectedId]);
+    foreach ($eq->fetchAll() as $row) {
+      $launcherExtensions[(string)$row['ext_key']] = [
+        'enabled' => (int)($row['enabled'] ?? 0) === 1,
+        'api_url' => (string)($row['api_url'] ?? ''),
+        'api_key' => (string)($row['api_key'] ?? ''),
+      ];
+    }
+  } catch (Throwable $e) {
+    $extensionsAvailable = false;
+  }
+}
+
+// ---- Auth personnalisée du launcher (mode + URLs Bearer) ----
+$launcherAuth = [
+  'mode'        => 'microsoft',
+  'login_url'   => '',
+  'verify_url'  => '',
+  'refresh_url' => '',
+  'api_key'     => '',
+];
+$authAvailable = true;
+if ($selectedId && $selectedId > 0) {
+  try {
+    $aq = $pdo->prepare('SELECT mode, login_url, verify_url, refresh_url, api_key FROM launcher_auth WHERE launcher_id = ? LIMIT 1');
+    $aq->execute([$selectedId]);
+    $row = $aq->fetch();
+    if ($row) {
+      $launcherAuth = [
+        'mode'        => (string)($row['mode'] ?? 'microsoft'),
+        'login_url'   => (string)($row['login_url'] ?? ''),
+        'verify_url'  => (string)($row['verify_url'] ?? ''),
+        'refresh_url' => (string)($row['refresh_url'] ?? ''),
+        'api_key'     => (string)($row['api_key'] ?? ''),
+      ];
+    }
+  } catch (Throwable $e) {
+    $authAvailable = false;
+  }
+}
+
 $csrf = csrf_token();
 
 $success = flash_get('success');
@@ -213,9 +284,12 @@ $error = flash_get('error');
           <a href="#facturation">Facturation</a>
           <a href="#launchers">Launchers</a>
           <a href="#parametres">Paramètres</a>
+          <a href="#extensions">Extensions</a>
+          <a href="#auth">Authentification</a>
           <a href="#versions">Versions</a>
           <a href="#logs">Logs</a>
           <a href="#securite">Anti-abus</a>
+          <a href="#sql">SQL à exécuter</a>
           <a href="dashboard/upload.php">Fichiers</a>
         </nav>
       </aside>
@@ -698,6 +772,225 @@ $error = flash_get('error');
               <?php endif; ?>
             <?php endif; ?>
           </div>
+        </section>
+
+        <section id="extensions" class="section-sm">
+          <h2 class="section-title">Extensions</h2>
+          <p class="section-desc">Active les modules visibles dans ton launcher. Pour les extensions qui se branchent à ton back-end (news, joueurs en ligne, boutique…), renseigne l’URL de ton API et — si besoin — une clé d’accès.</p>
+
+          <div class="card">
+            <?php if ($selected === null): ?>
+              <p class="small" style="margin:0">Sélectionne un launcher pour configurer ses extensions.</p>
+            <?php elseif (!$extensionsAvailable): ?>
+              <p class="small" style="margin:0">La table <code>launcher_extensions</code> n’existe pas encore. Importe <a href="#sql">migrations_v3.sql</a> pour activer cette section.</p>
+            <?php else: ?>
+              <form class="form" action="launcher/update_extensions.php" method="post" aria-label="Configuration extensions">
+                <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
+                <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
+
+                <?php
+                  // Regroupe par catégorie pour un affichage plus lisible.
+                  $catOrder = ['contenu','serveur','social','monétisation','gameplay','système'];
+                  $byCat = [];
+                  foreach ($availableExtensions as $ext) {
+                    $byCat[$ext['category']][] = $ext;
+                  }
+                ?>
+
+                <?php foreach ($catOrder as $cat): ?>
+                  <?php if (empty($byCat[$cat])) continue; ?>
+                  <fieldset class="card" style="margin-top:10px;background:rgba(255,255,255,.02);padding:16px">
+                    <legend class="badge" style="padding:2px 10px"><?php echo e(ucfirst($cat)); ?></legend>
+                    <div style="display:grid;gap:14px;margin-top:6px">
+                      <?php foreach ($byCat[$cat] as $ext):
+                        $state = $launcherExtensions[$ext['key']] ?? ['enabled' => false, 'api_url' => '', 'api_key' => ''];
+                      ?>
+                        <div style="display:grid;gap:10px;padding:12px;border:1px solid var(--border-1);border-radius:12px;background:rgba(255,255,255,.02)">
+                          <label style="display:flex;gap:12px;align-items:flex-start;cursor:pointer">
+                            <input type="checkbox" name="ext[<?php echo e($ext['key']); ?>][enabled]" value="1" <?php echo $state['enabled'] ? 'checked' : ''; ?> />
+                            <span>
+                              <strong style="color:#fff"><?php echo e($ext['name']); ?></strong><br>
+                              <span class="small"><?php echo e($ext['desc']); ?></span>
+                            </span>
+                          </label>
+
+                          <?php if ($ext['needs_api']): ?>
+                            <div class="two-col" style="gap:10px">
+                              <label class="label" style="margin:0">
+                                <span>URL de ton API</span>
+                                <input class="input" type="url" name="ext[<?php echo e($ext['key']); ?>][api_url]" placeholder="https://api.ton-serveur.com/<?php echo e($ext['key']); ?>" value="<?php echo e($state['api_url']); ?>" />
+                              </label>
+                              <label class="label" style="margin:0">
+                                <span>Clé API (optionnel)</span>
+                                <input class="input" type="text" name="ext[<?php echo e($ext['key']); ?>][api_key]" placeholder="Bearer xxxxxx" value="<?php echo e($state['api_key']); ?>" autocomplete="off" />
+                              </label>
+                            </div>
+                            <span class="help">Le launcher appellera <code>GET {URL}</code> avec l’en-tête <code>Authorization: Bearer {clé}</code> si renseignée.</span>
+                          <?php else: ?>
+                            <span class="help">Aucune configuration requise — géré côté Xyno.</span>
+                          <?php endif; ?>
+                        </div>
+                      <?php endforeach; ?>
+                    </div>
+                  </fieldset>
+                <?php endforeach; ?>
+
+                <div class="cta-row" style="margin-top:14px">
+                  <button class="btn btn-primary" type="submit">Enregistrer les extensions</button>
+                </div>
+              </form>
+            <?php endif; ?>
+          </div>
+        </section>
+
+        <section id="auth" class="section-sm">
+          <h2 class="section-title">Authentification</h2>
+          <p class="section-desc">Choisis comment tes joueurs se connectent au launcher : via leur compte Microsoft, via ta propre API Bearer, ou en mode offline (dev seulement).</p>
+
+          <div class="card">
+            <?php if ($selected === null): ?>
+              <p class="small" style="margin:0">Sélectionne un launcher pour configurer son authentification.</p>
+            <?php elseif (!$authAvailable): ?>
+              <p class="small" style="margin:0">La table <code>launcher_auth</code> n’existe pas encore. Importe <a href="#sql">migrations_v3.sql</a> pour activer cette section.</p>
+            <?php else:
+              $authMode = $launcherAuth['mode'] ?: 'microsoft';
+            ?>
+              <form class="form" action="launcher/update_auth.php" method="post" aria-label="Configuration authentification">
+                <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
+                <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
+
+                <fieldset class="card" style="margin-top:6px;background:rgba(255,255,255,.02);padding:16px">
+                  <legend class="small" style="padding:0 8px;color:var(--muted)">Mode</legend>
+                  <div style="display:grid;gap:12px;margin-top:4px">
+                    <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
+                      <input type="radio" name="mode" value="microsoft" <?php echo $authMode === 'microsoft' ? 'checked' : ''; ?> />
+                      <span>
+                        <strong style="color:#fff">Microsoft (recommandé)</strong><br>
+                        <span class="small">OAuth Microsoft standard — compatible comptes premium Minecraft. Aucun paramétrage requis.</span>
+                      </span>
+                    </label>
+
+                    <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
+                      <input type="radio" name="mode" value="custom" <?php echo $authMode === 'custom' ? 'checked' : ''; ?> />
+                      <span>
+                        <strong style="color:#fff">API Bearer personnalisée</strong><br>
+                        <span class="small">Ton serveur gère l’authentification. Le launcher envoie <code>email + password</code> à ton API qui renvoie un token Bearer.</span>
+                      </span>
+                    </label>
+
+                    <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
+                      <input type="radio" name="mode" value="offline" <?php echo $authMode === 'offline' ? 'checked' : ''; ?> />
+                      <span>
+                        <strong style="color:#fff">Offline (dev uniquement)</strong><br>
+                        <span class="small">Pseudo libre côté client, aucune vérification serveur. À ne pas utiliser en production.</span>
+                      </span>
+                    </label>
+                  </div>
+                </fieldset>
+
+                <fieldset class="card" style="margin-top:14px;background:rgba(255,255,255,.02);padding:16px" data-auth-custom>
+                  <legend class="small" style="padding:0 8px;color:var(--muted)">Endpoints de ton API (mode « API Bearer »)</legend>
+
+                  <div class="two-col" style="gap:10px;margin-top:4px">
+                    <label class="label">
+                      <span>URL de login (POST email+password → token)</span>
+                      <input class="input" type="url" name="login_url" placeholder="https://api.ton-serveur.com/auth/login" value="<?php echo e($launcherAuth['login_url']); ?>" />
+                    </label>
+                    <label class="label">
+                      <span>URL de vérification du token (GET, Bearer)</span>
+                      <input class="input" type="url" name="verify_url" placeholder="https://api.ton-serveur.com/auth/me" value="<?php echo e($launcherAuth['verify_url']); ?>" />
+                    </label>
+                  </div>
+
+                  <div class="two-col" style="gap:10px;margin-top:10px">
+                    <label class="label">
+                      <span>URL de refresh du token (optionnel)</span>
+                      <input class="input" type="url" name="refresh_url" placeholder="https://api.ton-serveur.com/auth/refresh" value="<?php echo e($launcherAuth['refresh_url']); ?>" />
+                    </label>
+                    <label class="label">
+                      <span>Clé API partagée (X-Api-Key, optionnel)</span>
+                      <input class="input" type="text" name="api_key" placeholder="clé privée envoyée en header X-Api-Key" value="<?php echo e($launcherAuth['api_key']); ?>" autocomplete="off" />
+                    </label>
+                  </div>
+
+                  <div class="callout" style="margin-top:14px">
+                    <div>
+                      <span class="badge">Contrat attendu</span>
+                      <p class="small" style="margin-top:8px">
+                        <code>POST {login_url}</code> avec <code>{"email":"…","password":"…"}</code> → réponse JSON <code>{"token":"…","uuid":"…","username":"…"}</code>.<br>
+                        <code>GET {verify_url}</code> avec <code>Authorization: Bearer {token}</code> → <code>200 OK</code> si valide.
+                      </p>
+                    </div>
+                  </div>
+                </fieldset>
+
+                <div class="cta-row" style="margin-top:14px">
+                  <button class="btn btn-primary" type="submit">Enregistrer l’authentification</button>
+                </div>
+              </form>
+
+              <script>
+                (function () {
+                  var radios = document.querySelectorAll('input[name="mode"]');
+                  var custom = document.querySelector('[data-auth-custom]');
+                  function refresh() {
+                    var selected = document.querySelector('input[name="mode"]:checked');
+                    if (!custom || !selected) return;
+                    custom.style.opacity = selected.value === 'custom' ? '1' : '.5';
+                    custom.style.pointerEvents = selected.value === 'custom' ? 'auto' : 'none';
+                  }
+                  radios.forEach(function (r) { r.addEventListener('change', refresh); });
+                  refresh();
+                })();
+              </script>
+            <?php endif; ?>
+          </div>
+        </section>
+
+        <section id="sql" class="section-sm">
+          <h2 class="section-title">SQL à exécuter</h2>
+          <p class="section-desc">Quelques fonctionnalités récentes nécessitent de mettre à jour ta base MySQL. Copie le script ci-dessous dans <strong style="color:#fff">phpMyAdmin → Importer</strong> (ou <code>mysql -u user -p xynocms &lt; migrations_v3.sql</code>). Le script est idempotent : tu peux le rejouer sans risque.</p>
+
+          <div class="card">
+            <div class="nav-row" style="align-items:center;margin:0;padding:0;border:0;gap:10px">
+              <div>
+                <span class="badge badge-accent">migrations_v3.sql</span>
+                <p class="small" style="margin-top:6px">Ajoute : <code>subscriptions.status = 'cancelled'</code>, <code>launcher_extensions</code>, <code>launcher_auth</code>, <code>launcher_logs</code>, <code>launcher_downloads_log</code>, <code>launcher_builds_log</code>.</p>
+              </div>
+              <div class="cta-row" style="margin:0">
+                <button class="btn" type="button" onclick="copySqlV3(this)">Copier</button>
+                <a class="btn btn-primary" href="migrations_v3.sql" download>Télécharger</a>
+              </div>
+            </div>
+
+            <pre id="sql-v3" style="margin-top:14px;padding:14px;background:#0b0b14;border:1px solid var(--border-1);border-radius:12px;overflow:auto;max-height:420px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.55;color:#e2e8f0"><?php
+              $sqlPath = __DIR__ . '/../migrations_v3.sql';
+              $sqlBody = is_readable($sqlPath) ? (string)file_get_contents($sqlPath) : "-- Fichier migrations_v3.sql introuvable côté serveur.\n-- Demande-le à Xyno ou télécharge-le depuis le repo.";
+              echo e($sqlBody);
+            ?></pre>
+
+            <p class="small" style="margin:12px 0 0">Après l’import, reviens sur cette page — les sections <a href="#extensions">Extensions</a>, <a href="#auth">Authentification</a> et <a href="#facturation">Résiliation</a> seront débloquées automatiquement.</p>
+          </div>
+
+          <script>
+            function copySqlV3(btn) {
+              var pre = document.getElementById('sql-v3');
+              if (!pre) return;
+              var text = pre.innerText;
+              if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(function () {
+                  var prev = btn.innerText;
+                  btn.innerText = 'Copié ✓';
+                  setTimeout(function () { btn.innerText = prev; }, 1800);
+                });
+              } else {
+                var r = document.createRange(); r.selectNode(pre);
+                var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+                try { document.execCommand('copy'); btn.innerText = 'Copié ✓'; } catch (_) {}
+                s.removeAllRanges();
+              }
+            }
+          </script>
         </section>
       </section>
     </section>
