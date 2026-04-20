@@ -10,7 +10,7 @@ if (!is_post()) {
     redirect('/dashboard.php#auth');
 }
 
-if (!csrf_check($_POST['csrf_token'] ?? '')) {
+if (!csrf_verify($_POST['csrf_token'] ?? '')) {
     flash_set('error', 'Jeton CSRF invalide — réessaie depuis le dashboard.');
     redirect('/dashboard.php#auth');
 }
