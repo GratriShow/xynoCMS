@@ -29,21 +29,21 @@ $allowedKeys = [
     'crash_reporter','analytics','modpack','changelog','ram_slider','java_manager',
 ];
 
-$pdo = db();
-
-// Ownership check
-$check = $pdo->prepare('SELECT id FROM launchers WHERE uuid = ? AND user_id = ? LIMIT 1');
-$check->execute([$launcherUuid, $user['id']]);
-$row = $check->fetch();
-if (!$row) {
-    flash_set('error', 'Accès refusé.');
-    redirect('/dashboard.php#extensions');
-}
-$launcherId = (int)($row['id'] ?? 0);
-
-$posted = (array)($_POST['ext'] ?? []);
-
 try {
+    $pdo = db();
+
+    // Ownership check
+    $check = $pdo->prepare('SELECT id FROM launchers WHERE uuid = ? AND user_id = ? LIMIT 1');
+    $check->execute([$launcherUuid, $user['id']]);
+    $row = $check->fetch();
+    if (!$row) {
+        flash_set('error', 'Accès refusé.');
+        redirect('/dashboard.php#extensions');
+    }
+    $launcherId = (int)($row['id'] ?? 0);
+
+    $posted = (array)($_POST['ext'] ?? []);
+
     $upsert = $pdo->prepare(
         'INSERT INTO launcher_extensions (launcher_id, ext_key, enabled, api_url, api_key, updated_at) '
         . 'VALUES (?, ?, ?, ?, ?, NOW()) '
@@ -67,9 +67,12 @@ try {
     }
 
     flash_set('success', 'Extensions enregistrées.');
-} catch (PDOException $e) {
+} catch (Throwable $e) {
+    $msg = $e->getMessage();
     // Code 42S02 = table inconnue — on oriente vers la migration.
-    if (str_contains($e->getMessage(), "launcher_extensions")) {
+    if (strpos($msg, 'launcher_extensions') !== false
+     || strpos($msg, "doesn't exist") !== false
+     || strpos($msg, 'does not exist') !== false) {
         flash_set(
             'error',
             "Impossible d'enregistrer les extensions : la table `launcher_extensions` n'existe pas. "
@@ -77,7 +80,7 @@ try {
         );
         redirect('/dashboard.php#sql');
     }
-    flash_set('error', 'Erreur base de données : ' . $e->getMessage());
+    flash_set('error', 'Erreur base de données : ' . $msg);
 }
 
 redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '#extensions');

@@ -47,19 +47,19 @@ if ($mode === 'custom' && ($loginUrl === '' || $verifyUrl === '')) {
     redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '#auth');
 }
 
-$pdo = db();
-
-// Ownership check
-$check = $pdo->prepare('SELECT id FROM launchers WHERE uuid = ? AND user_id = ? LIMIT 1');
-$check->execute([$launcherUuid, $user['id']]);
-$row = $check->fetch();
-if (!$row) {
-    flash_set('error', 'Accès refusé.');
-    redirect('/dashboard.php#auth');
-}
-$launcherId = (int)($row['id'] ?? 0);
-
 try {
+    $pdo = db();
+
+    // Ownership check
+    $check = $pdo->prepare('SELECT id FROM launchers WHERE uuid = ? AND user_id = ? LIMIT 1');
+    $check->execute([$launcherUuid, $user['id']]);
+    $row = $check->fetch();
+    if (!$row) {
+        flash_set('error', 'Accès refusé.');
+        redirect('/dashboard.php#auth');
+    }
+    $launcherId = (int)($row['id'] ?? 0);
+
     $upsert = $pdo->prepare(
         'INSERT INTO launcher_auth (launcher_id, mode, login_url, verify_url, refresh_url, api_key, updated_at) '
       . 'VALUES (?, ?, ?, ?, ?, ?, NOW()) '
@@ -78,8 +78,11 @@ try {
            : ($mode === 'custom'   ? 'API Bearer personnalisée'
            :                          'Offline');
     flash_set('success', 'Authentification enregistrée : ' . $label . '.');
-} catch (PDOException $e) {
-    if (str_contains($e->getMessage(), 'launcher_auth')) {
+} catch (Throwable $e) {
+    $msg = $e->getMessage();
+    if (strpos($msg, 'launcher_auth') !== false
+     || strpos($msg, "doesn't exist") !== false
+     || strpos($msg, 'does not exist') !== false) {
         flash_set(
             'error',
             "Impossible d'enregistrer : la table `launcher_auth` n'existe pas. "
@@ -87,7 +90,7 @@ try {
         );
         redirect('/dashboard.php#sql');
     }
-    flash_set('error', 'Erreur base de données : ' . $e->getMessage());
+    flash_set('error', 'Erreur base de données : ' . $msg);
 }
 
 redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '#auth');

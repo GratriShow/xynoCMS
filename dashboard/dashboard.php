@@ -784,7 +784,7 @@ $error = flash_get('error');
             <?php elseif (!$extensionsAvailable): ?>
               <p class="small" style="margin:0">La table <code>launcher_extensions</code> n’existe pas encore. Importe <a href="#sql">migrations_v3.sql</a> pour activer cette section.</p>
             <?php else: ?>
-              <form class="form" action="launcher/update_extensions.php" method="post" aria-label="Configuration extensions">
+              <form class="form" action="update_extensions.php" method="post" aria-label="Configuration extensions">
                 <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
                 <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
 
@@ -855,7 +855,7 @@ $error = flash_get('error');
             <?php else:
               $authMode = $launcherAuth['mode'] ?: 'microsoft';
             ?>
-              <form class="form" action="launcher/update_auth.php" method="post" aria-label="Configuration authentification">
+              <form class="form" action="update_auth.php" method="post" aria-label="Configuration authentification">
                 <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
                 <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
 
