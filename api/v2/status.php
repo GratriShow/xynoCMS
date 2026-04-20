@@ -35,6 +35,13 @@ try {
     $news = isset($mods['news']) ? api_get_launcher_news($launcherId, 8) : [];
     $config = api_get_launcher_config($launcherId);
 
+    // Feature-flagged extras introduced by migrations_v3. Helpers degrade
+    // gracefully to safe defaults if the tables don't exist yet, so older
+    // clients and older databases keep working.
+    $branding   = api_get_launcher_branding($launcher);
+    $extensions = api_get_launcher_extensions($launcherId, false); // client payload, NO api_key leak
+    $auth       = api_get_launcher_auth($launcherId, false);       // client payload, NO api_key leak
+
     api_log($endpoint, $ip, (string)$launcher['uuid'], 200, 'ok');
     api_json([
         'ok' => true,
@@ -49,6 +56,9 @@ try {
             'theme' => (string)($launcher['theme'] ?? ''),
             'modules' => $modules,
         ],
+        'branding'   => $branding,
+        'extensions' => $extensions,
+        'auth'       => $auth,
     ], 200);
 } catch (Throwable $e) {
     api_log($endpoint, $ip, null, 500, 'server_error');

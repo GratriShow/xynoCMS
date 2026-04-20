@@ -328,6 +328,191 @@ function api_get_launcher_config(int $launcherId): array
 }
 
 // -----------------------------
+// Branding (logo, theme color) for the launcher
+// -----------------------------
+
+/**
+ * Returns branding info the Electron client can consume directly.
+ *  - logo_url   : absolute URL to the launcher's logo (public upload path or
+ *                 the fallback value stored in launchers.logo_url). Empty if none.
+ *  - primary    : CSS color derived from the theme field.
+ *  - website_url / discord_url : optional values from launcher_configs.
+ */
+function api_get_launcher_branding(array $launcher): array
+{
+    $launcherId = (int)($launcher['id'] ?? 0);
+    $theme      = strtolower(trim((string)($launcher['theme'] ?? '')));
+
+    // Map common theme names to primary colors. Falls through to Violet Neon.
+    $colors = [
+        'violet neon' => '#8b5cf6',
+        'cosmic'      => '#22d3ee',
+        'default'     => '#8b5cf6',
+        'aurora'      => '#38bdf8',
+        'ember'       => '#f97316',
+        'forest'      => '#22c55e',
+    ];
+    $primary = $colors[$theme] ?? '#8b5cf6';
+
+    // Logo: first try /uploads/launchers/{id}/logo.{png,ico,jpg,webp}, then DB fallback.
+    $logoUrl = '';
+    $uploadsDir = __DIR__ . '/../uploads/launchers/' . $launcherId;
+    foreach (['png', 'ico', 'jpg', 'webp'] as $ext) {
+        if (is_file($uploadsDir . '/logo.' . $ext)) {
+            $logoUrl = api_public_url('/uploads/launchers/' . $launcherId . '/logo.' . $ext);
+            break;
+        }
+    }
+    if ($logoUrl === '') {
+        try {
+            $pdo = db();
+            $stmt = $pdo->prepare('SELECT logo_url FROM launchers WHERE id = ? LIMIT 1');
+            $stmt->execute([$launcherId]);
+            $row = $stmt->fetch();
+            $fallback = trim((string)($row['logo_url'] ?? ''));
+            if ($fallback !== '' && preg_match('#^https?://#i', $fallback)) {
+                $logoUrl = $fallback;
+            }
+        } catch (Throwable $e) {
+            // logo_url column may not exist pre-v3 migration — ignore.
+        }
+    }
+
+    $cfg = api_get_launcher_config($launcherId);
+
+    return [
+        'logo_url'    => $logoUrl,
+        'primary'     => $primary,
+        'website_url' => (string)($cfg['website_url'] ?? ''),
+        'discord_url' => (string)($cfg['discord_url'] ?? ''),
+    ];
+}
+
+// -----------------------------
+// Extensions (per-launcher toggles + per-extension client API)
+// -----------------------------
+
+/**
+ * Canonical catalog mirroring $availableExtensions in dashboard.php.
+ */
+function api_extensions_catalog(): array
+{
+    return [
+        ['key' => 'news',           'name' => 'News & actualités',       'needs_api' => true,  'category' => 'contenu'],
+        ['key' => 'player_count',   'name' => 'Compteur de joueurs',     'needs_api' => true,  'category' => 'serveur'],
+        ['key' => 'server_status',  'name' => 'Statut serveur',          'needs_api' => true,  'category' => 'serveur'],
+        ['key' => 'discord',        'name' => 'Discord widget',          'needs_api' => true,  'category' => 'social'],
+        ['key' => 'leaderboard',    'name' => 'Classement',              'needs_api' => true,  'category' => 'social'],
+        ['key' => 'shop',           'name' => 'Boutique',                'needs_api' => true,  'category' => 'monétisation'],
+        ['key' => 'voting',         'name' => 'Votes serveur',           'needs_api' => true,  'category' => 'monétisation'],
+        ['key' => 'quests',         'name' => 'Quêtes',                  'needs_api' => true,  'category' => 'contenu'],
+        ['key' => 'events',         'name' => 'Events à venir',          'needs_api' => true,  'category' => 'contenu'],
+        ['key' => 'skin_api',       'name' => 'Skins custom',            'needs_api' => true,  'category' => 'gameplay'],
+        ['key' => 'capes',          'name' => 'Capes',                   'needs_api' => true,  'category' => 'gameplay'],
+        ['key' => 'social_feed',    'name' => 'Feed YouTube / Twitch',   'needs_api' => true,  'category' => 'social'],
+        ['key' => 'crash_reporter', 'name' => 'Rapport de crashs',       'needs_api' => false, 'category' => 'système'],
+        ['key' => 'analytics',      'name' => 'Analytics',               'needs_api' => false, 'category' => 'système'],
+        ['key' => 'modpack',        'name' => 'Gestion modpacks',        'needs_api' => false, 'category' => 'gameplay'],
+        ['key' => 'changelog',      'name' => 'Changelog',               'needs_api' => false, 'category' => 'contenu'],
+        ['key' => 'ram_slider',     'name' => 'Slider RAM avancé',       'needs_api' => false, 'category' => 'gameplay'],
+        ['key' => 'java_manager',   'name' => 'Manager Java',            'needs_api' => false, 'category' => 'système'],
+    ];
+}
+
+/**
+ * Returns the per-launcher extension config.
+ *  - $includeKeys = false (default, for client payloads) → drops api_key.
+ *  - $includeKeys = true  (server-side, for proxy use)   → keeps api_key.
+ *
+ * Output shape (ordered by catalog):
+ *  [{ key, name, category, enabled, needs_api, api_url?, api_key? }, …]
+ */
+function api_get_launcher_extensions(int $launcherId, bool $includeKeys = false): array
+{
+    $rows = [];
+    try {
+        $pdo = db();
+        $stmt = $pdo->prepare('SELECT ext_key, enabled, api_url, api_key FROM launcher_extensions WHERE launcher_id = ?');
+        $stmt->execute([$launcherId]);
+        foreach ($stmt->fetchAll() as $r) {
+            $rows[(string)$r['ext_key']] = [
+                'enabled' => (int)($r['enabled'] ?? 0) === 1,
+                'api_url' => (string)($r['api_url'] ?? ''),
+                'api_key' => (string)($r['api_key'] ?? ''),
+            ];
+        }
+    } catch (Throwable $e) {
+        // Table absent (pre-v3) → everything disabled, but the catalog still renders.
+    }
+
+    $out = [];
+    foreach (api_extensions_catalog() as $ext) {
+        $state = $rows[$ext['key']] ?? ['enabled' => false, 'api_url' => '', 'api_key' => ''];
+        $item = [
+            'key'       => $ext['key'],
+            'name'      => $ext['name'],
+            'category'  => $ext['category'],
+            'needs_api' => (bool)$ext['needs_api'],
+            'enabled'   => (bool)$state['enabled'],
+        ];
+        if ($ext['needs_api']) {
+            $item['api_url'] = $state['api_url'];
+            if ($includeKeys) {
+                $item['api_key'] = $state['api_key'];
+            }
+        }
+        $out[] = $item;
+    }
+    return $out;
+}
+
+// -----------------------------
+// Auth (Microsoft / custom Bearer / offline)
+// -----------------------------
+
+/**
+ * Per-launcher auth config.
+ *  - $includeKeys=false (client payload) drops api_key.
+ *  - $includeKeys=true  (server proxy)   keeps api_key.
+ */
+function api_get_launcher_auth(int $launcherId, bool $includeKeys = false): array
+{
+    $out = [
+        'mode'        => 'microsoft',
+        'login_url'   => '',
+        'verify_url'  => '',
+        'refresh_url' => '',
+    ];
+    if ($includeKeys) {
+        $out['api_key'] = '';
+    }
+
+    try {
+        $pdo = db();
+        $stmt = $pdo->prepare('SELECT mode, login_url, verify_url, refresh_url, api_key FROM launcher_auth WHERE launcher_id = ? LIMIT 1');
+        $stmt->execute([$launcherId]);
+        $row = $stmt->fetch();
+        if ($row) {
+            $mode = strtolower((string)($row['mode'] ?? 'microsoft'));
+            if (!in_array($mode, ['microsoft', 'custom', 'offline'], true)) {
+                $mode = 'microsoft';
+            }
+            $out['mode']        = $mode;
+            $out['login_url']   = (string)($row['login_url']   ?? '');
+            $out['verify_url']  = (string)($row['verify_url']  ?? '');
+            $out['refresh_url'] = (string)($row['refresh_url'] ?? '');
+            if ($includeKeys) {
+                $out['api_key'] = (string)($row['api_key'] ?? '');
+            }
+        }
+    } catch (Throwable $e) {
+        // Pre-v3 schema — silent fallback.
+    }
+
+    return $out;
+}
+
+// -----------------------------
 // v2 signed requests + JWT
 // -----------------------------
 

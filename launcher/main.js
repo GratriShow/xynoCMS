@@ -35,6 +35,57 @@ function requireEnv(name) {
   return value;
 }
 
+// ---------------------------------------------------------------------------
+// Xyno proxy helpers (extensions + custom auth)
+//
+// These endpoints (/api/launcher_ext.php, /api/launcher_auth.php) use plain
+// uuid+key auth on purpose: they're thin proxies whose only job is to hide the
+// upstream api_key from the Electron process. The v2 HMAC machinery is not
+// needed here — Xyno performs the sensitive network calls server-side.
+// ---------------------------------------------------------------------------
+
+function buildProxyUrl(apiBaseUrl, pathname) {
+  const base = new URL(apiBaseUrl);
+  const p = pathname.startsWith('/') ? pathname : `/${pathname}`;
+  return new URL(p, base).toString();
+}
+
+async function proxyRequest(urlString, { method = 'GET', bodyObj = null, timeoutMs = 10_000 } = {}) {
+  const { request } = require('node:https');
+  const { request: httpRequest } = require('node:http');
+  const url = new URL(urlString);
+  const body = bodyObj ? JSON.stringify(bodyObj) : '';
+  const requestFn = url.protocol === 'http:' ? httpRequest : request;
+
+  return await new Promise((resolve, reject) => {
+    const req = requestFn(
+      url,
+      {
+        method,
+        headers: {
+          Accept: 'application/json',
+          ...(body ? { 'Content-Type': 'application/json; charset=utf-8' } : {}),
+        },
+        timeout: timeoutMs,
+      },
+      (res) => {
+        const chunks = [];
+        res.on('data', (d) => chunks.push(d));
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
+          let json = null;
+          try { json = JSON.parse(text); } catch { json = null; }
+          resolve({ statusCode: res.statusCode || 0, json, text });
+        });
+      }
+    );
+    req.on('timeout', () => { const e = new Error('Request timeout'); e.code = 'ETIMEDOUT'; req.destroy(e); });
+    req.on('error', (err) => reject(err));
+    if (body) req.write(body);
+    req.end();
+  });
+}
+
 function getRenewUrl(apiBaseUrl) {
   const fromEnv = (process.env.RENEW_URL || '').trim();
   if (fromEnv) return fromEnv;
@@ -66,11 +117,18 @@ async function checkLicense(apiClient, { pub } = {}) {
     const name = launcher && typeof launcher.name === 'string' ? launcher.name : '';
     const news = Array.isArray(res.news) ? res.news : [];
     const config = res.config && typeof res.config === 'object' ? res.config : {};
-    if (name || news.length || Object.keys(config).length) {
+    const branding = res.branding && typeof res.branding === 'object' ? res.branding : null;
+    const extensions = Array.isArray(res.extensions) ? res.extensions : null;
+    const auth = res.auth && typeof res.auth === 'object' ? res.auth : null;
+    const hasExtras = (branding && Object.keys(branding).length) || (extensions && extensions.length) || (auth && auth.mode);
+    if (name || news.length || Object.keys(config).length || hasExtras) {
       pub.info({
         name,
         news,
         config,
+        branding,
+        extensions,
+        auth,
       });
     }
   }
@@ -567,6 +625,77 @@ app.whenReady().then(async () => {
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return { ok: false };
     await shell.openExternal(parsed.toString());
     return { ok: true };
+  });
+
+  // Extension proxy: GET /api/launcher_ext.php?uuid=…&key=…&ext=<key>
+  // Returns { ok, data?: {key, source, data}, error? }. Never exposes the
+  // upstream api_key because the proxy server-side is the only one who has it.
+  ipcMain.handle('launcher:fetchExtension', async (_event, rawKey) => {
+    try {
+      const key = String(rawKey || '').trim().toLowerCase();
+      if (!key || !/^[a-z0-9_]{1,64}$/.test(key)) {
+        return { ok: false, error: 'invalid_ext_key' };
+      }
+      const uuid = requireEnv('LAUNCHER_UUID');
+      const apiBaseUrl = requireEnv('API_BASE_URL');
+      const apiKey = requireEnv('LAUNCHER_KEY');
+
+      const url = new URL(buildProxyUrl(apiBaseUrl, '/api/launcher_ext.php'));
+      url.searchParams.set('uuid', uuid);
+      url.searchParams.set('key', apiKey);
+      url.searchParams.set('ext', key);
+
+      const res = await proxyRequest(url.toString(), { method: 'GET', timeoutMs: 8_000 });
+      if (res.statusCode === 200 && res.json) {
+        return { ok: true, data: res.json };
+      }
+      const msg = res.json && res.json.error ? String(res.json.error) : `HTTP ${res.statusCode}`;
+      return { ok: false, error: msg };
+    } catch (err) {
+      return { ok: false, error: err && err.message ? String(err.message) : 'network_error' };
+    }
+  });
+
+  // Custom Bearer auth: POST /api/launcher_auth.php with { uuid, key, action, … }
+  // Xyno proxies to the tenant's login_url / verify_url server-side so the
+  // upstream api_key never leaves our backend.
+  async function callAuthProxy(bodyObj) {
+    const uuid = requireEnv('LAUNCHER_UUID');
+    const apiBaseUrl = requireEnv('API_BASE_URL');
+    const apiKey = requireEnv('LAUNCHER_KEY');
+    const url = buildProxyUrl(apiBaseUrl, '/api/launcher_auth.php');
+    const res = await proxyRequest(url, {
+      method: 'POST',
+      bodyObj: { uuid, key: apiKey, ...bodyObj },
+      timeoutMs: 12_000,
+    });
+    if (res.statusCode >= 200 && res.statusCode < 300 && res.json) {
+      return { ok: true, data: res.json };
+    }
+    const msg = res.json && res.json.error ? String(res.json.error) : `HTTP ${res.statusCode}`;
+    const upstream = res.json && typeof res.json.upstream_status === 'number' ? res.json.upstream_status : 0;
+    return { ok: false, error: msg, statusCode: res.statusCode, upstream_status: upstream };
+  }
+
+  ipcMain.handle('auth:loginCustom', async (_event, payload) => {
+    try {
+      const email = payload && typeof payload.email === 'string' ? payload.email.trim() : '';
+      const password = payload && typeof payload.password === 'string' ? payload.password : '';
+      if (!email || !password) return { ok: false, error: 'missing_credentials' };
+      return await callAuthProxy({ action: 'login', email, password });
+    } catch (err) {
+      return { ok: false, error: err && err.message ? String(err.message) : 'network_error' };
+    }
+  });
+
+  ipcMain.handle('auth:verifyCustom', async (_event, payload) => {
+    try {
+      const token = payload && typeof payload.token === 'string' ? payload.token.trim() : '';
+      if (!token) return { ok: false, error: 'missing_token' };
+      return await callAuthProxy({ action: 'verify', token });
+    } catch (err) {
+      return { ok: false, error: err && err.message ? String(err.message) : 'network_error' };
+    }
   });
 
   ipcMain.handle('settings:get', async () => {

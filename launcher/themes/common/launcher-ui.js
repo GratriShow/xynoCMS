@@ -63,11 +63,23 @@
     }
 
     const settingsApi = window.launcherAPI && window.launcherAPI.settings ? window.launcherAPI.settings : null;
+    const fetchExtension =
+      window.launcherAPI && typeof window.launcherAPI.fetchExtension === 'function'
+        ? window.launcherAPI.fetchExtension
+        : window.launcher && typeof window.launcher.fetchExtension === 'function'
+        ? window.launcher.fetchExtension
+        : null;
+    const customAuthApi =
+      window.launcherAPI && window.launcherAPI.auth ? window.launcherAPI.auth : window.auth || null;
 
     const launcherNameEl = getId('launcherName');
+    const launcherLogoEl = getId('launcherLogo');
 
     const newsBoxEl = getId('newsBox');
     const newsItemsEl = getId('newsItems');
+
+    const extPanelEl = getId('extPanel');
+    const extItemsEl = getId('extItems');
 
     const screens = {
       INIT: getId('screen-init'),
@@ -77,7 +89,14 @@
       BLOCKED: getId('screen-blocked'),
       SETTINGS: getId('screen-settings'),
       ERROR: getId('screen-error'),
+      AUTH_CUSTOM: getId('screen-auth-custom'),
     };
+
+    const authCustomFormEl = getId('authCustomForm');
+    const authCustomEmailEl = getId('authCustomEmail');
+    const authCustomPasswordEl = getId('authCustomPassword');
+    const authCustomErrorEl = getId('authCustomError');
+    const authCustomSubmitEl = getId('authCustomSubmit');
 
     const initHintEl = getId('initHint');
 
@@ -123,6 +142,186 @@
     function setLauncherName(name) {
       const safe = String(name || '').trim();
       if (launcherNameEl) launcherNameEl.textContent = safe || 'Launcher';
+    }
+
+    // --- Branding (logo + primary color) ---------------------------------
+    const SAFE_HEX = /^#[0-9a-fA-F]{3,8}$/;
+    function applyBranding(branding) {
+      if (!branding || typeof branding !== 'object') return;
+
+      const logoUrl = typeof branding.logo_url === 'string' ? branding.logo_url.trim() : '';
+      if (launcherLogoEl) {
+        if (logoUrl && (/^https?:\/\//i.test(logoUrl) || logoUrl.startsWith('/'))) {
+          launcherLogoEl.src = logoUrl;
+          launcherLogoEl.alt = launcherNameEl ? launcherNameEl.textContent : 'Logo';
+          launcherLogoEl.style.display = 'block';
+        } else {
+          launcherLogoEl.removeAttribute('src');
+          launcherLogoEl.style.display = 'none';
+        }
+      }
+
+      const primary = typeof branding.primary === 'string' ? branding.primary.trim() : '';
+      if (primary && SAFE_HEX.test(primary)) {
+        try {
+          document.documentElement.style.setProperty('--primary', primary);
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    // --- Extensions ------------------------------------------------------
+    /** @type {Array<{key:string,name:string,enabled?:boolean,needs_api?:boolean,category?:string}>} */
+    let lastExtensions = [];
+    let extRefreshTimer = null;
+
+    function formatExtValue(key, data) {
+      if (!data || typeof data !== 'object') return '';
+      // Built-in payloads have well-known shapes — format them for readability.
+      switch (key) {
+        case 'changelog': {
+          const v = data.version ? String(data.version) : '';
+          return v ? `v${v}` : '';
+        }
+        case 'modpack': {
+          const loader = data.loader ? String(data.loader) : '';
+          const mc = data.mc_version ? String(data.mc_version) : '';
+          return loader || mc ? `${loader}${mc ? ' • MC ' + mc : ''}` : '';
+        }
+        case 'ram_slider': {
+          const min = Number.isFinite(data.min) ? data.min : null;
+          const max = Number.isFinite(data.max) ? data.max : null;
+          if (min === null || max === null) return '';
+          return `${min}–${max} ${data.unit || 'Go'}`;
+        }
+        case 'java_manager':
+          return data.recommended ? `Java ${data.recommended}` : '';
+        case 'crash_reporter':
+          return data.enabled ? 'actif' : 'désactivé';
+        case 'analytics':
+          return data.enabled ? 'actif' : 'désactivé';
+        default: {
+          // For upstream extensions: pick a common "headline" field if present.
+          const pick = ['title', 'message', 'status', 'count', 'total', 'online', 'players', 'value'];
+          for (const k of pick) {
+            if (data[k] !== undefined && data[k] !== null && typeof data[k] !== 'object') {
+              return String(data[k]).slice(0, 80);
+            }
+          }
+          return '';
+        }
+      }
+    }
+
+    function renderExtensionItem(ext, value) {
+      const item = document.createElement('div');
+      item.className = 'ext-item';
+
+      const name = document.createElement('span');
+      name.className = 'ext-name';
+      name.textContent = String(ext.name || ext.key || '');
+      item.appendChild(name);
+
+      const val = document.createElement('span');
+      val.className = 'ext-value muted';
+      val.textContent = value || '…';
+      item.appendChild(val);
+
+      return item;
+    }
+
+    function setExtensions(extensions) {
+      if (!extPanelEl || !extItemsEl) return;
+      const enabled = Array.isArray(extensions)
+        ? extensions.filter((e) => e && e.key && e.enabled !== false && e.enabled !== 0)
+        : [];
+      lastExtensions = enabled;
+
+      extItemsEl.textContent = '';
+
+      if (!enabled.length) {
+        extPanelEl.style.display = 'none';
+        return;
+      }
+
+      extPanelEl.style.display = 'block';
+      const valueEls = new Map();
+
+      for (const ext of enabled) {
+        const el = renderExtensionItem(ext, '');
+        extItemsEl.appendChild(el);
+        valueEls.set(ext.key, el.querySelector('.ext-value'));
+      }
+
+      if (!fetchExtension) return;
+
+      // Kick off one fetch per enabled extension; respect 30s server cache.
+      for (const ext of enabled) {
+        (async () => {
+          try {
+            const res = await fetchExtension(ext.key);
+            const payload = res && res.ok && res.data && res.data.data ? res.data.data : null;
+            const text = formatExtValue(ext.key, payload);
+            const cell = valueEls.get(ext.key);
+            if (cell) cell.textContent = text || '';
+          } catch {
+            const cell = valueEls.get(ext.key);
+            if (cell) cell.textContent = '';
+          }
+        })();
+      }
+
+      // Light background refresh every 45s so news/player counts stay fresh.
+      if (extRefreshTimer) clearInterval(extRefreshTimer);
+      extRefreshTimer = setInterval(() => {
+        if (!fetchExtension) return;
+        for (const ext of lastExtensions) {
+          (async () => {
+            try {
+              const res = await fetchExtension(ext.key);
+              const payload = res && res.ok && res.data && res.data.data ? res.data.data : null;
+              const text = formatExtValue(ext.key, payload);
+              const cell = valueEls.get(ext.key);
+              if (cell) cell.textContent = text || '';
+            } catch {
+              // ignore
+            }
+          })();
+        }
+      }, 45_000);
+    }
+
+    // --- Auth mode (microsoft / custom / offline) ------------------------
+    /** @type {'microsoft'|'custom'|'offline'} */
+    let authMode = 'microsoft';
+
+    function applyAuth(auth) {
+      if (!auth || typeof auth !== 'object') return;
+      const mode = typeof auth.mode === 'string' ? auth.mode.toLowerCase() : '';
+      if (mode === 'custom' || mode === 'offline' || mode === 'microsoft') {
+        authMode = mode;
+      }
+      if (!continueBtn) return;
+      if (authMode === 'custom') {
+        continueBtn.textContent = session && session.username ? 'Continuer' : 'Se connecter';
+      } else if (authMode === 'offline') {
+        continueBtn.textContent = 'Jouer (hors-ligne)';
+      } else {
+        continueBtn.textContent = session && session.username ? 'Continuer' : 'Se connecter avec Microsoft';
+      }
+    }
+
+    function setAuthCustomError(msg) {
+      if (!authCustomErrorEl) return;
+      const s = String(msg || '').trim();
+      if (!s) {
+        authCustomErrorEl.style.display = 'none';
+        authCustomErrorEl.textContent = '';
+        return;
+      }
+      authCustomErrorEl.style.display = 'block';
+      authCustomErrorEl.textContent = s;
     }
 
     function normalizeNewsItem(item) {
@@ -177,6 +376,7 @@
       if (state === 'BLOCKED') return 'BLOCKED';
       if (state === 'SETTINGS') return 'SETTINGS';
       if (state === 'ERROR') return 'ERROR';
+      if (state === 'AUTH_CUSTOM') return 'AUTH_CUSTOM';
       return 'INIT';
     }
 
@@ -457,7 +657,13 @@
         setAuthHint(`Connecté : ${session.username}`);
         return;
       }
-      continueBtn.textContent = 'Se connecter avec Microsoft';
+      if (authMode === 'custom') {
+        continueBtn.textContent = 'Se connecter';
+      } else if (authMode === 'offline') {
+        continueBtn.textContent = 'Jouer (hors-ligne)';
+      } else {
+        continueBtn.textContent = 'Se connecter avec Microsoft';
+      }
       setAuthHint('');
     }
 
@@ -480,6 +686,22 @@
 
           try {
             if (!session) {
+              if (authMode === 'custom') {
+                // Route to the custom-auth screen instead of Microsoft flow.
+                setAuthCustomError('');
+                setActiveScreen('AUTH_CUSTOM');
+                if (authCustomEmailEl) {
+                  try { authCustomEmailEl.focus(); } catch { /* ignore */ }
+                }
+                return;
+              }
+              if (authMode === 'offline') {
+                // Offline mode: no login needed, go straight to play.
+                setActiveScreen('INIT');
+                setInitHint('Lancement de Minecraft…');
+                await api.play();
+                return;
+              }
               setActiveScreen('INIT');
               setInitHint('Connexion Microsoft…');
               const res = await api.login({ interactive: true });
@@ -502,6 +724,55 @@
             showError(msg);
           } finally {
             if (!isBlocked) continueBtn.disabled = false;
+          }
+        })();
+      });
+    }
+
+    // Custom-auth form submission (only active when auth.mode === 'custom').
+    if (authCustomFormEl) {
+      authCustomFormEl.addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        (async () => {
+          if (authCustomSubmitEl && authCustomSubmitEl.disabled) return;
+          if (authCustomSubmitEl) authCustomSubmitEl.disabled = true;
+          setAuthCustomError('');
+
+          const email = authCustomEmailEl ? String(authCustomEmailEl.value || '').trim() : '';
+          const password = authCustomPasswordEl ? String(authCustomPasswordEl.value || '') : '';
+
+          if (!email || !password) {
+            setAuthCustomError('Email et mot de passe requis.');
+            if (authCustomSubmitEl) authCustomSubmitEl.disabled = false;
+            return;
+          }
+
+          try {
+            if (!customAuthApi || typeof customAuthApi.loginCustom !== 'function') {
+              throw new Error('API auth indisponible (preload obsolète).');
+            }
+            const res = await customAuthApi.loginCustom(email, password);
+            if (!res || !res.ok) {
+              const err = res && res.error ? String(res.error) : 'Authentification échouée.';
+              throw new Error(err === 'Invalid credentials' ? 'Identifiants invalides.' : err);
+            }
+            // Build a synthetic local session so the rest of the UI behaves.
+            const upstream = res.data && res.data.data ? res.data.data : {};
+            const username = typeof upstream.username === 'string' ? upstream.username : email;
+            session = {
+              type: 'custom',
+              username,
+              uuid: typeof upstream.uuid === 'string' ? upstream.uuid : '',
+              access_token: typeof upstream.token === 'string' ? upstream.token : '',
+            };
+            if (authCustomPasswordEl) authCustomPasswordEl.value = '';
+            setActiveScreen('READY');
+            setContinueLabel();
+          } catch (e) {
+            const msg = e && e.message ? e.message : String(e || 'Erreur inconnue.');
+            setAuthCustomError(msg);
+          } finally {
+            if (authCustomSubmitEl) authCustomSubmitEl.disabled = false;
           }
         })();
       });
@@ -576,8 +847,12 @@
     // Subscribe to backend events
     api.progression({
       onInfo: (info) => {
-        if (info && info.name) setLauncherName(info.name);
-        if (info && info.news) setNews(info.news);
+        if (!info) return;
+        if (info.name) setLauncherName(info.name);
+        if (info.news) setNews(info.news);
+        if (info.branding) applyBranding(info.branding);
+        if (info.extensions) setExtensions(info.extensions);
+        if (info.auth) applyAuth(info.auth);
       },
       onUx: (payload) => {
         if (!payload) return;

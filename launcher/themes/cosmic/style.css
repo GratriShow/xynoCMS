@@ -1,5 +1,14 @@
 :root {
   color-scheme: dark;
+  --primary: #22d3ee; /* overridden at runtime from branding.primary */
+}
+
+.brand-logo {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  border-radius: 6px;
+  display: none; /* JS toggles to block once a src is set */
 }
 
 body {
@@ -219,4 +228,76 @@ input[type='range'] {
   .spinner {
     animation: none;
   }
+}
+
+/* --- Primary color accents (driven by branding.primary) --- */
+button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+progress::-webkit-progress-value {
+  background-color: var(--primary);
+}
+
+progress::-moz-progress-bar {
+  background-color: var(--primary);
+}
+
+/* --- Extensions panel (shown on READY screen when extensions.length > 0) --- */
+.ext-panel {
+  margin-top: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  padding: 8px 10px;
+  max-height: 86px;
+  overflow: auto;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.ext-items {
+  display: grid;
+  gap: 6px;
+}
+
+.ext-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 12px;
+}
+
+.ext-item .ext-name {
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.ext-item .ext-value {
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Custom auth screen --- */
+#screen-auth-custom input[type='email'],
+#screen-auth-custom input[type='password'] {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+#authCustomError {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 112, 112, 0.5);
+  border-radius: 12px;
+  color: rgba(255, 220, 220, 0.95);
+  background: rgba(255, 80, 80, 0.08);
 }

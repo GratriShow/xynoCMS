@@ -116,14 +116,18 @@ try {
     $config = api_get_launcher_config($launcherId);
 
     $resp = [
-        'status' => 'active',
-        'name' => (string)$launcher['name'],
-        'version' => (string)$launcher['version'],
-        'loader' => (string)$launcher['loader'],
-        'theme' => (string)$launcher['theme'],
-        'modules' => $modules,
-        'config' => $config,
-        'news' => $news,
+        'status'     => 'active',
+        'name'       => (string)$launcher['name'],
+        'version'    => (string)$launcher['version'],
+        'loader'     => (string)$launcher['loader'],
+        'theme'      => (string)$launcher['theme'],
+        'modules'    => $modules,
+        'config'     => $config,
+        'news'       => $news,
+        // Feature-flagged extras introduced by migrations_v3 — safe defaults if tables absent.
+        'branding'   => api_get_launcher_branding($launcher),
+        'extensions' => api_get_launcher_extensions($launcherId, false), // client payload, NO api_key leak
+        'auth'       => api_get_launcher_auth($launcherId, false),       // client payload, NO api_key leak
     ];
 
     api_log($endpoint, $ip, $uuid, 200, 'ok');

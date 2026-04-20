@@ -8,6 +8,7 @@
   </head>
   <body class="theme-cosmic">
     <header class="topbar">
+      <img id="launcherLogo" class="brand-logo" alt="" />
       <h1 id="launcherName">Launcher</h1>
       <div class="badge">COSMIC</div>
     </header>
@@ -56,6 +57,27 @@
           </div>
           <div id="newsItems" class="news-items" role="list"></div>
         </section>
+
+        <aside id="extPanel" class="ext-panel" aria-label="Extensions" style="display:none">
+          <div id="extItems" class="ext-items"></div>
+        </aside>
+      </section>
+
+      <section id="screen-auth-custom" class="screen" aria-label="Connexion">
+        <h2>Connexion</h2>
+        <p class="lead" id="authCustomLead">Connecte-toi à ton compte</p>
+        <form id="authCustomForm" novalidate>
+          <div class="row">
+            <input id="authCustomEmail" type="email" autocomplete="username" placeholder="Email" required />
+          </div>
+          <div class="row">
+            <input id="authCustomPassword" type="password" autocomplete="current-password" placeholder="Mot de passe" required />
+          </div>
+          <div class="row" id="authCustomError" style="white-space: pre-wrap; display:none"></div>
+          <div class="actions">
+            <button id="authCustomSubmit" type="submit">Se connecter</button>
+          </div>
+        </form>
       </section>
 
       <section id="screen-blocked" class="screen" aria-label="Abonnement requis">

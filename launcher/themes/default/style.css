@@ -1,5 +1,6 @@
 :root {
   color-scheme: light dark;
+  --primary: #8b5cf6; /* overridden at runtime from branding.primary */
 }
 
 body {
@@ -9,9 +10,24 @@ body {
   line-height: 1.35;
 }
 
+.brand-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px 0;
+}
+
+#launcherLogo {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  border-radius: 6px;
+  display: none; /* JS toggles to block once a src is set */
+}
+
 h1 {
   font-size: 16px;
-  margin: 0 0 10px 0;
+  margin: 0;
   font-weight: 600;
 }
 
@@ -184,4 +200,73 @@ input[type='range'] {
   .spinner {
     animation: none;
   }
+}
+
+/* --- Primary color accents (driven by branding.primary) --- */
+button:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+progress::-webkit-progress-value {
+  background-color: var(--primary);
+}
+
+progress::-moz-progress-bar {
+  background-color: var(--primary);
+}
+
+/* --- Extensions panel (shown on READY screen when extensions.length > 0) --- */
+.ext-panel {
+  margin-top: 10px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  border-radius: 12px;
+  padding: 8px 10px;
+  max-height: 86px;
+  overflow: auto;
+}
+
+.ext-items {
+  display: grid;
+  gap: 6px;
+}
+
+.ext-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 12px;
+}
+
+.ext-item .ext-name {
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.ext-item .ext-value {
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Custom auth screen --- */
+#screen-auth-custom input[type='email'],
+#screen-auth-custom input[type='password'] {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: transparent;
+  color: inherit;
+}
+
+#authCustomError {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid rgba(200, 60, 60, 0.6);
+  border-radius: 10px;
+  color: #900;
 }
