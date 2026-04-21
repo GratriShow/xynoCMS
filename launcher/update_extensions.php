@@ -27,6 +27,7 @@ $allowedKeys = [
     'news','player_count','server_status','discord','leaderboard','shop',
     'voting','quests','events','skin_api','capes','social_feed',
     'crash_reporter','analytics','modpack','changelog','ram_slider','java_manager',
+    'anticheat','discord_rpc','maintenance',
 ];
 
 try {

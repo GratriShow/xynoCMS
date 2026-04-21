@@ -416,6 +416,9 @@ function api_extensions_catalog(): array
         ['key' => 'changelog',      'name' => 'Changelog',               'needs_api' => false, 'category' => 'contenu'],
         ['key' => 'ram_slider',     'name' => 'Slider RAM avancé',       'needs_api' => false, 'category' => 'gameplay'],
         ['key' => 'java_manager',   'name' => 'Manager Java',            'needs_api' => false, 'category' => 'système'],
+        ['key' => 'anticheat',      'name' => 'Anti-cheat classique',    'needs_api' => false, 'category' => 'système'],
+        ['key' => 'discord_rpc',    'name' => 'Discord Rich Presence',   'needs_api' => false, 'category' => 'social'],
+        ['key' => 'maintenance',    'name' => 'Système de maintenance',  'needs_api' => true,  'category' => 'système'],
     ];
 }
 

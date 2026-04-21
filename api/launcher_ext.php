@@ -193,6 +193,33 @@ function api_builtin_extension_payload(int $launcherId, string $key, array $laun
         case 'analytics':
             return ['enabled' => true]; // the launcher pings /api/launcher.php on startup — that's the signal
 
+        case 'anticheat':
+            // "Classique" : détection côté client (DLL / -javaagent / LD_PRELOAD).
+            // L'Electron applique les checks — voir launcher/main.js (anti-cheat).
+            // La version "avancé" du marketplace exposera plus de vecteurs.
+            return [
+                'enabled' => true,
+                'mode'    => 'classic',
+                'checks'  => ['javaagent', 'agentpath', 'ld_preload', 'dyld_insert_libraries'],
+            ];
+
+        case 'discord_rpc':
+            // Classique : client_id XynoWeb partagé, CTA et 2e ligne imposés.
+            // La version "avancée" du marketplace laissera le tenant fournir
+            // son propre client_id + textes libres.
+            $xynoAppId = trim((string)($_ENV['XYNO_DISCORD_APP_ID'] ?? getenv('XYNO_DISCORD_APP_ID') ?: ''));
+            return [
+                'enabled'   => true,
+                'mode'      => 'classic',
+                'client_id' => $xynoAppId,               // défini côté serveur ; fallback vide = RPC off
+                'details'   => '{launcher_name}',        // 1re ligne (variable remplacée côté Electron)
+                'state'     => 'Powered by XynoWeb',     // 2e ligne (non modifiable en classique)
+                'cta'       => [
+                    'label' => 'Créer le tien',
+                    'url'   => 'https://xynoweb.fr',
+                ],
+            ];
+
         default:
             return ['enabled' => true];
     }

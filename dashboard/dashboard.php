@@ -182,6 +182,9 @@ $availableExtensions = [
   ['key' => 'changelog',      'name' => 'Changelog auto',         'desc' => 'Affiche le dernier changelog à la première ouverture après update.', 'needs_api' => false, 'category' => 'contenu'],
   ['key' => 'ram_slider',     'name' => 'Slider RAM avancé',      'desc' => 'Permet au joueur de choisir la RAM allouée (min/max) au lancement.','needs_api' => false, 'category' => 'gameplay'],
   ['key' => 'java_manager',   'name' => 'Manager Java',           'desc' => 'Télécharge et sélectionne la bonne version de Java automatiquement.','needs_api' => false, 'category' => 'système'],
+  ['key' => 'anticheat',      'name' => 'Anti-cheat classique',   'desc' => "Détection basique des injections (DLL, -javaagent) avant le lancement. Version pro disponible dans le marketplace.",              'needs_api' => false, 'category' => 'système'],
+  ['key' => 'discord_rpc',    'name' => 'Discord Rich Presence',  'desc' => "Affiche « Joue à {ton launcher} » sur Discord, avec nombre de joueurs et CTA XynoWeb. Version avancée (texte libre) dans le marketplace.", 'needs_api' => false, 'category' => 'social'],
+  ['key' => 'maintenance',    'name' => 'Système de maintenance', 'desc' => "Expose une mini-API qui renvoie {active, message, until}. Quand active=true, le launcher bloque le lancement avec ton message.",       'needs_api' => true,  'category' => 'système'],
 ];
 
 // ---- Extensions activées pour le launcher sélectionné ----

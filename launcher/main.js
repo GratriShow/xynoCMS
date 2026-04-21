@@ -22,6 +22,7 @@ const { launchMinecraft } = require('./services/minecraft');
 const { loadSettings, updateSettings, resolveJavaPath } = require('./services/settings');
 const { readLocalVersion, writeLocalVersion } = require('./services/versionStore');
 const { runAutoUpdate } = require('./services/autoUpdate');
+const { createRpc } = require('./services/discord');
 
 function isPlainObject(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -141,7 +142,95 @@ async function checkLicense(apiClient, { pub } = {}) {
       status: res ? res.status : 'unknown',
     });
   }
-  return { ok: true, active, status: res ? res.status : 'unknown' };
+  return { ok: true, active, status: res ? res.status : 'unknown', res: res || null };
+}
+
+// ---------------------------------------------------------------------------
+// Extensions helpers
+// Parse the `extensions` array returned by /api/v2/status.php into a Map
+// keyed by ext_key → { enabled, needs_api, name }.
+// ---------------------------------------------------------------------------
+
+function buildExtensionsMap(extensions) {
+  const map = new Map();
+  if (!Array.isArray(extensions)) return map;
+  for (const e of extensions) {
+    if (!e || typeof e !== 'object') continue;
+    const key = typeof e.key === 'string' ? e.key.toLowerCase() : '';
+    if (!key) continue;
+    map.set(key, {
+      enabled: !!e.enabled,
+      needs_api: !!e.needs_api,
+      name: typeof e.name === 'string' ? e.name : key,
+    });
+  }
+  return map;
+}
+
+function isExtEnabled(map, key) {
+  const e = map && map.get ? map.get(String(key || '').toLowerCase()) : null;
+  return !!(e && e.enabled);
+}
+
+async function fetchExtensionData(apiBaseUrl, uuid, apiKey, extKey) {
+  const url = new URL(buildProxyUrl(apiBaseUrl, '/api/launcher_ext.php'));
+  url.searchParams.set('uuid', uuid);
+  url.searchParams.set('key', apiKey);
+  url.searchParams.set('ext', extKey);
+  const res = await proxyRequest(url.toString(), { method: 'GET', timeoutMs: 8_000 });
+  if (res.statusCode === 200 && res.json) return res.json;
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Anti-cheat (classique) — pragmatic pre-launch vector scan.
+// Real anti-cheat is OS-level and out of scope here; we only refuse to launch
+// Minecraft when obvious injection flags/env vars are present.
+// ---------------------------------------------------------------------------
+
+const ANTICHEAT_BANNED_JAVA_FLAGS = ['-javaagent:', '-agentpath:', '-agentlib:'];
+const ANTICHEAT_BANNED_ENV = [
+  'LD_PRELOAD',
+  'LD_AUDIT',
+  'DYLD_INSERT_LIBRARIES',
+  'DYLD_FORCE_FLAT_NAMESPACE',
+  '_JAVA_OPTIONS',
+  'JAVA_TOOL_OPTIONS',
+];
+
+function runAntiCheatGuard(settings) {
+  const reasons = [];
+
+  // Java args on settings — only available if the launcher UI/settings added a
+  // free-form arg field. We defensively scan it regardless.
+  const userArgs = settings && typeof settings.java_args === 'string' ? settings.java_args : '';
+  if (userArgs) {
+    for (const flag of ANTICHEAT_BANNED_JAVA_FLAGS) {
+      if (userArgs.toLowerCase().includes(flag)) {
+        reasons.push(`Argument Java interdit : ${flag}`);
+      }
+    }
+  }
+
+  // Process env vars — dynamic-linker preload is a common Minecraft injection
+  // vector on Linux/macOS, and _JAVA_OPTIONS / JAVA_TOOL_OPTIONS inject args
+  // into every spawned JVM.
+  for (const name of ANTICHEAT_BANNED_ENV) {
+    const val = (process.env[name] || '').trim();
+    if (val) reasons.push(`Variable d'environnement interdite : ${name}`);
+  }
+
+  // Our own execArgv — not forwarded to the child JVM, but still a signal.
+  const execArgs = Array.isArray(process.execArgv) ? process.execArgv.join(' ').toLowerCase() : '';
+  for (const flag of ANTICHEAT_BANNED_JAVA_FLAGS) {
+    if (execArgs.includes(flag)) reasons.push(`Process Electron lancé avec : ${flag}`);
+  }
+
+  if (reasons.length) {
+    const err = new Error('Anti-cheat : vecteur d\'injection détecté. ' + reasons.join(' | '));
+    err.code = 'ANTICHEAT_BLOCKED';
+    throw err;
+  }
 }
 
 async function runSync(apiClient, pub) {
@@ -508,6 +597,72 @@ app.whenReady().then(async () => {
   let licenseState = { active: null, status: 'unknown', checkedAt: 0 };
   let currentGamePid = null;
 
+  // Extensions / Discord RPC / maintenance state (populated on every sync).
+  let extensionsMap = new Map();
+  let launcherName = '';
+  /** @type {ReturnType<typeof createRpc> | null} */
+  let rpc = null;
+  let rpcStarted = false;
+  let rpcStartTimestamp = 0;
+
+  async function ensureDiscordRpc(apiBaseUrl, uuid, apiKey) {
+    if (rpcStarted) return; // one-shot handshake
+    if (!isExtEnabled(extensionsMap, 'discord_rpc')) return;
+    try {
+      const payload = await fetchExtensionData(apiBaseUrl, uuid, apiKey, 'discord_rpc');
+      const data = payload && payload.data ? payload.data : null;
+      if (!data || !data.enabled) return;
+      const clientId = typeof data.client_id === 'string' ? data.client_id.trim() : '';
+      if (!clientId) return; // Admin hasn't configured XYNO_DISCORD_APP_ID yet.
+
+      rpc = createRpc();
+      const ok = await rpc.start(clientId);
+      if (!ok) { rpc = null; return; }
+      rpcStarted = true;
+      rpcStartTimestamp = Date.now();
+
+      const details = typeof data.details === 'string'
+        ? data.details.replace('{launcher_name}', launcherName || 'Minecraft')
+        : (launcherName || 'Minecraft');
+      const state = typeof data.state === 'string' ? data.state : 'Powered by XynoWeb';
+      const cta = data.cta && typeof data.cta === 'object' ? data.cta : null;
+      const buttons = cta && typeof cta.label === 'string' && typeof cta.url === 'string'
+        ? [{ label: cta.label, url: cta.url }]
+        : undefined;
+
+      await rpc.setActivity({
+        details,
+        state,
+        startTimestamp: rpcStartTimestamp,
+        buttons,
+      });
+    } catch (e) {
+      // RPC is best-effort — never let Discord errors disrupt the launcher.
+      console.warn('[rpc] start failed:', e && e.message ? e.message : e);
+      try { if (rpc) rpc.disconnect(); } catch { /* ignore */ }
+      rpc = null;
+      rpcStarted = false;
+    }
+  }
+
+  async function checkMaintenance(apiBaseUrl, uuid, apiKey) {
+    if (!isExtEnabled(extensionsMap, 'maintenance')) return { active: false };
+    try {
+      const payload = await fetchExtensionData(apiBaseUrl, uuid, apiKey, 'maintenance');
+      const data = payload && payload.data ? payload.data : null;
+      if (!data) return { active: false };
+      const active = !!(data.active === true || data.maintenance === true);
+      const message = typeof data.message === 'string' && data.message.trim()
+        ? data.message.trim()
+        : 'Le launcher est en maintenance. Reviens plus tard.';
+      return { active, message };
+    } catch (e) {
+      // Fail-open: tenant's maintenance API is down → don't block their users.
+      console.warn('[maintenance] check failed:', e && e.message ? e.message : e);
+      return { active: false };
+    }
+  }
+
   async function bootstrapApiClient() {
     if (apiClient) return;
 
@@ -739,6 +894,13 @@ app.whenReady().then(async () => {
 
       pub.ux({ state: 'INIT' });
       const settings = await loadSettings(paths);
+
+      // Anti-cheat (classique) — refuse to launch if injection vectors are
+      // present. Opt-in per launcher via the `anticheat` extension toggle.
+      if (isExtEnabled(extensionsMap, 'anticheat')) {
+        runAntiCheatGuard(settings);
+      }
+
       const javaPath = resolveJavaPath(settings);
       const res = await launchMinecraft({
         paths,
@@ -752,10 +914,31 @@ app.whenReady().then(async () => {
         },
         onClose: () => {
           currentGamePid = null;
+          // Swap RPC back to "dans le launcher" once the game closes.
+          if (rpc && rpcStarted) {
+            const cleanName = launcherName || 'Minecraft';
+            rpc.setActivity({
+              details: cleanName,
+              state: 'Powered by XynoWeb',
+              startTimestamp: rpcStartTimestamp || Date.now(),
+              buttons: [{ label: 'Créer le tien', url: 'https://xynoweb.fr' }],
+            }).catch(() => {});
+          }
         },
       });
 
       currentGamePid = res && res.pid ? res.pid : null;
+
+      // Update RPC presence to reflect the user is now in-game.
+      if (rpc && rpcStarted) {
+        const cleanName = launcherName || 'Minecraft';
+        rpc.setActivity({
+          details: `En jeu — ${cleanName}`,
+          state: 'Powered by XynoWeb',
+          startTimestamp: Date.now(),
+          buttons: [{ label: 'Créer le tien', url: 'https://xynoweb.fr' }],
+        }).catch(() => {});
+      }
 
       return { ok: true, ...res };
     } catch (err) {
@@ -779,6 +962,34 @@ app.whenReady().then(async () => {
           lastManifest = null;
           return;
         }
+
+        // Parse extensions from status response so maintenance / RPC know their
+        // enabled flags without an extra round-trip.
+        const res = lic.res || {};
+        extensionsMap = buildExtensionsMap(res.extensions);
+        if (res.launcher && typeof res.launcher.name === 'string') {
+          launcherName = res.launcher.name;
+        }
+
+        // Maintenance gate: if the tenant's maintenance API says "active",
+        // short-circuit before we even fetch the manifest.
+        const uuidForExt = requireEnv('LAUNCHER_UUID');
+        const apiBaseUrlForExt = requireEnv('API_BASE_URL');
+        const apiKeyForExt = requireEnv('LAUNCHER_KEY');
+        const maintenance = await checkMaintenance(apiBaseUrlForExt, uuidForExt, apiKeyForExt);
+        if (maintenance.active) {
+          lastManifest = null;
+          pub.ux({
+            state: 'BLOCKED',
+            message: maintenance.message,
+            renewUrl: '',
+            status: 'maintenance',
+          });
+          return;
+        }
+
+        // Fire-and-forget Discord Rich Presence (never blocks the sync).
+        ensureDiscordRpc(apiBaseUrlForExt, uuidForExt, apiKeyForExt).catch(() => {});
 
         lastManifest = await runSync(apiClient, pub);
 
@@ -809,8 +1020,13 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('launcher:quit', async () => {
+    try { if (rpc) rpc.disconnect(); } catch { /* ignore */ }
     app.quit();
     return { ok: true };
+  });
+
+  app.on('before-quit', () => {
+    try { if (rpc) rpc.disconnect(); } catch { /* ignore */ }
   });
 
   await startSync();

@@ -74,6 +74,7 @@
 
     const launcherNameEl = getId('launcherName');
     const launcherLogoEl = getId('launcherLogo');
+    const copyrightEl = getId('copyright');
 
     const newsBoxEl = getId('newsBox');
     const newsItemsEl = getId('newsItems');
@@ -144,8 +145,25 @@
       if (launcherNameEl) launcherNameEl.textContent = safe || 'Launcher';
     }
 
-    // --- Branding (logo + primary color) ---------------------------------
+    // --- Branding (logo + primary color + copyright footer) -------------
     const SAFE_HEX = /^#[0-9a-fA-F]{3,8}$/;
+
+    function setCopyrightVisible(visible) {
+      if (!copyrightEl) return;
+      if (visible) {
+        copyrightEl.hidden = false;
+        copyrightEl.removeAttribute('aria-hidden');
+      } else {
+        copyrightEl.hidden = true;
+        copyrightEl.setAttribute('aria-hidden', 'true');
+      }
+    }
+
+    // Default state: copyright always visible unless the server explicitly
+    // unlocks the "remove_copyright" marketplace upgrade and sets
+    // branding.hide_copyright = true.
+    setCopyrightVisible(true);
+
     function applyBranding(branding) {
       if (!branding || typeof branding !== 'object') return;
 
@@ -168,6 +186,14 @@
         } catch {
           // ignore
         }
+      }
+
+      // Marketplace "remove_copyright" gate (10€ one-shot). The server sets
+      // hide_copyright=true once the upgrade is paid. Default = false.
+      if (branding.hide_copyright === true) {
+        setCopyrightVisible(false);
+      } else {
+        setCopyrightVisible(true);
       }
     }
 
@@ -486,7 +512,7 @@
 
     let lastRenewUrl = '';
     let isBlocked = false;
-    function showBlocked({ message, renewUrl } = {}) {
+    function showBlocked({ message, renewUrl, status } = {}) {
       const msg = String(message || '').trim() || 'Votre abonnement a expiré';
       const url = String(renewUrl || '').trim();
       if (url) lastRenewUrl = url;
@@ -495,6 +521,13 @@
       if (!screens.BLOCKED) {
         showError(msg);
         return;
+      }
+
+      // Maintenance mode: hide the "Renouveler" CTA since there's nothing to
+      // buy — the tenant's site decides when to lift the block.
+      if (renewBtn) {
+        const hideRenew = !url || String(status || '').toLowerCase() === 'maintenance';
+        renewBtn.style.display = hideRenew ? 'none' : '';
       }
 
       isBlocked = true;
@@ -860,7 +893,7 @@
         const step = payload && payload.step ? String(payload.step) : '';
 
         if (state === 'BLOCKED') {
-          showBlocked({ message: payload.message, renewUrl: payload.renewUrl });
+          showBlocked({ message: payload.message, renewUrl: payload.renewUrl, status: payload.status });
           return;
         }
 

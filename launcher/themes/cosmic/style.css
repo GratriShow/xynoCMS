@@ -301,3 +301,30 @@ progress::-moz-progress-bar {
   color: rgba(255, 220, 220, 0.95);
   background: rgba(255, 80, 80, 0.08);
 }
+
+/* --- Copyright footer (removable via marketplace 'remove_copyright') --- */
+.copyright {
+  position: fixed;
+  right: 10px;
+  bottom: 6px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  opacity: 0.55;
+  pointer-events: auto;
+  user-select: none;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.copyright a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.copyright a:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.copyright[hidden] {
+  display: none !important;
+}
