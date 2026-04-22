@@ -202,6 +202,61 @@ CREATE TABLE `launchers` (
 - `GET /dashboard.php` (protégé) : liste + édition + suppression
 - `GET /logout.php`
 
+## Marketplace (Bloc 3 — achats unitaires Stripe)
+
+Le dashboard expose un marketplace de 11 extensions premium (10 € chacune, paiement unique, par launcher). Pas d'abonnement : un achat débloque la feature à vie pour **ce launcher** uniquement.
+
+### Items disponibles
+
+Branding — *Retirer le copyright*, *Couleurs custom (primary/accent/bg/surface)*.
+Social — *Discord Rich Presence avancé* (client_id tenant + 2 boutons libres).
+Système — *Anti-cheat avancé* (process blacklist + intégrité SHA-256), *Protection fichiers* (obfuscation XOR rolling), *API REST publique*.
+Monétisation — *Boutique in-launcher*, *Popup promo*.
+Contenu — *Musique d'ambiance*, *Compte à rebours event*.
+Gameplay — *Multi-comptes Microsoft*.
+
+### Configuration Stripe
+
+1. Crée tes clés sur <https://dashboard.stripe.com/apikeys> (test d'abord, puis live).
+2. Remplis dans `config/.env.local` :
+
+   ```
+   STRIPE_SECRET_KEY=sk_test_...
+   STRIPE_PUBLIC_KEY=pk_test_...
+   STRIPE_WEBHOOK_SECRET=whsec_...
+   MARKETPLACE_CURRENCY=eur
+   ```
+
+3. Crée un webhook sur <https://dashboard.stripe.com/webhooks> qui pointe vers `https://ton-domaine.tld/api/stripe_webhook.php` et qui écoute :
+
+   - `checkout.session.completed`
+   - `checkout.session.async_payment_succeeded`
+   - `charge.refunded`
+   - `charge.refund.updated`
+
+   Copie le *Signing secret* (`whsec_...`) dans `STRIPE_WEBHOOK_SECRET`.
+
+4. Importe la dernière version de `migrations_v3.sql` (idempotente) : elle ajoute `marketplace_purchases` + `launcher_marketplace_settings`.
+
+### Cycle de vie d'un achat
+
+- Le dashboard affiche chaque item avec un bouton *Acheter* → `POST /api/marketplace_checkout.php` → Stripe Checkout (redirect).
+- Paiement confirmé → Stripe appelle le webhook → une ligne `paid` est créée/mise à jour dans `marketplace_purchases`.
+- Le dashboard affiche *Acquis* et déverrouille les paramètres correspondants dans le bloc « Paramètres débloqués ».
+- Le launcher Electron récupère ses droits via `/api/v2/status.php` (champs `marketplace.owned` + `marketplace.settings` filtrés par ownership) et via `/api/launcher_ext.php` (payloads anti-cheat / discord_rpc enrichis en mode `advanced`).
+- En cas de remboursement, le webhook passe la ligne à `refunded` → les settings cessent d'être renvoyés au launcher automatiquement (lecture filtrée à la source — pas besoin de "désactiver" ailleurs).
+
+### Tester en local (Stripe CLI)
+
+```bash
+stripe login
+stripe listen --forward-to localhost:8000/api/stripe_webhook.php
+# Copie le whsec_... affiché dans STRIPE_WEBHOOK_SECRET, puis :
+stripe trigger checkout.session.completed
+```
+
+Carte de test côté Checkout : `4242 4242 4242 4242`, n'importe quelle date future + CVC.
+
 ## Notes
 
 - L’auth et la gestion des launchers sont en PHP (sans framework) avec PDO + requêtes préparées.

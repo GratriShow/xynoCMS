@@ -380,12 +380,36 @@ function api_get_launcher_branding(array $launcher): array
 
     $cfg = api_get_launcher_config($launcherId);
 
-    return [
+    $branding = [
         'logo_url'    => $logoUrl,
         'primary'     => $primary,
         'website_url' => (string)($cfg['website_url'] ?? ''),
         'discord_url' => (string)($cfg['discord_url'] ?? ''),
     ];
+
+    // --- Marketplace overlay (only applied for items this launcher owns) ---
+    $mp = api_marketplace_settings_filtered($launcherId);
+
+    // `remove_copyright` → hide the footer in the Electron UI.
+    if (!empty($mp['hide_copyright'])) {
+        $branding['hide_copyright'] = true;
+    }
+
+    // `colors_custom` → override primary + expose accent/bg/surface.
+    $colorsOverride = is_array($mp['colors'] ?? null) ? $mp['colors'] : [];
+    foreach (['primary', 'accent', 'bg', 'surface'] as $cKey) {
+        $val = isset($colorsOverride[$cKey]) ? trim((string)$colorsOverride[$cKey]) : '';
+        if ($val === '' || !preg_match('/^#[0-9a-fA-F]{3,8}$/', $val)) {
+            continue;
+        }
+        if ($cKey === 'primary') {
+            $branding['primary'] = $val;
+        } else {
+            $branding[$cKey] = $val;
+        }
+    }
+
+    return $branding;
 }
 
 // -----------------------------
@@ -511,6 +535,240 @@ function api_get_launcher_auth(int $launcherId, bool $includeKeys = false): arra
     } catch (Throwable $e) {
         // Pre-v3 schema — silent fallback.
     }
+
+    return $out;
+}
+
+// -----------------------------
+// Marketplace (Stripe one-shot, lifetime, per-launcher)
+// -----------------------------
+
+/**
+ * Canonical marketplace catalog — 11 paid add-ons, €10 one-shot each,
+ * unlocked for life on a per-launcher basis.
+ *
+ * Each entry:
+ *   key          snake_case identifier, also the item_key column value
+ *   name         Display name (French)
+ *   description  1–2 sentence explanation for the buy card
+ *   price_cents  Price in smallest currency unit (10€ = 1000 cents)
+ *   currency     ISO 4217 code (lowercase for Stripe)
+ *   category     Grouping (branding / social / gameplay / système / contenu)
+ *   category_label Human-readable category
+ */
+function api_marketplace_catalog(): array
+{
+    $cur = strtolower(trim(api_env('MARKETPLACE_CURRENCY', 'eur'))) ?: 'eur';
+    $price = 1000; // 10€ flat — user can edit individual rows here later.
+
+    return [
+        [
+            'key' => 'remove_copyright',
+            'name' => 'Retirer le copyright',
+            'description' => 'Supprime la mention "Powered by XynoWeb" affichée en bas à droite du launcher.',
+            'price_cents' => $price, 'currency' => $cur,
+            'category' => 'branding', 'category_label' => 'Branding',
+        ],
+        [
+            'key' => 'colors_custom',
+            'name' => 'Couleurs custom',
+            'description' => 'Définis couleur primaire, accent, fond et surface — au-delà de la palette de base.',
+            'price_cents' => $price, 'currency' => $cur,
+            'category' => 'branding', 'category_label' => 'Branding',
+        ],
+        [
+            'key' => 'discord_rpc_advanced',
+            'name' => 'Discord Rich Presence avancé',
+            'description' => 'Ta propre app Discord (client_id) + textes libres + 2 CTA personnalisés.',
+            'price_cents' => $price, 'currency' => $cur,
+            'category' => 'social', 'category_label' => 'Social',
+        ],
+        [
+            'key' => 'anticheat_advanced',
+            'name' => 'Anti-cheat avancé',
+            'description' => 'Checks supplémentaires : hash d’intégrité Minecraft, process blacklist, protection DLL étendue.',
+            'price_cents' => $price, 'currency' => $cur,
+            'category' => 'système', 'category_label' => 'Système',
+        ],
+        [
+            'key' => 'file_protection',
+            'name' => 'Protection fichiers',
+            'description' => 'Obfuscation des payloads téléchargés (headers + XOR rolling) pour freiner l’extraction.',
+            'price_cents' => $price, 'currency' => $cur,
+            'category' => 'système', 'category_label' => 'Système',
+        ],
+        [
+            'key' => 'rest_api',
+            'name' => 'API REST publique',
+            'description' => 'Endpoints publics signés pour exposer joueurs en ligne, news et stats à ton site.',
+            'price_cents' => $price, 'currency' => $cur,
+            'category' => 'système', 'category_label' => 'Système',
+        ],
+        [
+            'key' => 'shop',
+            'name' => 'Boutique in-launcher',
+            'description' => 'Liste de produits affichée directement dans le launcher, avec lien de checkout externe.',
+            'price_cents' => $price, 'currency' => $cur,
+            'category' => 'monétisation', 'category_label' => 'Monétisation',
+        ],
+        [
+            'key' => 'music',
+            'name' => 'Musique d’ambiance',
+            'description' => 'Lecteur audio intégré avec URL de piste + bouton mute et mémorisation du choix.',
+            'price_cents' => $price, 'currency' => $cur,
+            'category' => 'contenu', 'category_label' => 'Contenu',
+        ],
+        [
+            'key' => 'multi_account',
+            'name' => 'Multi-comptes',
+            'description' => 'Gère plusieurs sessions Microsoft simultanément + picker au démarrage.',
+            'price_cents' => $price, 'currency' => $cur,
+            'category' => 'gameplay', 'category_label' => 'Gameplay',
+        ],
+        [
+            'key' => 'popup_promo',
+            'name' => 'Popup promo',
+            'description' => 'Affiche un message promotionnel HTML au démarrage, avec fenêtre de validité.',
+            'price_cents' => $price, 'currency' => $cur,
+            'category' => 'monétisation', 'category_label' => 'Monétisation',
+        ],
+        [
+            'key' => 'countdown',
+            'name' => 'Compte à rebours',
+            'description' => 'Widget décompte pour un event serveur (date cible + libellé personnalisés).',
+            'price_cents' => $price, 'currency' => $cur,
+            'category' => 'contenu', 'category_label' => 'Contenu',
+        ],
+    ];
+}
+
+function api_marketplace_get_item(string $key): ?array
+{
+    $key = strtolower(trim($key));
+    if ($key === '') return null;
+    foreach (api_marketplace_catalog() as $item) {
+        if ($item['key'] === $key) return $item;
+    }
+    return null;
+}
+
+function api_marketplace_catalog_keys(): array
+{
+    return array_column(api_marketplace_catalog(), 'key');
+}
+
+/**
+ * Returns the list of item_keys this launcher owns (status='paid').
+ */
+function api_marketplace_owned_keys(int $launcherId): array
+{
+    if ($launcherId <= 0) return [];
+    try {
+        $pdo = db();
+        $stmt = $pdo->prepare("SELECT item_key FROM marketplace_purchases WHERE launcher_id = ? AND status = 'paid'");
+        $stmt->execute([$launcherId]);
+        $out = [];
+        while ($row = $stmt->fetch()) {
+            $k = strtolower(trim((string)($row['item_key'] ?? '')));
+            if ($k !== '') $out[] = $k;
+        }
+        return $out;
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
+function api_marketplace_owns(int $launcherId, string $itemKey): bool
+{
+    $itemKey = strtolower(trim($itemKey));
+    if ($launcherId <= 0 || $itemKey === '') return false;
+    try {
+        $pdo = db();
+        $stmt = $pdo->prepare("SELECT 1 FROM marketplace_purchases WHERE launcher_id = ? AND item_key = ? AND status = 'paid' LIMIT 1");
+        $stmt->execute([$launcherId, $itemKey]);
+        return (bool)$stmt->fetchColumn();
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+/**
+ * Per-launcher JSON bag for settings unlocked by marketplace items.
+ * Structure (all keys optional):
+ *   {
+ *     "hide_copyright": true,
+ *     "colors": { "primary":"#...", "accent":"#...", "bg":"#...", "surface":"#..." },
+ *     "discord_advanced": { "client_id":"...", "details":"...", "state":"...",
+ *                           "buttons":[{"label":"...","url":"..."}] },
+ *     "anticheat_advanced": { "process_blacklist":["cheat.exe"], "require_sha256": true },
+ *     "file_protection": { "enabled": true },
+ *     "rest_api": { "enabled": true },
+ *     "shop": { "url":"https://…", "items":[…] },
+ *     "music": { "url":"https://…track.mp3", "loop":true, "volume":0.5 },
+ *     "multi_account": { "enabled": true },
+ *     "popup_promo": { "html":"…","until":"2026-06-01T00:00:00Z" },
+ *     "countdown": { "title":"Event", "date":"2026-06-01T20:00:00Z" }
+ *   }
+ */
+function api_marketplace_settings_get(int $launcherId): array
+{
+    if ($launcherId <= 0) return [];
+    try {
+        $pdo = db();
+        $stmt = $pdo->prepare('SELECT settings_json FROM launcher_marketplace_settings WHERE launcher_id = ? LIMIT 1');
+        $stmt->execute([$launcherId]);
+        $row = $stmt->fetch();
+        if (!$row) return [];
+        $raw = (string)($row['settings_json'] ?? '');
+        if ($raw === '') return [];
+        $decoded = json_decode($raw, true);
+        return is_array($decoded) ? $decoded : [];
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
+function api_marketplace_settings_save(int $launcherId, array $settings): bool
+{
+    if ($launcherId <= 0) return false;
+    try {
+        $pdo = db();
+        $json = json_encode($settings, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if ($json === false) return false;
+        $stmt = $pdo->prepare(
+            'INSERT INTO launcher_marketplace_settings (launcher_id, settings_json, updated_at) '
+            . 'VALUES (?, ?, NOW()) '
+            . 'ON DUPLICATE KEY UPDATE settings_json = VALUES(settings_json), updated_at = NOW()'
+        );
+        $stmt->execute([$launcherId, $json]);
+        return true;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+/**
+ * Convenience: strip settings to only the keys unlocked by owned items.
+ * Prevents a tenant from saving discord_advanced then cancelling the purchase
+ * and keeping the effect — the getter always filters on ownership.
+ */
+function api_marketplace_settings_filtered(int $launcherId): array
+{
+    $owned = array_fill_keys(api_marketplace_owned_keys($launcherId), true);
+    $raw = api_marketplace_settings_get($launcherId);
+    $out = [];
+
+    if (isset($owned['remove_copyright']))      $out['hide_copyright']      = !empty($raw['hide_copyright']);
+    if (isset($owned['colors_custom']))         $out['colors']              = is_array($raw['colors'] ?? null) ? $raw['colors'] : [];
+    if (isset($owned['discord_rpc_advanced']))  $out['discord_advanced']    = is_array($raw['discord_advanced'] ?? null) ? $raw['discord_advanced'] : [];
+    if (isset($owned['anticheat_advanced']))    $out['anticheat_advanced']  = is_array($raw['anticheat_advanced'] ?? null) ? $raw['anticheat_advanced'] : [];
+    if (isset($owned['file_protection']))       $out['file_protection']     = is_array($raw['file_protection'] ?? null) ? $raw['file_protection'] : ['enabled' => true];
+    if (isset($owned['rest_api']))              $out['rest_api']            = is_array($raw['rest_api'] ?? null) ? $raw['rest_api'] : ['enabled' => true];
+    if (isset($owned['shop']))                  $out['shop']                = is_array($raw['shop'] ?? null) ? $raw['shop'] : [];
+    if (isset($owned['music']))                 $out['music']               = is_array($raw['music'] ?? null) ? $raw['music'] : [];
+    if (isset($owned['multi_account']))         $out['multi_account']       = is_array($raw['multi_account'] ?? null) ? $raw['multi_account'] : ['enabled' => true];
+    if (isset($owned['popup_promo']))           $out['popup_promo']         = is_array($raw['popup_promo'] ?? null) ? $raw['popup_promo'] : [];
+    if (isset($owned['countdown']))             $out['countdown']           = is_array($raw['countdown'] ?? null) ? $raw['countdown'] : [];
 
     return $out;
 }

@@ -42,6 +42,10 @@ try {
     $extensions = api_get_launcher_extensions($launcherId, false); // client payload, NO api_key leak
     $auth       = api_get_launcher_auth($launcherId, false);       // client payload, NO api_key leak
 
+    // Marketplace (Bloc 3) — degrades to empty arrays if tables are missing.
+    $marketplaceOwned    = api_marketplace_owned_keys($launcherId);
+    $marketplaceSettings = api_marketplace_settings_filtered($launcherId);
+
     api_log($endpoint, $ip, (string)$launcher['uuid'], 200, 'ok');
     api_json([
         'ok' => true,
@@ -59,6 +63,10 @@ try {
         'branding'   => $branding,
         'extensions' => $extensions,
         'auth'       => $auth,
+        'marketplace' => [
+            'owned'    => $marketplaceOwned,
+            'settings' => $marketplaceSettings,
+        ],
     ], 200);
 } catch (Throwable $e) {
     api_log($endpoint, $ip, null, 500, 'server_error');

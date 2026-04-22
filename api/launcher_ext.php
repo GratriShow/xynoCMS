@@ -193,22 +193,43 @@ function api_builtin_extension_payload(int $launcherId, string $key, array $laun
         case 'analytics':
             return ['enabled' => true]; // the launcher pings /api/launcher.php on startup — that's the signal
 
-        case 'anticheat':
+        case 'anticheat': {
             // "Classique" : détection côté client (DLL / -javaagent / LD_PRELOAD).
             // L'Electron applique les checks — voir launcher/main.js (anti-cheat).
-            // La version "avancé" du marketplace exposera plus de vecteurs.
-            return [
+            $payload = [
                 'enabled' => true,
                 'mode'    => 'classic',
                 'checks'  => ['javaagent', 'agentpath', 'ld_preload', 'dyld_insert_libraries'],
             ];
 
-        case 'discord_rpc':
+            // "Avancé" : activé uniquement si ce launcher possède `anticheat_advanced`.
+            if (api_marketplace_owns($launcherId, 'anticheat_advanced')) {
+                $settings = api_marketplace_settings_filtered($launcherId);
+                $adv = is_array($settings['anticheat_advanced'] ?? null) ? $settings['anticheat_advanced'] : [];
+
+                $processBlacklist = [];
+                if (is_array($adv['process_blacklist'] ?? null)) {
+                    foreach ($adv['process_blacklist'] as $p) {
+                        $p = strtolower(trim((string)$p));
+                        if ($p !== '' && strlen($p) <= 128) $processBlacklist[] = $p;
+                    }
+                }
+
+                $payload['mode']              = 'advanced';
+                $payload['require_sha256']    = !empty($adv['require_sha256']);
+                $payload['process_blacklist'] = array_values(array_unique($processBlacklist));
+                // Elargit la liste des vecteurs scannés côté client.
+                $payload['checks'] = array_values(array_unique(array_merge($payload['checks'], [
+                    'dyld_force_flat_namespace', 'java_tool_options', 'ld_audit', 'agentlib',
+                ])));
+            }
+            return $payload;
+        }
+
+        case 'discord_rpc': {
             // Classique : client_id XynoWeb partagé, CTA et 2e ligne imposés.
-            // La version "avancée" du marketplace laissera le tenant fournir
-            // son propre client_id + textes libres.
             $xynoAppId = trim((string)($_ENV['XYNO_DISCORD_APP_ID'] ?? getenv('XYNO_DISCORD_APP_ID') ?: ''));
-            return [
+            $payload = [
                 'enabled'   => true,
                 'mode'      => 'classic',
                 'client_id' => $xynoAppId,               // défini côté serveur ; fallback vide = RPC off
@@ -219,6 +240,46 @@ function api_builtin_extension_payload(int $launcherId, string $key, array $laun
                     'url'   => 'https://xynoweb.fr',
                 ],
             ];
+
+            // "Avancé" : client_id + textes libres + jusqu'à 2 boutons.
+            if (api_marketplace_owns($launcherId, 'discord_rpc_advanced')) {
+                $settings = api_marketplace_settings_filtered($launcherId);
+                $adv = is_array($settings['discord_advanced'] ?? null) ? $settings['discord_advanced'] : [];
+
+                $clientId = trim((string)($adv['client_id'] ?? ''));
+                if (preg_match('/^\d{17,32}$/', $clientId)) {
+                    $payload['client_id'] = $clientId;
+                }
+
+                $details = trim((string)($adv['details'] ?? ''));
+                if ($details !== '' && strlen($details) <= 128) $payload['details'] = $details;
+
+                $state = trim((string)($adv['state'] ?? ''));
+                if ($state !== '' && strlen($state) <= 128) $payload['state'] = $state;
+
+                $buttons = [];
+                if (is_array($adv['buttons'] ?? null)) {
+                    foreach ($adv['buttons'] as $b) {
+                        if (!is_array($b)) continue;
+                        $label = trim((string)($b['label'] ?? ''));
+                        $url   = trim((string)($b['url'] ?? ''));
+                        if ($label === '' || $url === '' || strlen($label) > 32) continue;
+                        if (!preg_match('#^https?://#i', $url) || strlen($url) > 512) continue;
+                        $buttons[] = ['label' => $label, 'url' => $url];
+                        if (count($buttons) >= 2) break;
+                    }
+                }
+                if (!empty($buttons)) {
+                    $payload['buttons'] = $buttons;
+                    // Quand on a des buttons, on garde le CTA classique pour rétrocompat mais
+                    // l'Electron préférera `buttons` si présent.
+                }
+
+                $payload['mode'] = 'advanced';
+            }
+
+            return $payload;
+        }
 
         default:
             return ['enabled' => true];

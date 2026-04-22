@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../config/bootstrap.php';
+require_once __DIR__ . '/../api/utils.php';
 
 $user = require_login();
 
@@ -234,6 +235,28 @@ if ($selectedId && $selectedId > 0) {
   }
 }
 
+// ---- Marketplace (Bloc 3) ----
+$marketplaceAvailable = true;
+$marketplaceCatalog   = api_marketplace_catalog();
+$marketplaceOwnedSet  = [];
+$marketplaceSettings  = [];
+$stripePublicKey      = trim(api_env('STRIPE_PUBLIC_KEY', ''));
+$stripeConfigured     = trim(api_env('STRIPE_SECRET_KEY', '')) !== '';
+
+if ($selectedId && $selectedId > 0) {
+  try {
+    $pdo->query('SELECT 1 FROM marketplace_purchases LIMIT 1');
+    $marketplaceOwnedSet = array_fill_keys(api_marketplace_owned_keys($selectedId), true);
+    $marketplaceSettings = api_marketplace_settings_get($selectedId);
+  } catch (Throwable $e) {
+    $marketplaceAvailable = false;
+  }
+}
+
+// Query-string feedback from Stripe redirect.
+$mpSuccess = isset($_GET['mp_success']) && (string)$_GET['mp_success'] === '1';
+$mpCancel  = isset($_GET['mp_cancel'])  && (string)$_GET['mp_cancel']  === '1';
+
 $csrf = csrf_token();
 
 $success = flash_get('success');
@@ -289,6 +312,7 @@ $error = flash_get('error');
           <a href="#parametres">Paramètres</a>
           <a href="#extensions">Extensions</a>
           <a href="#auth">Authentification</a>
+          <a href="#marketplace">Marketplace</a>
           <a href="#versions">Versions</a>
           <a href="#logs">Logs</a>
           <a href="#securite">Anti-abus</a>
@@ -946,6 +970,236 @@ $error = flash_get('error');
                   refresh();
                 })();
               </script>
+            <?php endif; ?>
+          </div>
+        </section>
+
+        <section id="marketplace" class="section-sm">
+          <h2 class="section-title">Marketplace</h2>
+          <p class="section-desc">Extensions premium achetables à l’unité, <strong>par launcher</strong> : un achat débloque la feature pour ce launcher uniquement. Paiement unique via Stripe Checkout.</p>
+
+          <?php if ($mpSuccess): ?>
+            <div class="notice" data-show="true" style="margin: 12px 0">Paiement confirmé ✓ — si la feature n’apparaît pas immédiatement, Stripe finalise la transaction en arrière-plan (quelques secondes).</div>
+          <?php endif; ?>
+          <?php if ($mpCancel): ?>
+            <div class="notice" data-show="true" style="margin: 12px 0">Paiement annulé. Aucun prélèvement n’a été effectué.</div>
+          <?php endif; ?>
+
+          <div class="card">
+            <?php if ($selected === null): ?>
+              <p class="small" style="margin:0">Sélectionne un launcher pour accéder au marketplace.</p>
+            <?php elseif (!$marketplaceAvailable): ?>
+              <p class="small" style="margin:0">Les tables marketplace n’existent pas encore. Importe <a href="#sql">migrations_v3.sql</a> pour activer cette section.</p>
+            <?php else: ?>
+              <?php if (!$stripeConfigured): ?>
+                <div class="callout" style="margin-bottom:14px">
+                  <div>
+                    <span class="badge">Configuration Stripe</span>
+                    <p class="small" style="margin-top:8px">Définis <code>STRIPE_SECRET_KEY</code> (et <code>STRIPE_WEBHOOK_SECRET</code>) dans <code>config/.env.local</code> pour activer les paiements. Voir <code>config/.env.local.example</code>.</p>
+                  </div>
+                </div>
+              <?php endif; ?>
+
+              <?php
+                // Groupe par catégorie (comme les extensions) pour la lisibilité.
+                $mpByCat = [];
+                foreach ($marketplaceCatalog as $item) {
+                  $mpByCat[$item['category']][] = $item;
+                }
+              ?>
+              <?php foreach ($mpByCat as $cat => $items): ?>
+                <fieldset class="card" style="margin-top:10px;background:rgba(255,255,255,.02);padding:16px">
+                  <legend class="badge" style="padding:2px 10px"><?php echo e((string)($items[0]['category_label'] ?? ucfirst((string)$cat))); ?></legend>
+                  <div style="display:grid;gap:12px;margin-top:6px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+                    <?php foreach ($items as $item):
+                      $owned = isset($marketplaceOwnedSet[$item['key']]);
+                      $price = number_format(((int)$item['price_cents']) / 100, 2, ',', ' ') . ' ' . strtoupper((string)$item['currency']);
+                    ?>
+                      <div style="display:grid;gap:10px;padding:14px;border:1px solid var(--border-1);border-radius:12px;background:rgba(255,255,255,.02)">
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+                          <strong style="color:#fff"><?php echo e((string)$item['name']); ?></strong>
+                          <?php if ($owned): ?>
+                            <span class="badge badge-accent" style="flex:none">Acquis</span>
+                          <?php else: ?>
+                            <span class="badge" style="flex:none"><?php echo e($price); ?></span>
+                          <?php endif; ?>
+                        </div>
+                        <span class="small"><?php echo e((string)$item['description']); ?></span>
+
+                        <?php if ($owned): ?>
+                          <span class="help">Débloqué pour ce launcher. Configure-le dans le bloc « Paramètres débloqués » ci-dessous.</span>
+                        <?php else: ?>
+                          <form method="post" action="api/marketplace_checkout.php" style="margin:0">
+                            <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
+                            <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
+                            <input type="hidden" name="item_key" value="<?php echo e((string)$item['key']); ?>" />
+                            <button class="btn btn-primary" type="submit" <?php echo $stripeConfigured ? '' : 'disabled'; ?>>Acheter (<?php echo e($price); ?>)</button>
+                          </form>
+                        <?php endif; ?>
+                      </div>
+                    <?php endforeach; ?>
+                  </div>
+                </fieldset>
+              <?php endforeach; ?>
+
+              <?php if (!empty($marketplaceOwnedSet)): ?>
+                <fieldset class="card" style="margin-top:14px;background:rgba(255,255,255,.02);padding:16px">
+                  <legend class="badge badge-accent" style="padding:2px 10px">Paramètres débloqués</legend>
+                  <form class="form" action="update_marketplace_settings.php" method="post" aria-label="Paramètres marketplace" style="margin-top:6px">
+                    <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
+                    <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
+
+                    <?php if (isset($marketplaceOwnedSet['remove_copyright'])): ?>
+                      <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin-top:8px">
+                        <input type="checkbox" name="hide_copyright" value="1" <?php echo !empty($marketplaceSettings['hide_copyright']) ? 'checked' : ''; ?> />
+                        <span>
+                          <strong style="color:#fff">Masquer « Powered by XynoWeb »</strong><br>
+                          <span class="small">Retire le footer du launcher.</span>
+                        </span>
+                      </label>
+                    <?php endif; ?>
+
+                    <?php if (isset($marketplaceOwnedSet['colors_custom'])):
+                      $colors = is_array($marketplaceSettings['colors'] ?? null) ? $marketplaceSettings['colors'] : [];
+                    ?>
+                      <div class="two-col" style="gap:10px;margin-top:12px">
+                        <label class="label"><span>Couleur primaire (#rrggbb)</span>
+                          <input class="input" type="text" name="colors[primary]" value="<?php echo e((string)($colors['primary'] ?? '')); ?>" placeholder="#8b5cf6" /></label>
+                        <label class="label"><span>Couleur d’accent</span>
+                          <input class="input" type="text" name="colors[accent]" value="<?php echo e((string)($colors['accent'] ?? '')); ?>" placeholder="#22d3ee" /></label>
+                      </div>
+                      <div class="two-col" style="gap:10px;margin-top:8px">
+                        <label class="label"><span>Fond</span>
+                          <input class="input" type="text" name="colors[bg]" value="<?php echo e((string)($colors['bg'] ?? '')); ?>" placeholder="#0b1020" /></label>
+                        <label class="label"><span>Surface</span>
+                          <input class="input" type="text" name="colors[surface]" value="<?php echo e((string)($colors['surface'] ?? '')); ?>" placeholder="#11162a" /></label>
+                      </div>
+                    <?php endif; ?>
+
+                    <?php if (isset($marketplaceOwnedSet['discord_rpc_advanced'])):
+                      $da = is_array($marketplaceSettings['discord_advanced'] ?? null) ? $marketplaceSettings['discord_advanced'] : [];
+                      $btns = is_array($da['buttons'] ?? null) ? array_values($da['buttons']) : [];
+                      $btn0 = $btns[0] ?? ['label'=>'','url'=>''];
+                      $btn1 = $btns[1] ?? ['label'=>'','url'=>''];
+                    ?>
+                      <fieldset class="card" style="margin-top:14px;background:rgba(255,255,255,.03);padding:12px">
+                        <legend class="small" style="padding:0 8px;color:var(--muted)">Discord Rich Presence avancé</legend>
+                        <div class="two-col" style="gap:10px">
+                          <label class="label"><span>client_id Discord</span>
+                            <input class="input" type="text" name="discord_advanced[client_id]" value="<?php echo e((string)($da['client_id'] ?? '')); ?>" placeholder="123456789012345678" /></label>
+                          <label class="label"><span>Détails (1re ligne)</span>
+                            <input class="input" type="text" name="discord_advanced[details]" value="<?php echo e((string)($da['details'] ?? '')); ?>" placeholder="Joue à {launcher_name}" /></label>
+                        </div>
+                        <div class="two-col" style="gap:10px;margin-top:8px">
+                          <label class="label"><span>État (2e ligne)</span>
+                            <input class="input" type="text" name="discord_advanced[state]" value="<?php echo e((string)($da['state'] ?? '')); ?>" placeholder="En attente…" /></label>
+                          <label class="label"><span>Bouton 1 — label</span>
+                            <input class="input" type="text" name="discord_advanced[buttons][0][label]" value="<?php echo e((string)($btn0['label'] ?? '')); ?>" placeholder="Site web" /></label>
+                        </div>
+                        <div class="two-col" style="gap:10px;margin-top:8px">
+                          <label class="label"><span>Bouton 1 — URL</span>
+                            <input class="input" type="url" name="discord_advanced[buttons][0][url]" value="<?php echo e((string)($btn0['url'] ?? '')); ?>" placeholder="https://…" /></label>
+                          <label class="label"><span>Bouton 2 — label</span>
+                            <input class="input" type="text" name="discord_advanced[buttons][1][label]" value="<?php echo e((string)($btn1['label'] ?? '')); ?>" placeholder="Discord" /></label>
+                        </div>
+                        <label class="label" style="margin-top:8px"><span>Bouton 2 — URL</span>
+                          <input class="input" type="url" name="discord_advanced[buttons][1][url]" value="<?php echo e((string)($btn1['url'] ?? '')); ?>" placeholder="https://discord.gg/…" /></label>
+                      </fieldset>
+                    <?php endif; ?>
+
+                    <?php if (isset($marketplaceOwnedSet['anticheat_advanced'])):
+                      $aa = is_array($marketplaceSettings['anticheat_advanced'] ?? null) ? $marketplaceSettings['anticheat_advanced'] : [];
+                      $blist = is_array($aa['process_blacklist'] ?? null) ? implode("\n", $aa['process_blacklist']) : '';
+                    ?>
+                      <fieldset class="card" style="margin-top:14px;background:rgba(255,255,255,.03);padding:12px">
+                        <legend class="small" style="padding:0 8px;color:var(--muted)">Anti-cheat avancé</legend>
+                        <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin-top:4px">
+                          <input type="checkbox" name="anticheat_advanced[require_sha256]" value="1" <?php echo !empty($aa['require_sha256']) ? 'checked' : ''; ?> />
+                          <span><strong style="color:#fff">Exiger l’intégrité SHA-256 du client</strong><br><span class="small">Bloque le lancement si la somme du .asar diffère.</span></span>
+                        </label>
+                        <label class="label" style="margin-top:10px"><span>Processus bloqués (un par ligne)</span>
+                          <textarea class="input" name="anticheat_advanced[process_blacklist]" rows="3" placeholder="cheatclient.exe&#10;xray.exe"><?php echo e($blist); ?></textarea></label>
+                      </fieldset>
+                    <?php endif; ?>
+
+                    <?php if (isset($marketplaceOwnedSet['file_protection'])): ?>
+                      <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin-top:12px">
+                        <input type="checkbox" name="file_protection[enabled]" value="1" <?php echo !empty(($marketplaceSettings['file_protection'] ?? [])['enabled']) ? 'checked' : ''; ?> />
+                        <span><strong style="color:#fff">Protection des fichiers (obfuscation XOR)</strong><br><span class="small">Active l’obfuscation des payloads téléchargés.</span></span>
+                      </label>
+                    <?php endif; ?>
+
+                    <?php if (isset($marketplaceOwnedSet['rest_api'])): ?>
+                      <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin-top:12px">
+                        <input type="checkbox" name="rest_api[enabled]" value="1" <?php echo !empty(($marketplaceSettings['rest_api'] ?? [])['enabled']) ? 'checked' : ''; ?> />
+                        <span><strong style="color:#fff">Exposer l’API REST publique</strong><br><span class="small">Active les endpoints signés côté Xyno.</span></span>
+                      </label>
+                    <?php endif; ?>
+
+                    <?php if (isset($marketplaceOwnedSet['shop'])):
+                      $sh = is_array($marketplaceSettings['shop'] ?? null) ? $marketplaceSettings['shop'] : [];
+                    ?>
+                      <label class="label" style="margin-top:12px"><span>URL boutique (Tebex, Tipeee, Stripe Payment Link…)</span>
+                        <input class="input" type="url" name="shop[url]" value="<?php echo e((string)($sh['url'] ?? '')); ?>" placeholder="https://boutique.ton-serveur.com" /></label>
+                    <?php endif; ?>
+
+                    <?php if (isset($marketplaceOwnedSet['music'])):
+                      $mu = is_array($marketplaceSettings['music'] ?? null) ? $marketplaceSettings['music'] : [];
+                    ?>
+                      <fieldset class="card" style="margin-top:14px;background:rgba(255,255,255,.03);padding:12px">
+                        <legend class="small" style="padding:0 8px;color:var(--muted)">Musique d’ambiance</legend>
+                        <label class="label"><span>URL piste audio (mp3/ogg)</span>
+                          <input class="input" type="url" name="music[url]" value="<?php echo e((string)($mu['url'] ?? '')); ?>" placeholder="https://cdn.ton-serveur.com/lobby.mp3" /></label>
+                        <div class="two-col" style="gap:10px;margin-top:8px">
+                          <label style="display:flex;gap:10px;align-items:center">
+                            <input type="checkbox" name="music[loop]" value="1" <?php echo !empty($mu['loop']) ? 'checked' : ''; ?> />
+                            <span>Lecture en boucle</span>
+                          </label>
+                          <label class="label" style="margin:0"><span>Volume par défaut (0.0 – 1.0)</span>
+                            <input class="input" type="number" min="0" max="1" step="0.05" name="music[volume]" value="<?php echo e((string)($mu['volume'] ?? '0.5')); ?>" /></label>
+                        </div>
+                      </fieldset>
+                    <?php endif; ?>
+
+                    <?php if (isset($marketplaceOwnedSet['multi_account'])): ?>
+                      <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin-top:12px">
+                        <input type="checkbox" name="multi_account[enabled]" value="1" <?php echo !empty(($marketplaceSettings['multi_account'] ?? [])['enabled']) ? 'checked' : ''; ?> />
+                        <span><strong style="color:#fff">Multi-comptes Microsoft</strong><br><span class="small">Active le picker de session au démarrage.</span></span>
+                      </label>
+                    <?php endif; ?>
+
+                    <?php if (isset($marketplaceOwnedSet['popup_promo'])):
+                      $pp = is_array($marketplaceSettings['popup_promo'] ?? null) ? $marketplaceSettings['popup_promo'] : [];
+                    ?>
+                      <fieldset class="card" style="margin-top:14px;background:rgba(255,255,255,.03);padding:12px">
+                        <legend class="small" style="padding:0 8px;color:var(--muted)">Popup promo</legend>
+                        <label class="label"><span>HTML du popup (≤ 2000 caractères)</span>
+                          <textarea class="input" name="popup_promo[html]" rows="3" maxlength="2000" placeholder="&lt;p&gt;Event ce weekend !&lt;/p&gt;"><?php echo e((string)($pp['html'] ?? '')); ?></textarea></label>
+                        <label class="label" style="margin-top:8px"><span>Valable jusqu’au (ISO 8601, ex. 2026-06-01T00:00:00Z)</span>
+                          <input class="input" type="text" name="popup_promo[until]" value="<?php echo e((string)($pp['until'] ?? '')); ?>" placeholder="2026-06-01T00:00:00Z" /></label>
+                      </fieldset>
+                    <?php endif; ?>
+
+                    <?php if (isset($marketplaceOwnedSet['countdown'])):
+                      $cd = is_array($marketplaceSettings['countdown'] ?? null) ? $marketplaceSettings['countdown'] : [];
+                    ?>
+                      <fieldset class="card" style="margin-top:14px;background:rgba(255,255,255,.03);padding:12px">
+                        <legend class="small" style="padding:0 8px;color:var(--muted)">Compte à rebours</legend>
+                        <div class="two-col" style="gap:10px">
+                          <label class="label"><span>Titre</span>
+                            <input class="input" type="text" name="countdown[title]" value="<?php echo e((string)($cd['title'] ?? '')); ?>" placeholder="Event serveur" /></label>
+                          <label class="label"><span>Date cible (ISO 8601)</span>
+                            <input class="input" type="text" name="countdown[date]" value="<?php echo e((string)($cd['date'] ?? '')); ?>" placeholder="2026-06-01T20:00:00Z" /></label>
+                        </div>
+                      </fieldset>
+                    <?php endif; ?>
+
+                    <div class="cta-row" style="margin-top:14px">
+                      <button class="btn btn-primary" type="submit">Enregistrer les paramètres</button>
+                    </div>
+                  </form>
+                </fieldset>
+              <?php endif; ?>
             <?php endif; ?>
           </div>
         </section>

@@ -121,7 +121,21 @@ async function checkLicense(apiClient, { pub } = {}) {
     const branding = res.branding && typeof res.branding === 'object' ? res.branding : null;
     const extensions = Array.isArray(res.extensions) ? res.extensions : null;
     const auth = res.auth && typeof res.auth === 'object' ? res.auth : null;
-    const hasExtras = (branding && Object.keys(branding).length) || (extensions && extensions.length) || (auth && auth.mode);
+
+    // Marketplace (Bloc 3): owned items + filtered settings coming from
+    // /api/v2/status.php. Older servers won't send this → we pass null.
+    const mp = res.marketplace && typeof res.marketplace === 'object' ? res.marketplace : null;
+    const marketplace = mp
+      ? {
+          owned: Array.isArray(mp.owned) ? mp.owned.filter((k) => typeof k === 'string') : [],
+          settings: mp.settings && typeof mp.settings === 'object' ? mp.settings : {},
+        }
+      : null;
+
+    const hasExtras = (branding && Object.keys(branding).length)
+      || (extensions && extensions.length)
+      || (auth && auth.mode)
+      || (marketplace && (marketplace.owned.length || Object.keys(marketplace.settings).length));
     if (name || news.length || Object.keys(config).length || hasExtras) {
       pub.info({
         name,
@@ -130,6 +144,7 @@ async function checkLicense(apiClient, { pub } = {}) {
         branding,
         extensions,
         auth,
+        marketplace,
       });
     }
   }
@@ -198,7 +213,7 @@ const ANTICHEAT_BANNED_ENV = [
   'JAVA_TOOL_OPTIONS',
 ];
 
-function runAntiCheatGuard(settings) {
+function runAntiCheatGuard(settings, advanced = null) {
   const reasons = [];
 
   // Java args on settings — only available if the launcher UI/settings added a
@@ -224,6 +239,45 @@ function runAntiCheatGuard(settings) {
   const execArgs = Array.isArray(process.execArgv) ? process.execArgv.join(' ').toLowerCase() : '';
   for (const flag of ANTICHEAT_BANNED_JAVA_FLAGS) {
     if (execArgs.includes(flag)) reasons.push(`Process Electron lancé avec : ${flag}`);
+  }
+
+  // Advanced mode (anticheat_advanced marketplace item owned) — extra checks
+  // driven by per-launcher settings fetched from /api/launcher_ext.php.
+  if (advanced && typeof advanced === 'object') {
+    // require_sha256: the launch would be blocked at bootstrapApiClient already
+    // (LAUNCHER_EXPECTED_ASAR_SHA256 must match), but we duplicate the check
+    // here so the tenant knows the feature is active even if they forgot to
+    // bake the expected hash into the build env.
+    if (advanced.require_sha256) {
+      const expected = (process.env.LAUNCHER_EXPECTED_ASAR_SHA256 || '').trim();
+      if (!expected) {
+        reasons.push("Anti-cheat avancé : intégrité SHA-256 exigée mais non configurée à la build.");
+      }
+    }
+
+    // Process blacklist: we do a best-effort scan using `ps`/`tasklist`.
+    // This is synchronous and cheap but NOT bulletproof — bypassable by a
+    // motivated attacker. It's meant to catch script kiddies running obvious
+    // cheat clients before launch.
+    const blacklist = Array.isArray(advanced.process_blacklist)
+      ? advanced.process_blacklist.map((s) => String(s).toLowerCase().trim()).filter(Boolean)
+      : [];
+
+    if (blacklist.length > 0) {
+      try {
+        const cp = require('node:child_process');
+        const isWin = process.platform === 'win32';
+        const cmd = isWin ? 'tasklist /FO CSV /NH' : 'ps -A -o comm=';
+        const out = cp.execSync(cmd, { timeout: 1500, encoding: 'utf8' }).toLowerCase();
+        for (const proc of blacklist) {
+          if (out.includes(proc)) {
+            reasons.push(`Processus interdit détecté : ${proc}`);
+          }
+        }
+      } catch {
+        // ignore: if we can't scan, we don't block.
+      }
+    }
   }
 
   if (reasons.length) {
@@ -625,10 +679,20 @@ app.whenReady().then(async () => {
         ? data.details.replace('{launcher_name}', launcherName || 'Minecraft')
         : (launcherName || 'Minecraft');
       const state = typeof data.state === 'string' ? data.state : 'Powered by XynoWeb';
-      const cta = data.cta && typeof data.cta === 'object' ? data.cta : null;
-      const buttons = cta && typeof cta.label === 'string' && typeof cta.url === 'string'
-        ? [{ label: cta.label, url: cta.url }]
-        : undefined;
+
+      // Advanced mode may provide up to 2 buttons; fall back to the classic CTA.
+      let buttons;
+      if (Array.isArray(data.buttons) && data.buttons.length > 0) {
+        buttons = data.buttons
+          .filter((b) => b && typeof b.label === 'string' && typeof b.url === 'string')
+          .slice(0, 2)
+          .map((b) => ({ label: b.label, url: b.url }));
+      } else {
+        const cta = data.cta && typeof data.cta === 'object' ? data.cta : null;
+        buttons = cta && typeof cta.label === 'string' && typeof cta.url === 'string'
+          ? [{ label: cta.label, url: cta.url }]
+          : undefined;
+      }
 
       await rpc.setActivity({
         details,
@@ -897,8 +961,27 @@ app.whenReady().then(async () => {
 
       // Anti-cheat (classique) — refuse to launch if injection vectors are
       // present. Opt-in per launcher via the `anticheat` extension toggle.
+      // If `anticheat_advanced` is owned (Bloc 3 marketplace), the payload
+      // returned by /api/launcher_ext.php?ext=anticheat includes a process
+      // blacklist and integrity requirements.
       if (isExtEnabled(extensionsMap, 'anticheat')) {
-        runAntiCheatGuard(settings);
+        let advanced = null;
+        try {
+          const uuidForExt = requireEnv('LAUNCHER_UUID');
+          const apiKeyForExt = requireEnv('LAUNCHER_KEY');
+          const apiBaseUrlForExt = requireEnv('API_BASE_URL');
+          const payload = await fetchExtensionData(apiBaseUrlForExt, uuidForExt, apiKeyForExt, 'anticheat');
+          const data = payload && payload.data ? payload.data : null;
+          if (data && data.mode === 'advanced') {
+            advanced = {
+              require_sha256: !!data.require_sha256,
+              process_blacklist: Array.isArray(data.process_blacklist) ? data.process_blacklist : [],
+            };
+          }
+        } catch {
+          // If we can't reach the server, fall back to classic mode.
+        }
+        runAntiCheatGuard(settings, advanced);
       }
 
       const javaPath = resolveJavaPath(settings);

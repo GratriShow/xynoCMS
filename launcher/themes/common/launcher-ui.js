@@ -188,12 +188,171 @@
         }
       }
 
+      // Additional color vars unlocked by the `colors_custom` marketplace item.
+      // They ship alongside `branding.primary` when the launcher owns that item.
+      const extraColors = [
+        ['accent', '--accent'],
+        ['bg', '--bg'],
+        ['surface', '--surface'],
+      ];
+      for (const [key, cssVar] of extraColors) {
+        const v = typeof branding[key] === 'string' ? branding[key].trim() : '';
+        if (v && SAFE_HEX.test(v)) {
+          try { document.documentElement.style.setProperty(cssVar, v); } catch { /* ignore */ }
+        }
+      }
+      // If a bg override is set, paint the body so users see the effect
+      // even on themes that don't reference --bg yet.
+      if (typeof branding.bg === 'string' && SAFE_HEX.test(branding.bg.trim())) {
+        try { document.body.style.background = branding.bg.trim(); } catch { /* ignore */ }
+      }
+
       // Marketplace "remove_copyright" gate (10€ one-shot). The server sets
       // hide_copyright=true once the upgrade is paid. Default = false.
       if (branding.hide_copyright === true) {
         setCopyrightVisible(false);
       } else {
         setCopyrightVisible(true);
+      }
+    }
+
+    // --- Marketplace features --------------------------------------------
+    // Everything below is opt-in: the block runs only if the server sent a
+    // `marketplace.settings.<section>` payload, which in turn only happens
+    // when the matching item is owned for that launcher.
+
+    let musicAudioEl = null;
+    let countdownTimer = null;
+
+    function applyMarketplace(marketplace) {
+      if (!marketplace || typeof marketplace !== 'object') return;
+      const owned = Array.isArray(marketplace.owned) ? marketplace.owned : [];
+      const settings = marketplace.settings && typeof marketplace.settings === 'object'
+        ? marketplace.settings
+        : {};
+
+      // Music player: injects <audio> once, honours url/loop/volume.
+      if (owned.indexOf('music') >= 0) {
+        const mu = settings.music && typeof settings.music === 'object' ? settings.music : {};
+        const url = typeof mu.url === 'string' ? mu.url.trim() : '';
+        if (url && /^https?:\/\//i.test(url)) {
+          if (!musicAudioEl) {
+            musicAudioEl = document.createElement('audio');
+            musicAudioEl.id = 'marketplace-music';
+            musicAudioEl.setAttribute('aria-hidden', 'true');
+            musicAudioEl.style.display = 'none';
+            document.body.appendChild(musicAudioEl);
+          }
+          if (musicAudioEl.src !== url) musicAudioEl.src = url;
+          musicAudioEl.loop = mu.loop === true;
+          const vol = typeof mu.volume === 'number' ? mu.volume : 0.5;
+          musicAudioEl.volume = Math.max(0, Math.min(1, vol));
+          // autoplay policies require a gesture; we catch NotAllowedError silently.
+          musicAudioEl.play().catch(() => { /* ignore */ });
+        }
+      }
+
+      // Shop: turns the ext panel item clickable + opens url in the OS browser.
+      if (owned.indexOf('shop') >= 0) {
+        const sh = settings.shop && typeof settings.shop === 'object' ? settings.shop : {};
+        const url = typeof sh.url === 'string' ? sh.url.trim() : '';
+        if (url && /^https?:\/\//i.test(url)) {
+          let btn = document.getElementById('marketplace-shop-btn');
+          if (!btn) {
+            btn = document.createElement('button');
+            btn.id = 'marketplace-shop-btn';
+            btn.type = 'button';
+            btn.textContent = 'Boutique';
+            btn.style.marginLeft = '8px';
+            btn.addEventListener('click', () => {
+              if (api && typeof api.openExternal === 'function') api.openExternal(url);
+              else window.open(url, '_blank', 'noopener');
+            });
+            const actions = document.querySelector('#screen-ready .actions');
+            if (actions) actions.appendChild(btn);
+          } else {
+            btn.onclick = () => {
+              if (api && typeof api.openExternal === 'function') api.openExternal(url);
+              else window.open(url, '_blank', 'noopener');
+            };
+          }
+        }
+      }
+
+      // Multi-account: just surface a hint; full multi-session picker is
+      // handled in a follow-up iteration on the main-process side.
+      if (owned.indexOf('multi_account') >= 0) {
+        if (authHintEl && !authHintEl.textContent) {
+          authHintEl.textContent = 'Multi-comptes activé.';
+        }
+      }
+
+      // Popup promo — one-shot modal on the READY screen, auto-dismissable.
+      if (owned.indexOf('popup_promo') >= 0) {
+        const pp = settings.popup_promo && typeof settings.popup_promo === 'object' ? settings.popup_promo : {};
+        const html = typeof pp.html === 'string' ? pp.html.trim() : '';
+        const until = typeof pp.until === 'string' ? pp.until.trim() : '';
+        let inWindow = true;
+        if (until) {
+          const t = Date.parse(until);
+          if (!Number.isNaN(t) && t < Date.now()) inWindow = false;
+        }
+        if (html && inWindow && !document.getElementById('marketplace-popup')) {
+          const overlay = document.createElement('div');
+          overlay.id = 'marketplace-popup';
+          overlay.setAttribute('role', 'dialog');
+          overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;';
+          const box = document.createElement('div');
+          box.style.cssText = 'max-width:420px;background:rgba(20,20,30,.98);border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:16px;color:rgba(255,255,255,.92);font-size:13px;line-height:1.5;';
+          // innerHTML is intentional here — the tenant owns the payload and it's
+          // capped to 2000 chars server-side. Scripts are dropped defensively.
+          box.innerHTML = html.replace(/<script[\s\S]*?<\/script>/gi, '');
+          const close = document.createElement('button');
+          close.type = 'button';
+          close.textContent = 'Fermer';
+          close.style.marginTop = '12px';
+          close.addEventListener('click', () => { overlay.remove(); });
+          box.appendChild(close);
+          overlay.appendChild(box);
+          document.body.appendChild(overlay);
+        }
+      }
+
+      // Countdown widget — mounted under the READY screen, re-renders every second.
+      if (owned.indexOf('countdown') >= 0) {
+        const cd = settings.countdown && typeof settings.countdown === 'object' ? settings.countdown : {};
+        const title = typeof cd.title === 'string' ? cd.title.trim() : '';
+        const date = typeof cd.date === 'string' ? cd.date.trim() : '';
+        const target = date ? Date.parse(date) : NaN;
+        let widget = document.getElementById('marketplace-countdown');
+        if (!Number.isNaN(target) && title && date) {
+          if (!widget) {
+            widget = document.createElement('div');
+            widget.id = 'marketplace-countdown';
+            widget.style.cssText = 'margin-top:10px;padding:10px;border:1px solid rgba(255,255,255,.18);border-radius:12px;font-size:12px;';
+            const ready = document.getElementById('screen-ready');
+            if (ready) ready.appendChild(widget);
+          }
+          if (countdownTimer) clearInterval(countdownTimer);
+          const render = () => {
+            const ms = target - Date.now();
+            if (ms <= 0) {
+              widget.textContent = `${title} — c’est maintenant !`;
+              if (countdownTimer) clearInterval(countdownTimer);
+              return;
+            }
+            const s = Math.floor(ms / 1000);
+            const d = Math.floor(s / 86400);
+            const h = Math.floor((s % 86400) / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            const sec = s % 60;
+            widget.textContent = `${title} — ${d}j ${h}h ${m}m ${sec}s`;
+          };
+          render();
+          countdownTimer = setInterval(render, 1000);
+        } else if (widget) {
+          widget.remove();
+        }
       }
     }
 
@@ -886,6 +1045,7 @@
         if (info.branding) applyBranding(info.branding);
         if (info.extensions) setExtensions(info.extensions);
         if (info.auth) applyAuth(info.auth);
+        if (info.marketplace) applyMarketplace(info.marketplace);
       },
       onUx: (payload) => {
         if (!payload) return;

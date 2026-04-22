@@ -195,8 +195,52 @@ CREATE TABLE IF NOT EXISTS `launcher_auth` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =========================================================================
+-- 8) MARKETPLACE : achats Stripe one-shot (paiement à vie, par launcher)
+--    Une ligne = un item acheté pour un launcher donné.
+--    Une UNIQUE KEY (launcher_id, item_key) garantit qu'un même item n'est
+--    acheté qu'une fois par launcher (l'Electron récupère la liste via
+--    /api/v2/status.php → marketplace_owned).
+-- =========================================================================
+
+CREATE TABLE IF NOT EXISTS `marketplace_purchases` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `launcher_id` INT NOT NULL,
+  `item_key` VARCHAR(64) NOT NULL,
+  `stripe_session_id` VARCHAR(255) NULL,
+  `stripe_payment_intent` VARCHAR(255) NULL,
+  `amount_cents` INT UNSIGNED NOT NULL DEFAULT 0,
+  `currency` VARCHAR(8) NOT NULL DEFAULT 'eur',
+  `status` ENUM('pending','paid','refunded') NOT NULL DEFAULT 'pending',
+  `purchased_at` DATETIME NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `mp_unique` (`launcher_id`, `item_key`),
+  KEY `mp_idx_session` (`stripe_session_id`),
+  KEY `mp_idx_status` (`status`),
+  CONSTRAINT `marketplace_purchases_launcher_id_fk`
+    FOREIGN KEY (`launcher_id`) REFERENCES `launchers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =========================================================================
+-- 9) LAUNCHER_MARKETPLACE_SETTINGS : réglages débloqués par la marketplace
+--    (ex: discord client_id custom, shop URL, URL musique, promo HTML,
+--    countdown date, couleurs custom, etc.)
+--    Stocké en JSON (LONGTEXT pour rester compatible MySQL 5.6+).
+-- =========================================================================
+
+CREATE TABLE IF NOT EXISTS `launcher_marketplace_settings` (
+  `launcher_id` INT NOT NULL,
+  `settings_json` LONGTEXT NULL,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`launcher_id`),
+  CONSTRAINT `launcher_mp_settings_launcher_id_fk`
+    FOREIGN KEY (`launcher_id`) REFERENCES `launchers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =========================================================================
 -- Fin · migrations_v3
 -- Pour vérifier, on peut exécuter :
 --   SHOW CREATE TABLE subscriptions\G
 --   SHOW TABLES LIKE 'launcher_%';
+--   SHOW TABLES LIKE 'marketplace_%';
 -- =========================================================================
