@@ -7,18 +7,18 @@ require_once __DIR__ . '/../config/bootstrap.php';
 $user = require_login();
 
 if (!is_post()) {
-    redirect('/dashboard.php#auth');
+    redirect('/dashboard.php');
 }
 
 if (!csrf_verify($_POST['csrf_token'] ?? '')) {
     flash_set('error', 'Jeton CSRF invalide — réessaie depuis le dashboard.');
-    redirect('/dashboard.php#auth');
+    redirect('/dashboard.php');
 }
 
 $launcherUuid = trim((string)($_POST['launcher_uuid'] ?? ''));
 if ($launcherUuid === '') {
     flash_set('error', 'Launcher introuvable.');
-    redirect('/dashboard.php#auth');
+    redirect('/dashboard.php');
 }
 
 $mode = strtolower(trim((string)($_POST['mode'] ?? 'microsoft')));
@@ -44,7 +44,7 @@ if (strlen($apiKey) > 255) $apiKey = substr($apiKey, 0, 255);
 // n'a aucun endpoint pour vérifier le token. On redirige avec un message explicite.
 if ($mode === 'custom' && ($loginUrl === '' || $verifyUrl === '')) {
     flash_set('error', 'En mode « API Bearer », renseigne au moins l\'URL de login et l\'URL de vérification.');
-    redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '#auth');
+    redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '&tab=auth#tab-auth');
 }
 
 try {
@@ -56,7 +56,7 @@ try {
     $row = $check->fetch();
     if (!$row) {
         flash_set('error', 'Accès refusé.');
-        redirect('/dashboard.php#auth');
+        redirect('/dashboard.php');
     }
     $launcherId = (int)($row['id'] ?? 0);
 
@@ -88,9 +88,9 @@ try {
             "Impossible d'enregistrer : la table `launcher_auth` n'existe pas. "
           . 'Importe `migrations_v3.sql` depuis la section SQL du dashboard.'
         );
-        redirect('/dashboard.php#sql');
+        redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '&tab=monitoring#tab-monitoring');
     }
     flash_set('error', 'Erreur base de données : ' . $msg);
 }
 
-redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '#auth');
+redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '&tab=auth#tab-auth');

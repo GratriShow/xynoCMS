@@ -7,18 +7,18 @@ require_once __DIR__ . '/config/bootstrap.php';
 $user = require_login();
 
 if (!is_post()) {
-    redirect('/dashboard.php#facturation');
+    redirect('/dashboard.php');
 }
 
 if (!csrf_verify($_POST['csrf_token'] ?? '')) {
     flash_set('error', 'Jeton CSRF invalide — réessaie depuis le dashboard.');
-    redirect('/dashboard.php#facturation');
+    redirect('/dashboard.php');
 }
 
 $subId = (int)($_POST['subscription_id'] ?? 0);
 if ($subId <= 0) {
     flash_set('error', 'Abonnement introuvable.');
-    redirect('/dashboard.php#facturation');
+    redirect('/dashboard.php');
 }
 
 try {
@@ -30,12 +30,12 @@ try {
     $sub = $chk->fetch();
     if (!$sub) {
         flash_set('error', 'Cet abonnement ne t’appartient pas.');
-        redirect('/dashboard.php#facturation');
+        redirect('/dashboard.php');
     }
 
     if (strtolower((string)($sub['status'] ?? '')) !== 'active') {
         flash_set('error', 'Seul un abonnement actif peut être résilié.');
-        redirect('/dashboard.php#facturation');
+        redirect('/dashboard.php');
     }
 
     // Tentative 1 : statut 'cancelled' + cancelled_at (schéma v3)
@@ -60,19 +60,19 @@ try {
               . "Importe `migrations_v3.sql` (phpMyAdmin › Importer) puis réessaie. "
               . "Détail : " . $e2->getMessage()
             );
-            redirect('/dashboard.php#sql');
+            redirect('/dashboard.php');
         }
     }
 
     if (!$ok) {
         flash_set('error', 'Résiliation échouée — réessaie dans une minute.');
-        redirect('/dashboard.php#facturation');
+        redirect('/dashboard.php');
     }
 
 } catch (Throwable $e) {
     flash_set('error', 'Impossible de résilier l’abonnement : ' . $e->getMessage());
-    redirect('/dashboard.php#facturation');
+    redirect('/dashboard.php');
 }
 
 flash_set('success', 'Abonnement résilié. Ton accès reste actif jusqu’à la fin de la période en cours.');
-redirect('/dashboard.php#facturation');
+redirect('/dashboard.php');

@@ -396,8 +396,8 @@ if ($selected !== null) {
         <p class="small" style="margin:6px 0 0">UUID : <?php echo e($user['uuid']); ?></p>
 
         <nav class="side-links" aria-label="Menu dashboard">
-          <a href="../dashboard.php#launchers">Launchers</a>
-          <a href="../dashboard.php#parametres">Paramètres</a>
+          <a href="../dashboard.php">Launchers</a>
+          <a href="../dashboard.php">Paramètres</a>
           <a href="upload.php" aria-current="page">Fichiers</a>
         </nav>
       </aside>

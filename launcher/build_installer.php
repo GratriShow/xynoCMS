@@ -27,7 +27,7 @@ if ($launcherUuid === '' || !preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-f
 
 if (!in_array($platform, ['win', 'mac', 'linux'], true)) {
     flash_set('error', 'Plateforme invalide.');
-    redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '#parametres');
+    redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '&tab=versions#tab-versions');
 }
 
 function runner_url_for_platform(string $platform): string
@@ -273,7 +273,7 @@ try {
         $token = api_env('XYNO_BUILD_TRIGGER_TOKEN', '');
         if (!is_github_workflow_dispatch_url($runnerUrl) && $token === '') {
             flash_set('error', 'Build non configuré (token manquant).');
-            redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '#parametres');
+            redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '&tab=versions#tab-versions');
         }
 
         $decoded = call_remote_runner($runnerUrl, $token, $launcherUuid, $platform);
@@ -290,7 +290,7 @@ try {
         } else {
             flash_set('success', 'Build terminé (' . strtoupper($platform) . ') ' . ($version !== '' ? '• ' . $version : '') . ($fileUrl !== '' ? ' • OK' : ''));
         }
-        redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '#parametres');
+        redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '&tab=versions#tab-versions');
     }
 
     // Default: build locally on the same machine as the CMS.
@@ -300,14 +300,14 @@ try {
     $fileUrl = (string)($result['url'] ?? '');
 
     flash_set('success', 'Build terminé (' . strtoupper($platform) . ') ' . ($version !== '' ? '• ' . $version : '') . ($fileUrl !== '' ? ' • OK' : ''));
-    redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '#parametres');
+    redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '&tab=versions#tab-versions');
 } catch (BuildLauncherException $e) {
     error_log('[build_installer] user_id=' . (int)$user['id'] . ' uuid=' . $launcherUuid . ' platform=' . $platform . ' code=' . $e->logCode);
     flash_set('error', $e->publicMessage);
-    redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '#parametres');
+    redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '&tab=versions#tab-versions');
 } catch (Throwable $e) {
     // Keep details in server logs, show a short user-facing message.
     error_log('[build_installer] user_id=' . (int)$user['id'] . ' uuid=' . $launcherUuid . ' platform=' . $platform . ' err=' . $e->getMessage());
     flash_set('error', 'Build impossible. Vérifie la config du builder sur le serveur.');
-    redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '#parametres');
+    redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '&tab=versions#tab-versions');
 }

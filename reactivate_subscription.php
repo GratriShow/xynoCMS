@@ -7,18 +7,18 @@ require_once __DIR__ . '/config/bootstrap.php';
 $user = require_login();
 
 if (!is_post()) {
-    redirect('/dashboard.php#facturation');
+    redirect('/dashboard.php');
 }
 
 if (!csrf_verify($_POST['csrf_token'] ?? '')) {
     flash_set('error', 'Jeton CSRF invalide — réessaie depuis le dashboard.');
-    redirect('/dashboard.php#facturation');
+    redirect('/dashboard.php');
 }
 
 $subId = (int)($_POST['subscription_id'] ?? 0);
 if ($subId <= 0) {
     flash_set('error', 'Abonnement introuvable.');
-    redirect('/dashboard.php#facturation');
+    redirect('/dashboard.php');
 }
 
 try {
@@ -29,12 +29,12 @@ try {
     $sub = $chk->fetch();
     if (!$sub) {
         flash_set('error', 'Cet abonnement ne t’appartient pas.');
-        redirect('/dashboard.php#facturation');
+        redirect('/dashboard.php');
     }
 
     if (strtolower((string)($sub['status'] ?? '')) === 'active') {
         flash_set('error', 'Cet abonnement est déjà actif.');
-        redirect('/dashboard.php#facturation');
+        redirect('/dashboard.php');
     }
 
     // Seulement si la période en cours n'est pas terminée, on réactive sans repayer.
@@ -48,8 +48,8 @@ try {
     $upd->execute([$subId]);
 } catch (Throwable $e) {
     flash_set('error', 'Impossible de réactiver l’abonnement (erreur base de données).');
-    redirect('/dashboard.php#facturation');
+    redirect('/dashboard.php');
 }
 
 flash_set('success', 'Abonnement réactivé.');
-redirect('/dashboard.php#facturation');
+redirect('/dashboard.php');

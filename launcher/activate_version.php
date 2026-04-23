@@ -43,7 +43,7 @@ try {
     $row = $v->fetch();
     if (!$row) {
         flash_set('error', 'Version introuvable.');
-        redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '#versions');
+        redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '&tab=versions#tab-versions');
     }
 
     $pdo->beginTransaction();
@@ -57,7 +57,7 @@ try {
     $pdo->commit();
 
     flash_set('success', 'Version activée.');
-    redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '#versions');
+    redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '&tab=versions#tab-versions');
 } catch (Throwable $e) {
     try {
         $pdo = db();
@@ -68,5 +68,5 @@ try {
     }
 
     flash_set('error', 'Impossible d’activer la version.');
-    redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '#versions');
+    redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '&tab=versions#tab-versions');
 }

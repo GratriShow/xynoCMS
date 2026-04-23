@@ -7,18 +7,18 @@ require_once __DIR__ . '/../config/bootstrap.php';
 $user = require_login();
 
 if (!is_post()) {
-    redirect('/dashboard.php#extensions');
+    redirect('/dashboard.php');
 }
 
 if (!csrf_verify($_POST['csrf_token'] ?? '')) {
     flash_set('error', 'Jeton CSRF invalide — réessaie depuis le dashboard.');
-    redirect('/dashboard.php#extensions');
+    redirect('/dashboard.php');
 }
 
 $launcherUuid = trim((string)($_POST['launcher_uuid'] ?? ''));
 if ($launcherUuid === '') {
     flash_set('error', 'Launcher introuvable.');
-    redirect('/dashboard.php#extensions');
+    redirect('/dashboard.php');
 }
 
 // Liste blanche stricte : on n'accepte QUE les extensions présentes au catalogue.
@@ -39,7 +39,7 @@ try {
     $row = $check->fetch();
     if (!$row) {
         flash_set('error', 'Accès refusé.');
-        redirect('/dashboard.php#extensions');
+        redirect('/dashboard.php');
     }
     $launcherId = (int)($row['id'] ?? 0);
 
@@ -79,9 +79,9 @@ try {
             "Impossible d'enregistrer les extensions : la table `launcher_extensions` n'existe pas. "
           . 'Importe `migrations_v3.sql` depuis la section SQL du dashboard.'
         );
-        redirect('/dashboard.php#sql');
+        redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '&tab=monitoring#tab-monitoring');
     }
     flash_set('error', 'Erreur base de données : ' . $msg);
 }
 
-redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '#extensions');
+redirect('/dashboard.php?launcher=' . urlencode($launcherUuid) . '&tab=extensions#tab-extensions');
