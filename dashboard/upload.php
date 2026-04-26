@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../config/bootstrap.php';
+require_once __DIR__ . '/../api/files_helpers.php';
 
 $user = require_login();
 $pdo = db();
@@ -87,7 +88,7 @@ if (is_post()) {
             redirect('/dashboard/upload.php?launcher=' . urlencode((string)$launcherRow['uuid']));
         }
 
-        $sel = $pdo->prepare('SELECT id, path, name FROM files WHERE id = ? AND launcher_id = ? LIMIT 1');
+        $sel = $pdo->prepare('SELECT id, path, name, size FROM files WHERE id = ? AND launcher_id = ? LIMIT 1');
         $sel->execute([$fileId, (int)$launcherRow['id']]);
         $fileRow = $sel->fetch();
         if (!$fileRow) {
@@ -110,6 +111,12 @@ if (is_post()) {
 
         $del = $pdo->prepare('DELETE FROM files WHERE id = ? AND launcher_id = ?');
         $del->execute([(int)$fileRow['id'], (int)$launcherRow['id']]);
+
+        file_event_log(
+            $pdo, (int)$launcherRow['id'], (int)$fileRow['id'], 'delete',
+            (string)$fileRow['name'], (string)$fileRow['path'], (int)($fileRow['size'] ?? 0),
+            'user', (int)$user['id']
+        );
 
         try {
           $touch = $pdo->prepare('UPDATE launchers SET files_changed_at = NOW() WHERE id = ?');
@@ -298,6 +305,18 @@ if (is_post()) {
           $touch->execute([(int)$launcherRow['id']]);
 
           $pdo->commit();
+
+          // Best-effort: log the upload event (failure ignored).
+          try {
+              $idQ = $pdo->prepare('SELECT id FROM files WHERE launcher_id = ? AND relative_path = ? LIMIT 1');
+              $idQ->execute([(int)$launcherRow['id'], $minecraftPath]);
+              $newFileId = (int)($idQ->fetchColumn() ?: 0);
+              file_event_log(
+                  $pdo, (int)$launcherRow['id'], $newFileId, 'upload',
+                  $safeName, $relativePath, (int)$realSize,
+                  'user', (int)$user['id']
+              );
+          } catch (Throwable $e) { /* ignore */ }
         } catch (Throwable $e) {
           if ($pdo->inTransaction()) {
             $pdo->rollBack();
@@ -397,8 +416,13 @@ if ($selected !== null) {
 
         <nav class="side-links" aria-label="Menu dashboard">
           <a href="../dashboard.php">Launchers</a>
-          <a href="../dashboard.php">Paramètres</a>
-          <a href="upload.php" aria-current="page">Fichiers</a>
+          <?php if ($selected !== null): ?>
+            <a href="../dashboard.php?launcher=<?php echo urlencode((string)$selected['uuid']); ?>&amp;tab=general#tab-general">Paramètres</a>
+          <?php else: ?>
+            <a href="../dashboard.php">Paramètres</a>
+          <?php endif; ?>
+          <a href="files.php<?php echo $selected !== null ? '?launcher=' . urlencode((string)$selected['uuid']) : ''; ?>">Gestion fichiers</a>
+          <a href="upload.php<?php echo $selected !== null ? '?launcher=' . urlencode((string)$selected['uuid']) : ''; ?>" aria-current="page">Upload</a>
         </nav>
       </aside>
 
@@ -409,6 +433,9 @@ if ($selected !== null) {
             <p class="section-desc" style="margin-top:8px">Upload et gestion (mods, config, assets, versions).</p>
           </div>
           <div class="cta-row" style="margin:0">
+            <?php if ($selected !== null): ?>
+              <a class="btn btn-primary" href="files.php?launcher=<?php echo urlencode((string)$selected['uuid']); ?>">📁 Gestion complète</a>
+            <?php endif; ?>
             <a class="btn" href="../dashboard.php">Retour dashboard</a>
           </div>
         </div>

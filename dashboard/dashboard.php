@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../config/bootstrap.php';
 require_once __DIR__ . '/../api/utils.php';
+require_once __DIR__ . '/../api/subscription_helpers.php';
 
 $user = require_login();
 
@@ -241,6 +242,29 @@ if ($selectedId && $selectedId > 0) {
 }
 $ownedCount = count($marketplaceOwnedSet);
 
+// Abonnement du launcher sélectionné -----------------------------------------
+// Charge la souscription la plus récente liée au launcher courant (peu importe
+// le statut) afin que la section "Abonnement" du tab Général affiche soit un
+// CTA d'achat (aucun abo / pending / past_due / expired / cancelled), soit
+// l'état actif avec l'option "Résilier".
+$selectedSub = null;
+if ($selectedId && $selectedId > 0) {
+  try {
+    $ss = $pdo->prepare(
+      'SELECT id, status, plan, period, amount_cents, currency, expires_at, '
+    . '       next_billing_at, cancelled_at, stripe_subscription_id, created_at '
+    . 'FROM subscriptions '
+    . 'WHERE launcher_id = ? AND user_id = ? '
+    . "ORDER BY (status = 'active') DESC, (status = 'pending') DESC, created_at DESC "
+    . 'LIMIT 1'
+    );
+    $ss->execute([$selectedId, $user['id']]);
+    $selectedSub = $ss->fetch() ?: null;
+  } catch (Throwable $e) {
+    $selectedSub = null; // table missing or pre-v4 schema
+  }
+}
+
 // Quick helpers used below ----------------------------------------------------
 $owns = function (string $k) use ($marketplaceOwnedSet): bool {
   return isset($marketplaceOwnedSet[$k]);
@@ -254,14 +278,22 @@ $priceFor = function (string $key) use ($catalogByKey): string {
 };
 
 // Query-string feedback -------------------------------------------------------
-$mpSuccess = isset($_GET['mp_success']) && (string)$_GET['mp_success'] === '1';
-$mpCancel  = isset($_GET['mp_cancel'])  && (string)$_GET['mp_cancel']  === '1';
+$mpSuccess  = isset($_GET['mp_success']) && (string)$_GET['mp_success'] === '1';
+$mpCancel   = isset($_GET['mp_cancel'])  && (string)$_GET['mp_cancel']  === '1';
+$subSuccess = isset($_GET['sub_success']) && (string)$_GET['sub_success'] === '1';
+$subCancel  = isset($_GET['sub_cancel'])  && (string)$_GET['sub_cancel']  === '1';
 
 // Active tab ------------------------------------------------------------------
 $validTabs = ['general','extensions','apparence','auth','versions','monitoring','marketplace'];
 $activeTab = (string)($_GET['tab'] ?? '');
 if (!in_array($activeTab, $validTabs, true)) {
-  $activeTab = ($mpSuccess || $mpCancel) ? 'marketplace' : 'general';
+  if ($mpSuccess || $mpCancel) {
+    $activeTab = 'marketplace';
+  } elseif ($subSuccess || $subCancel) {
+    $activeTab = 'general';
+  } else {
+    $activeTab = 'general';
+  }
 }
 
 $csrf    = csrf_token();
@@ -453,8 +485,15 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
             'apparence'   => ['Apparence',      '🎨'],
             'auth'        => ['Authentification','🔐'],
             'versions'    => ['Versions & Builds','📦'],
+            'files'       => ['Fichiers',       '📁'],
             'monitoring'  => ['Monitoring',     '📈'],
             'marketplace' => ['Marketplace',    '🛒'],
+          ];
+          // Tabs that point to an external page (instead of an in-page panel).
+          // Used so the "Fichiers" entry can route to dashboard/upload.php
+          // until the big files refactor lands.
+          $externalTabs = [
+            'files' => 'files.php?launcher=' . $uuidQ,
           ];
         ?>
 
@@ -502,13 +541,23 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
         <?php if ($mpCancel): ?>
           <div class="notice" data-show="true" style="margin-bottom:14px">Paiement annulé. Aucun prélèvement n'a été effectué.</div>
         <?php endif; ?>
+        <?php if ($subSuccess): ?>
+          <div class="notice" data-show="true" style="margin-bottom:14px">Abonnement confirmé ✓ — Stripe finalise le premier prélèvement, ton launcher passera en "Actif" dans quelques secondes.</div>
+        <?php endif; ?>
+        <?php if ($subCancel): ?>
+          <div class="notice" data-show="true" style="margin-bottom:14px">Abonnement annulé. Aucun prélèvement n'a été effectué — tu peux relancer la souscription depuis le tab Général.</div>
+        <?php endif; ?>
 
         <nav class="tabs" aria-label="Onglets launcher">
           <?php foreach ($tabs as $tk => $tmeta): ?>
-            <a href="<?php echo e($tabUrl($tk)); ?>"
-               data-tab-link="<?php echo e($tk); ?>"
-               class="<?php echo $activeTab === $tk ? 'is-active' : ''; ?>"
-               aria-current="<?php echo $activeTab === $tk ? 'page' : 'false'; ?>">
+            <?php
+              $isExternal = isset($externalTabs[$tk]);
+              $href       = $isExternal ? $externalTabs[$tk] : $tabUrl($tk);
+            ?>
+            <a href="<?php echo e($href); ?>"
+               <?php if (!$isExternal): ?>data-tab-link="<?php echo e($tk); ?>"<?php endif; ?>
+               class="<?php echo (!$isExternal && $activeTab === $tk) ? 'is-active' : ''; ?>"
+               aria-current="<?php echo (!$isExternal && $activeTab === $tk) ? 'page' : 'false'; ?>">
               <span class="tab-ic"><?php echo $tmeta[1]; ?></span>
               <?php echo e($tmeta[0]); ?>
             </a>
@@ -521,6 +570,130 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
             <h2 class="panel-title">⚙️ Paramètres généraux</h2>
             <p class="panel-desc">Identité du launcher, version Minecraft, logo et installers à distribuer.</p>
           </div>
+
+          <?php
+            // -------- Abonnement de CE launcher --------
+            $selSubStatus = $selectedSub ? strtolower((string)($selectedSub['status'] ?? '')) : '';
+            $selSubPlan   = $selectedSub ? (string)($selectedSub['plan']   ?? '') : '';
+            $selSubPeriod = $selectedSub ? (string)($selectedSub['period'] ?? '') : '';
+            $selSubExp    = $selectedSub ? (string)($selectedSub['expires_at'] ?? '') : '';
+            $selSubExpTs  = $selSubExp ? strtotime($selSubExp) : 0;
+            $selSubNext   = $selectedSub ? (string)($selectedSub['next_billing_at'] ?? '') : '';
+            $selSubNextTs = $selSubNext ? strtotime($selSubNext) : 0;
+            $selSubAmt    = (int)($selectedSub['amount_cents'] ?? 0);
+            $selSubCcy    = strtoupper((string)($selectedSub['currency'] ?? 'EUR'));
+            $isActiveSub  = $selSubStatus === 'active';
+            $isPendingSub = $selSubStatus === 'pending';
+            $needsSub     = !$selectedSub || in_array($selSubStatus, ['expired','cancelled',''], true);
+
+            $planLabels = [
+              'starter' => 'Starter (9 €/mo)',
+              'pro'     => 'Pro (19 €/mo)',
+              'premium' => 'Premium (39 €/mo)',
+            ];
+            $periodLabels = [
+              'monthly'    => 'Mensuel',
+              'quarterly'  => 'Trimestriel (-5 %)',
+              'semestrial' => 'Semestriel (-10 %)',
+              'yearly'     => 'Annuel (-15 %)',
+            ];
+          ?>
+          <section class="sub-card" aria-label="Abonnement du launcher">
+            <div class="sub-card-head">
+              <div>
+                <h3>💳 Abonnement de ce launcher</h3>
+                <p>
+                  <?php if ($isActiveSub): ?>
+                    Plan actif — Stripe gère le renouvellement automatique.
+                  <?php elseif ($isPendingSub): ?>
+                    Paiement en cours de validation par Stripe.
+                  <?php elseif ($selSubStatus === 'cancelled'): ?>
+                    Résilié — l'accès reste ouvert jusqu'à la fin de la période en cours.
+                  <?php elseif ($selSubStatus === 'past_due'): ?>
+                    Paiement en retard — Stripe va relancer la carte automatiquement.
+                  <?php else: ?>
+                    Aucune souscription active — choisis une formule pour ouvrir le launcher en production.
+                  <?php endif; ?>
+                </p>
+              </div>
+            </div>
+
+            <?php if ($selectedSub): ?>
+              <div class="meta-row" style="gap:8px;flex-wrap:wrap;margin-bottom:12px">
+                <span class="chip <?php echo $isActiveSub ? 'ok' : ($selSubStatus === 'past_due' ? 'danger' : ($selSubStatus === 'cancelled' ? 'warn' : 'muted')); ?>">
+                  <?php echo e(ucfirst($selSubStatus)); ?>
+                </span>
+                <?php if ($selSubPlan !== ''): ?>
+                  <span class="chip plain">Plan : <?php echo e(subscription_plan_label($selSubPlan)); ?></span>
+                <?php endif; ?>
+                <?php if ($selSubPeriod !== '' && isset($periodLabels[$selSubPeriod])): ?>
+                  <span class="chip plain"><?php echo e($periodLabels[$selSubPeriod]); ?></span>
+                <?php endif; ?>
+                <?php if ($selSubAmt > 0): ?>
+                  <span class="chip plain">
+                    <?php echo number_format($selSubAmt / 100, 2, ',', ' '); ?> <?php echo e($selSubCcy); ?> / cycle
+                  </span>
+                <?php endif; ?>
+                <?php if ($selSubNextTs > 0 && $isActiveSub): ?>
+                  <span class="chip plain">Prochain prélèvement : <?php echo e(date('d/m/Y', $selSubNextTs)); ?></span>
+                <?php elseif ($selSubExpTs > 0): ?>
+                  <span class="chip plain">
+                    <?php echo $isActiveSub ? 'Expire le' : 'Accès jusqu\'au'; ?> <?php echo e(date('d/m/Y', $selSubExpTs)); ?>
+                  </span>
+                <?php endif; ?>
+              </div>
+            <?php endif; ?>
+
+            <?php if ($needsSub): ?>
+              <form action="api/subscription_checkout.php" method="post" class="form" style="gap:12px">
+                <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
+                <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
+                <div class="two-col">
+                  <label class="label"><span>Plan</span>
+                    <select name="plan" required>
+                      <?php foreach ($planLabels as $pk => $pl): ?>
+                        <option value="<?php echo e($pk); ?>" <?php echo $pk === 'pro' ? 'selected' : ''; ?>><?php echo e($pl); ?></option>
+                      <?php endforeach; ?>
+                    </select></label>
+                  <label class="label"><span>Périodicité</span>
+                    <select name="period" required>
+                      <?php foreach ($periodLabels as $pk => $pl): ?>
+                        <option value="<?php echo e($pk); ?>" <?php echo $pk === 'monthly' ? 'selected' : ''; ?>><?php echo e($pl); ?></option>
+                      <?php endforeach; ?>
+                    </select></label>
+                </div>
+                <div class="meta-row" style="gap:8px;align-items:center">
+                  <button class="btn btn-primary" type="submit" <?php echo $stripeConfigured ? '' : 'disabled aria-disabled="true"'; ?>>
+                    Souscrire avec Stripe →
+                  </button>
+                  <a class="btn btn-ghost" href="pricing.php">Voir le détail des offres</a>
+                  <?php if (!$stripeConfigured): ?>
+                    <span class="help" style="color:var(--danger,#ff7676)">⚠ Stripe non configuré : ajoute STRIPE_SECRET_KEY dans config/.env.local.</span>
+                  <?php endif; ?>
+                </div>
+              </form>
+            <?php elseif ($isActiveSub): ?>
+              <div class="meta-row" style="gap:10px">
+                <form action="cancel_subscription.php" method="post" style="margin:0"
+                      onsubmit="return confirm('Résilier l\'abonnement de ce launcher ? Tu garderas l\'accès jusqu\'à la fin de la période en cours.');">
+                  <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
+                  <input type="hidden" name="subscription_id" value="<?php echo e((string)($selectedSub['id'] ?? '')); ?>" />
+                  <button class="btn btn-ghost" type="submit">Résilier</button>
+                </form>
+                <a class="btn" href="pricing.php">Changer de formule</a>
+              </div>
+            <?php elseif ($selSubStatus === 'cancelled'): ?>
+              <form action="reactivate_subscription.php" method="post" style="margin:0">
+                <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
+                <input type="hidden" name="subscription_id" value="<?php echo e((string)($selectedSub['id'] ?? '')); ?>" />
+                <button class="btn btn-primary" type="submit">Réactiver l'abonnement</button>
+              </form>
+            <?php elseif ($isPendingSub): ?>
+              <p class="help">⏳ Stripe finalise le paiement — cette section passera en "Actif" automatiquement (recharge la page dans quelques secondes).</p>
+            <?php elseif ($selSubStatus === 'past_due'): ?>
+              <p class="help">⚠ Stripe va retenter le prélèvement. Mets à jour ta carte depuis <a href="https://dashboard.stripe.com/test/customers" target="_blank" rel="noopener">le portail Stripe</a> si besoin.</p>
+            <?php endif; ?>
+          </section>
 
           <form class="form sub-card" aria-label="Configuration launcher" action="update_launcher.php" method="post" enctype="multipart/form-data">
             <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />

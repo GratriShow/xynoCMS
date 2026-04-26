@@ -4,14 +4,24 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../config/bootstrap.php';
 require_once __DIR__ . '/utils.php';
+require_once __DIR__ . '/subscription_helpers.php';
 
 /**
  * POST /api/stripe_webhook.php
  *
- * Stripe webhook endpoint. Handles:
- *   - checkout.session.completed       → mark purchase paid
- *   - checkout.session.async_payment_succeeded → same
- *   - charge.refunded / charge.refund.updated → mark purchase refunded
+ * Stripe webhook endpoint. Handles two product flows:
+ *
+ *   Marketplace (one-shot, mode=payment) :
+ *     - checkout.session.completed                → mark purchase paid
+ *     - checkout.session.async_payment_succeeded  → same
+ *     - charge.refunded / charge.refund.updated   → mark purchase refunded
+ *
+ *   Subscriptions (recurring, mode=subscription) :
+ *     - checkout.session.completed                → activate subscription
+ *     - customer.subscription.updated             → status sync
+ *     - customer.subscription.deleted             → mark expired/cancelled
+ *     - invoice.payment_succeeded / invoice.paid  → renew expires_at
+ *     - invoice.payment_failed                    → status past_due
  *
  * Signature verification: Stripe sends `Stripe-Signature: t=<ts>,v1=<sig>`.
  * We compute HMAC-SHA256("${t}.${rawBody}", STRIPE_WEBHOOK_SECRET) and
@@ -108,6 +118,13 @@ try {
     switch ($type) {
         case 'checkout.session.completed':
         case 'checkout.session.async_payment_succeeded': {
+            // mode=subscription is handled separately from one-shot purchases.
+            $mode = strtolower((string)($object['mode'] ?? ''));
+            if ($mode === 'subscription') {
+                wh_handle_subscription_checkout($pdo, $object, $type);
+                // wh_handle_* always exits via wh_respond.
+            }
+
             // Only mark paid if payment_status is actually 'paid' or 'no_payment_required'.
             $paymentStatus = (string)($object['payment_status'] ?? '');
             if (!in_array($paymentStatus, ['paid', 'no_payment_required'], true)) {
@@ -184,6 +201,25 @@ try {
             wh_respond(200, ['ok' => true, 'applied' => 'refunded', 'rows' => $stmt->rowCount()]);
         }
 
+        // ===== Subscription lifecycle =====================================
+
+        case 'customer.subscription.updated': {
+            wh_handle_subscription_updated($pdo, $object);
+        }
+
+        case 'customer.subscription.deleted': {
+            wh_handle_subscription_deleted($pdo, $object);
+        }
+
+        case 'invoice.paid':
+        case 'invoice.payment_succeeded': {
+            wh_handle_invoice_paid($pdo, $object);
+        }
+
+        case 'invoice.payment_failed': {
+            wh_handle_invoice_failed($pdo, $object);
+        }
+
         default:
             // Unhandled event type — still 200 so Stripe marks it as delivered.
             wh_respond(200, ['ok' => true, 'ignored' => $type]);
@@ -192,9 +228,274 @@ try {
     // 500 so Stripe retries transient errors, but do not leak stack traces.
     $msg = $e->getMessage();
     if (strpos($msg, 'marketplace_purchases') !== false
+        || strpos($msg, 'subscriptions') !== false
         || strpos($msg, "doesn't exist") !== false
         || strpos($msg, 'does not exist') !== false) {
         wh_respond(500, ['ok' => false, 'error' => 'migration_missing']);
     }
     wh_respond(500, ['ok' => false, 'error' => 'db_error']);
+}
+
+// =============================================================================
+// Subscription helpers (called from the switch above).
+// =============================================================================
+
+/**
+ * Activate a subscription after a successful Checkout in subscription mode.
+ *
+ * Stripe sends us:
+ *   - object.id                 → checkout session id (cs_...)
+ *   - object.subscription       → sub_... (the recurring object)
+ *   - object.customer           → cus_...
+ *   - object.metadata           → { launcher_id, plan, period, user_id, ... }
+ *   - object.amount_total       → cents charged for the first cycle
+ */
+function wh_handle_subscription_checkout(PDO $pdo, array $object, string $eventType): void
+{
+    $sessionId      = (string)($object['id'] ?? '');
+    $subscriptionId = (string)($object['subscription'] ?? '');
+    $customerId     = (string)($object['customer'] ?? '');
+    $amount         = (int)($object['amount_total'] ?? 0);
+    $currency       = strtolower((string)($object['currency'] ?? 'eur'));
+    $meta           = is_array($object['metadata'] ?? null) ? $object['metadata'] : [];
+    $clientRef      = (string)($object['client_reference_id'] ?? '');
+
+    $launcherId = (int)($meta['launcher_id'] ?? 0);
+    $userId     = (int)($meta['user_id'] ?? 0);
+    $plan       = subscription_normalize_plan((string)($meta['plan'] ?? ''));
+    $period     = subscription_normalize_period((string)($meta['period'] ?? ''));
+
+    // Fallback: client_reference_id = "<launcherId>:<plan>:<period>"
+    if (($launcherId <= 0 || $plan === '' || $period === '') && $clientRef !== '') {
+        $bits = explode(':', $clientRef);
+        if ($launcherId <= 0 && isset($bits[0])) $launcherId = (int)$bits[0];
+        if ($plan === ''     && isset($bits[1])) $plan       = subscription_normalize_plan($bits[1]);
+        if ($period === ''   && isset($bits[2])) $period     = subscription_normalize_period($bits[2]);
+    }
+
+    if ($launcherId <= 0) {
+        wh_respond(200, ['ok' => true, 'ignored' => 'unresolvable_launcher', 'event' => $eventType]);
+    }
+
+    // Compute next_billing_at from the period (most reliable source we have here).
+    $nextBilling = subscription_next_billing($period ?: 'monthly');
+
+    // Flip the pending row to 'active'. We key on stripe_session_id so the
+    // operation is idempotent across retries.
+    try {
+        $stmt = $pdo->prepare(
+            "UPDATE subscriptions "
+          . "SET status = 'active', "
+          . "    stripe_subscription_id = ?, "
+          . "    stripe_customer_id = ?, "
+          . "    amount_cents = ?, "
+          . "    currency = ?, "
+          . "    expires_at = ?, "
+          . "    next_billing_at = ?, "
+          . "    cancelled_at = NULL "
+          . "WHERE stripe_session_id = ? "
+          . "LIMIT 1"
+        );
+        $stmt->execute([
+            $subscriptionId !== '' ? $subscriptionId : null,
+            $customerId !== ''     ? $customerId     : null,
+            $amount,
+            $currency,
+            $nextBilling,
+            $nextBilling,
+            $sessionId,
+        ]);
+        $rows = $stmt->rowCount();
+    } catch (Throwable $e) {
+        $rows = 0;
+    }
+
+    // If the pre-insert from subscription_helpers.php never happened (e.g.
+    // payment was triggered without going through our endpoint), insert a
+    // fresh row keyed on the Stripe subscription id.
+    if ($rows === 0 && $subscriptionId !== '' && $userId > 0 && $plan !== '' && $period !== '') {
+        try {
+            $ins = $pdo->prepare(
+                "INSERT INTO subscriptions "
+              . "(user_id, launcher_id, status, plan, period, "
+              . " stripe_session_id, stripe_subscription_id, stripe_customer_id, "
+              . " amount_cents, currency, expires_at, next_billing_at, created_at) "
+              . "VALUES (?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())"
+            );
+            $ins->execute([
+                $userId,
+                $launcherId,
+                $plan,
+                $period,
+                $sessionId !== '' ? $sessionId : null,
+                $subscriptionId,
+                $customerId !== '' ? $customerId : null,
+                $amount,
+                $currency,
+                $nextBilling,
+                $nextBilling,
+            ]);
+            $rows = $ins->rowCount();
+        } catch (Throwable $e) {
+            // ignore; we still want to 200 to Stripe
+        }
+    }
+
+    wh_respond(200, [
+        'ok'              => true,
+        'applied'         => 'subscription_active',
+        'launcher_id'     => $launcherId,
+        'rows_updated'    => $rows,
+        'subscription_id' => $subscriptionId,
+    ]);
+}
+
+/**
+ * customer.subscription.updated — sync status (active / past_due / cancelled).
+ *
+ * Stripe payload keys we care about:
+ *   - object.id                  → sub_...
+ *   - object.status              → active | past_due | unpaid | canceled | ...
+ *   - object.cancel_at_period_end → bool
+ *   - object.current_period_end   → unix ts
+ */
+function wh_handle_subscription_updated(PDO $pdo, array $object): void
+{
+    $subId  = (string)($object['id'] ?? '');
+    $status = strtolower((string)($object['status'] ?? ''));
+    $cape   = (bool)($object['cancel_at_period_end'] ?? false);
+    $cpe    = (int)($object['current_period_end'] ?? 0);
+
+    if ($subId === '') {
+        wh_respond(200, ['ok' => true, 'ignored' => 'no_subscription_id']);
+    }
+
+    // Map Stripe status → our enum.
+    $localStatus = 'active';
+    if ($status === 'past_due' || $status === 'unpaid' || $status === 'incomplete') {
+        $localStatus = 'past_due';
+    } elseif ($status === 'canceled' || $status === 'cancelled' || $status === 'incomplete_expired') {
+        $localStatus = 'cancelled';
+    } elseif ($status === 'trialing' || $status === 'active') {
+        $localStatus = 'active';
+    }
+
+    // If user clicked "Cancel at period end" in their portal, we keep them
+    // active until the period ends but flag cancelled_at.
+    $cancelledAt = $cape ? date('Y-m-d H:i:s') : null;
+    $expiresAt   = $cpe > 0 ? date('Y-m-d H:i:s', $cpe) : null;
+
+    $stmt = $pdo->prepare(
+        "UPDATE subscriptions "
+      . "SET status = ?, "
+      . "    expires_at = COALESCE(?, expires_at), "
+      . "    next_billing_at = COALESCE(?, next_billing_at), "
+      . "    cancelled_at = COALESCE(?, cancelled_at) "
+      . "WHERE stripe_subscription_id = ? "
+      . "LIMIT 1"
+    );
+    $stmt->execute([$localStatus, $expiresAt, $expiresAt, $cancelledAt, $subId]);
+
+    wh_respond(200, [
+        'ok'      => true,
+        'applied' => 'subscription_updated',
+        'status'  => $localStatus,
+        'rows'    => $stmt->rowCount(),
+    ]);
+}
+
+/**
+ * customer.subscription.deleted — the subscription is fully terminated.
+ */
+function wh_handle_subscription_deleted(PDO $pdo, array $object): void
+{
+    $subId = (string)($object['id'] ?? '');
+    if ($subId === '') {
+        wh_respond(200, ['ok' => true, 'ignored' => 'no_subscription_id']);
+    }
+
+    $stmt = $pdo->prepare(
+        "UPDATE subscriptions "
+      . "SET status = CASE WHEN status = 'cancelled' THEN 'cancelled' ELSE 'expired' END, "
+      . "    cancelled_at = COALESCE(cancelled_at, NOW()) "
+      . "WHERE stripe_subscription_id = ? "
+      . "LIMIT 1"
+    );
+    $stmt->execute([$subId]);
+
+    wh_respond(200, [
+        'ok'      => true,
+        'applied' => 'subscription_deleted',
+        'rows'    => $stmt->rowCount(),
+    ]);
+}
+
+/**
+ * invoice.paid / invoice.payment_succeeded — bump next_billing_at + expires_at
+ * forward by one period (uses Stripe's authoritative period_end).
+ */
+function wh_handle_invoice_paid(PDO $pdo, array $object): void
+{
+    $subId = (string)($object['subscription'] ?? '');
+    if ($subId === '') {
+        wh_respond(200, ['ok' => true, 'ignored' => 'no_subscription']);
+    }
+
+    // Stripe provides 'lines.data[0].period.end' or top-level
+    // 'period_end' on invoice; prefer the line item.
+    $periodEnd = 0;
+    $lines     = is_array($object['lines']['data'] ?? null) ? $object['lines']['data'] : [];
+    foreach ($lines as $line) {
+        if (is_array($line) && is_array($line['period'] ?? null)) {
+            $periodEnd = max($periodEnd, (int)($line['period']['end'] ?? 0));
+        }
+    }
+    if ($periodEnd === 0) {
+        $periodEnd = (int)($object['period_end'] ?? 0);
+    }
+
+    $expiresAt = $periodEnd > 0 ? date('Y-m-d H:i:s', $periodEnd) : null;
+
+    $stmt = $pdo->prepare(
+        "UPDATE subscriptions "
+      . "SET status = CASE WHEN status IN ('cancelled') THEN status ELSE 'active' END, "
+      . "    expires_at = COALESCE(?, expires_at), "
+      . "    next_billing_at = COALESCE(?, next_billing_at) "
+      . "WHERE stripe_subscription_id = ? "
+      . "LIMIT 1"
+    );
+    $stmt->execute([$expiresAt, $expiresAt, $subId]);
+
+    wh_respond(200, [
+        'ok'      => true,
+        'applied' => 'invoice_paid',
+        'rows'    => $stmt->rowCount(),
+    ]);
+}
+
+/**
+ * invoice.payment_failed — flip to past_due (we don't auto-cancel ; Stripe's
+ * Smart Retries will re-attempt, and customer.subscription.deleted will fire
+ * if the subscription is finally killed).
+ */
+function wh_handle_invoice_failed(PDO $pdo, array $object): void
+{
+    $subId = (string)($object['subscription'] ?? '');
+    if ($subId === '') {
+        wh_respond(200, ['ok' => true, 'ignored' => 'no_subscription']);
+    }
+
+    $stmt = $pdo->prepare(
+        "UPDATE subscriptions "
+      . "SET status = 'past_due' "
+      . "WHERE stripe_subscription_id = ? AND status NOT IN ('cancelled') "
+      . "LIMIT 1"
+    );
+    $stmt->execute([$subId]);
+
+    wh_respond(200, [
+        'ok'      => true,
+        'applied' => 'invoice_failed',
+        'rows'    => $stmt->rowCount(),
+    ]);
 }

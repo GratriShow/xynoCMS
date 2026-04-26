@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../config/bootstrap.php';
+require_once __DIR__ . '/../api/utils.php';
+require_once __DIR__ . '/../api/subscription_helpers.php';
 
 $user = require_login();
 
@@ -17,6 +19,8 @@ $loader = trim((string)($_POST['loader'] ?? ''));
 $theme = trim((string)($_POST['theme'] ?? ''));
 $modulesRaw = trim((string)($_POST['modules'] ?? ''));
 $promo = trim((string)($_POST['promo'] ?? ''));
+$plan = subscription_normalize_plan((string)($_POST['plan'] ?? ''));
+$period = subscription_normalize_period((string)($_POST['period'] ?? ''));
 
 if ($name === '' || $version === '' || $loader === '' || $theme === '') {
     flash_set('error', 'Champs manquants : nom, version, loader et thème sont requis.');
@@ -83,6 +87,7 @@ try {
     }
 
     $launcherId = (int)$pdo->lastInsertId();
+    $launcherUuidNew = $uuid;
 
     // While you are not selling yet, FREE100 grants an active subscription.
     if (strtoupper($promo) === 'FREE100') {
@@ -104,4 +109,33 @@ try {
 }
 
 flash_set('success', 'Launcher créé. API Key : ' . $apiKey);
+
+// If a paid plan was selected on pricing.php and we are NOT on the FREE100
+// promo, send the user straight to Stripe Checkout to activate the
+// subscription for the freshly-created launcher.
+if ($plan !== '' && $period !== '' && strtoupper($promo) !== 'FREE100') {
+    $checkout = subscription_create_stripe_checkout(
+        (int)$user['id'],
+        (int)$launcherId,
+        (string)$launcherUuidNew,
+        $plan,
+        $period
+    );
+
+    if (($checkout['ok'] ?? false) === true) {
+        header('Location: ' . (string)$checkout['url']);
+        exit;
+    }
+
+    // Stripe error: keep the launcher (it's already created) and surface
+    // a clear message + the manual subscribe button on the dashboard.
+    flash_set(
+        'error',
+        'Launcher créé, mais le paiement Stripe n\'a pas pu démarrer : '
+      . (string)($checkout['error'] ?? 'erreur inconnue.')
+      . ' Tu peux relancer la souscription depuis le dashboard.'
+    );
+    redirect('/dashboard.php?launcher=' . urlencode((string)$launcherUuidNew) . '&tab=general#tab-general');
+}
+
 redirect('/dashboard.php');

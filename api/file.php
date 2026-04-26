@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/utils.php';
+require_once __DIR__ . '/files_helpers.php';
 
 $endpoint = 'file';
 $ip = api_client_ip();
@@ -138,6 +139,21 @@ try {
     header('Accept-Ranges: bytes');
     if ($etag !== '""') {
         header('ETag: ' . $etag);
+    }
+
+    // Track the download : bump download_count + write a file_events row,
+    // but only for "fresh" requests (no Range, not 304-able). Best-effort.
+    $rangeHeader = (string)($_SERVER['HTTP_RANGE'] ?? '');
+    $isFresh304  = ($etag !== '""' && trim((string)($_SERVER['HTTP_IF_NONE_MATCH'] ?? '')) === $etag);
+    if ($rangeHeader === '' && !$isFresh304) {
+        try {
+            $bump = $pdo->prepare('UPDATE files SET download_count = download_count + 1 WHERE id = ?');
+            $bump->execute([(int)$row['id']]);
+        } catch (Throwable $e) { /* column missing → ignore */ }
+        file_event_log(
+            $pdo, (int)$launcher['id'], (int)$row['id'], 'download',
+            $fileName, $relativeServerPath, $size, 'launcher', null
+        );
     }
 
     $ifNoneMatch = (string)($_SERVER['HTTP_IF_NONE_MATCH'] ?? '');

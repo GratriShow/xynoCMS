@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/config/bootstrap.php';
+require_once __DIR__ . '/api/utils.php';
 
 $user = require_login();
 
@@ -24,9 +25,19 @@ if ($subId <= 0) {
 try {
     $pdo = db();
 
-    // Vérifie que l'abonnement appartient bien à l'utilisateur
-    $chk = $pdo->prepare('SELECT id, status FROM subscriptions WHERE id = ? AND user_id = ? LIMIT 1');
-    $chk->execute([$subId, $user['id']]);
+    // Vérifie que l'abonnement appartient bien à l'utilisateur ;
+    // on charge aussi stripe_subscription_id pour pouvoir le canceler côté Stripe.
+    try {
+        $chk = $pdo->prepare(
+            'SELECT id, status, stripe_subscription_id FROM subscriptions '
+          . 'WHERE id = ? AND user_id = ? LIMIT 1'
+        );
+        $chk->execute([$subId, $user['id']]);
+    } catch (PDOException $e) {
+        // Schéma pré-v4 sans stripe_subscription_id : fallback.
+        $chk = $pdo->prepare('SELECT id, status FROM subscriptions WHERE id = ? AND user_id = ? LIMIT 1');
+        $chk->execute([$subId, $user['id']]);
+    }
     $sub = $chk->fetch();
     if (!$sub) {
         flash_set('error', 'Cet abonnement ne t’appartient pas.');
@@ -36,6 +47,35 @@ try {
     if (strtolower((string)($sub['status'] ?? '')) !== 'active') {
         flash_set('error', 'Seul un abonnement actif peut être résilié.');
         redirect('/dashboard.php');
+    }
+
+    // Tell Stripe to cancel at period end (so the user keeps access until
+    // the end of the current paid period). We do this best-effort: if the
+    // call fails (network, missing key, no stripe_subscription_id because
+    // the sub was created via FREE100), we still flip the local status so
+    // the dashboard reflects the user's choice immediately.
+    $stripeSubId = (string)($sub['stripe_subscription_id'] ?? '');
+    $secretKey   = trim(api_env('STRIPE_SECRET_KEY', ''));
+
+    if ($stripeSubId !== '' && $secretKey !== '') {
+        $ch = curl_init('https://api.stripe.com/v1/subscriptions/' . rawurlencode($stripeSubId));
+        if ($ch !== false) {
+            curl_setopt_array($ch, [
+                CURLOPT_CUSTOMREQUEST  => 'POST',
+                CURLOPT_POSTFIELDS     => http_build_query(['cancel_at_period_end' => 'true'], '', '&', PHP_QUERY_RFC3986),
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 15,
+                CURLOPT_CONNECTTIMEOUT => 8,
+                CURLOPT_HTTPHEADER     => [
+                    'Content-Type: application/x-www-form-urlencoded',
+                    'Authorization: Basic ' . base64_encode($secretKey . ':'),
+                    'Stripe-Version: 2024-06-20',
+                    'Accept: application/json',
+                ],
+            ]);
+            curl_exec($ch);
+            curl_close($ch);
+        }
     }
 
     // Tentative 1 : statut 'cancelled' + cancelled_at (schéma v3)
