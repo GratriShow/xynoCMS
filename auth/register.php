@@ -46,6 +46,17 @@ if (is_post()) {
             $_SESSION['user_uuid'] = $uuid;
             $_SESSION['user_email'] = $email;
 
+            // Pending checkout from pricing.php : resume Stripe right away.
+            if (isset($_SESSION['pending_checkout']) && is_array($_SESSION['pending_checkout'])) {
+                $pc = $_SESSION['pending_checkout'];
+                unset($_SESSION['pending_checkout']);
+                $planQ   = urlencode((string)($pc['plan']   ?? ''));
+                $periodQ = urlencode((string)($pc['period'] ?? ''));
+                if ($planQ !== '' && $periodQ !== '') {
+                    redirect('/api/pricing_checkout.php?plan=' . $planQ . '&period=' . $periodQ);
+                }
+            }
+
             redirect('/dashboard.php');
         }
     }
@@ -95,6 +106,19 @@ if (is_post()) {
           <p class="badge">Inscription</p>
           <h1 class="section-title" style="margin:10px 0 0">Créer ton compte</h1>
           <p class="section-desc" style="margin-top:8px">Crée ton compte pour accéder au dashboard et gérer tes launchers.</p>
+
+          <?php $flashInfo = flash_get('info'); ?>
+          <?php if ($flashInfo): ?>
+            <div class="notice" data-show="true" style="margin-bottom:12px"><?php echo e($flashInfo); ?></div>
+          <?php endif; ?>
+
+          <?php if (!empty($_SESSION['pending_checkout']['plan'])): ?>
+            <div class="notice" data-show="true" style="margin-bottom:12px;border-color:rgba(124,58,237,.4);background:rgba(124,58,237,.10);">
+              💳 Tu finalises ton abonnement <strong><?php echo e(ucfirst((string)$_SESSION['pending_checkout']['plan'])); ?></strong>
+              (<?php echo e((string)($_SESSION['pending_checkout']['period'] ?? '')); ?>) — l'inscription prend 30 secondes,
+              puis Stripe prend le relais.
+            </div>
+          <?php endif; ?>
 
           <?php if ($error !== ''): ?>
             <div class="notice" data-show="true" style="margin-bottom:12px"><?php echo e($error); ?></div>

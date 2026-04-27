@@ -265,6 +265,13 @@ if ($selectedId && $selectedId > 0) {
   }
 }
 
+// Paywall : verrou sur le detail launcher quand l'abonnement n'est pas 'active'.
+// On grise toutes les zones d'edition (formulaires, builds, marketplace...) et
+// on affiche un modal + banner pour pousser l'utilisateur a souscrire. Le bloc
+// "Abonnement de ce launcher" du tab General reste pleinement interactif pour
+// permettre de souscrire ou reactiver.
+$paywallLocked = !($selectedSub && strtolower((string)($selectedSub['status'] ?? '')) === 'active');
+
 // Quick helpers used below ----------------------------------------------------
 $owns = function (string $k) use ($marketplaceOwnedSet): bool {
   return isset($marketplaceOwnedSet[$k]);
@@ -490,10 +497,11 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
             'marketplace' => ['Marketplace',    '🛒'],
           ];
           // Tabs that point to an external page (instead of an in-page panel).
-          // Used so the "Fichiers" entry can route to dashboard/upload.php
-          // until the big files refactor lands.
+          // Absolute URL: dashboard.php is reached via /dashboard.php (the
+          // root wrapper), so a relative "files.php" would resolve to
+          // /files.php (404). The real page lives in /dashboard/files.php.
           $externalTabs = [
-            'files' => 'files.php?launcher=' . $uuidQ,
+            'files' => '/dashboard/files.php?launcher=' . $uuidQ,
           ];
         ?>
 
@@ -564,8 +572,116 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
           <?php endforeach; ?>
         </nav>
 
+        <?php if ($paywallLocked): ?>
+          <style>
+            .paywall-banner{
+              position:sticky; top:8px; z-index:6;
+              margin:14px 0 22px; padding:16px 20px;
+              background:linear-gradient(135deg, rgba(124,58,237,.20), rgba(34,211,238,.10));
+              border:1px solid rgba(124,58,237,.45);
+              border-radius:14px;
+              display:flex; gap:14px; align-items:center; justify-content:space-between;
+              flex-wrap:wrap; backdrop-filter:blur(8px);
+            }
+            .paywall-banner .pw-text h3{margin:0 0 4px;color:#fff;font-size:15px;font-weight:700}
+            .paywall-banner .pw-text p{margin:0;color:var(--muted,#a8a8b8);font-size:13px}
+            .paywall-banner .btn-primary{
+              background:linear-gradient(135deg,#7c3aed,#5b21b6); border:0; color:#fff;
+              padding:10px 16px; border-radius:10px; font-weight:600; text-decoration:none;
+              white-space:nowrap;
+            }
+
+            .paywall-overlay{ position:relative; }
+            .paywall-overlay > *:not(.paywall-allowed){
+              filter:grayscale(.6) blur(.5px);
+              opacity:.55;
+              pointer-events:none !important;
+              user-select:none !important;
+            }
+            .paywall-overlay > *:not(.paywall-allowed) input,
+            .paywall-overlay > *:not(.paywall-allowed) select,
+            .paywall-overlay > *:not(.paywall-allowed) textarea,
+            .paywall-overlay > *:not(.paywall-allowed) button,
+            .paywall-overlay > *:not(.paywall-allowed) a{
+              pointer-events:none !important;
+            }
+
+            .paywall-modal{
+              position:fixed; inset:0; z-index:9999;
+              background:rgba(8,10,18,.72); backdrop-filter:blur(6px);
+              display:flex; align-items:center; justify-content:center;
+              padding:20px; animation:pwFade .2s ease-out;
+            }
+            .paywall-modal[hidden]{display:none}
+            .paywall-modal-card{
+              max-width:460px; width:100%;
+              background:#14141d; color:#e6e6f2;
+              border:1px solid rgba(124,58,237,.35);
+              border-radius:18px; padding:28px;
+              box-shadow:0 24px 70px rgba(0,0,0,.55);
+              text-align:center;
+            }
+            .paywall-modal-icon{font-size:42px; line-height:1; margin-bottom:10px}
+            .paywall-modal-card h3{margin:0 0 8px; font-size:20px; color:#fff}
+            .paywall-modal-card p{margin:0 0 20px; color:#a8a8b8; font-size:14px; line-height:1.55}
+            .paywall-modal-actions{display:flex; gap:10px; justify-content:center; flex-wrap:wrap}
+            .paywall-modal-actions .btn-primary{
+              background:linear-gradient(135deg,#7c3aed,#5b21b6); border:0; color:#fff;
+              padding:11px 18px; border-radius:10px; font-weight:600; text-decoration:none;
+            }
+            .paywall-modal-actions .btn-ghost{
+              background:transparent; border:1px solid rgba(255,255,255,.18);
+              color:#cfcfe0; padding:11px 18px; border-radius:10px; font-weight:500;
+              cursor:pointer;
+            }
+            @keyframes pwFade{ from{opacity:0} to{opacity:1} }
+          </style>
+
+          <aside class="paywall-banner" role="status">
+            <div class="pw-text">
+              <h3>🔒 Abonnement requis pour ce launcher</h3>
+              <p>L'edition (apparence, auth, builds, fichiers, marketplace) est verrouillee tant que l'abonnement n'est pas actif.</p>
+            </div>
+            <a class="btn-primary" href="<?php echo e($tabUrl('general')); ?>#sub-card">Souscrire maintenant →</a>
+          </aside>
+
+          <div class="paywall-modal" id="paywallModal" role="dialog" aria-modal="true" aria-labelledby="pwTitle">
+            <div class="paywall-modal-card">
+              <div class="paywall-modal-icon">🔒</div>
+              <h3 id="pwTitle">Active ton abonnement</h3>
+              <p>Pour configurer ce launcher (apparence, auth, builds, fichiers, marketplace), tu dois activer une formule. Le bloc <strong>Abonnement de ce launcher</strong> est juste en dessous, dans l'onglet General.</p>
+              <div class="paywall-modal-actions">
+                <a class="btn-primary" href="<?php echo e($tabUrl('general')); ?>#sub-card">Choisir une formule →</a>
+                <button class="btn-ghost" type="button" data-paywall-dismiss>Plus tard</button>
+              </div>
+            </div>
+          </div>
+
+          <script>
+            (function(){
+              var modal = document.getElementById('paywallModal');
+              if (!modal) return;
+              // Auto-dismiss when navigating to the sub-card
+              document.querySelectorAll('[data-paywall-dismiss]').forEach(function(b){
+                b.addEventListener('click', function(){ modal.hidden = true; });
+              });
+              modal.querySelectorAll('a[href*="#sub-card"]').forEach(function(a){
+                a.addEventListener('click', function(){ setTimeout(function(){ modal.hidden = true; }, 50); });
+              });
+              // Click outside the card → dismiss
+              modal.addEventListener('click', function(ev){
+                if (ev.target === modal) modal.hidden = true;
+              });
+              // ESC dismisses
+              document.addEventListener('keydown', function(ev){
+                if (ev.key === 'Escape' && !modal.hidden) modal.hidden = true;
+              });
+            })();
+          </script>
+        <?php endif; ?>
+
         <!-- ============ TAB: Général ============ -->
-        <section id="tab-general" class="tab-panel panel" data-tab-panel="general" <?php if ($activeTab !== 'general') echo 'hidden'; ?>>
+        <section id="tab-general" class="tab-panel panel <?php echo $paywallLocked ? 'paywall-overlay' : ''; ?>" data-tab-panel="general" <?php if ($activeTab !== 'general') echo 'hidden'; ?>>
           <div class="panel-intro">
             <h2 class="panel-title">⚙️ Paramètres généraux</h2>
             <p class="panel-desc">Identité du launcher, version Minecraft, logo et installers à distribuer.</p>
@@ -598,7 +714,7 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
               'yearly'     => 'Annuel (-15 %)',
             ];
           ?>
-          <section class="sub-card" aria-label="Abonnement du launcher">
+          <section id="sub-card" class="sub-card paywall-allowed" aria-label="Abonnement du launcher">
             <div class="sub-card-head">
               <div>
                 <h3>💳 Abonnement de ce launcher</h3>
@@ -816,7 +932,7 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
         </section>
 
         <!-- ============ TAB: Extensions ============ -->
-        <section id="tab-extensions" class="tab-panel panel" data-tab-panel="extensions" <?php if ($activeTab !== 'extensions') echo 'hidden'; ?>>
+        <section id="tab-extensions" class="tab-panel panel <?php echo $paywallLocked ? 'paywall-overlay' : ''; ?>" data-tab-panel="extensions" <?php if ($activeTab !== 'extensions') echo 'hidden'; ?>>
           <div class="panel-intro">
             <h2 class="panel-title">🧩 Extensions</h2>
             <p class="panel-desc">21 modules prêts à l'emploi, activables en un clic. Les modules marqués « Premium » s'achètent dans l'onglet <a href="<?php echo e($tabUrl('marketplace')); ?>">Marketplace</a> et se configurent directement ici.</p>
@@ -977,7 +1093,7 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
         </section>
 
         <!-- ============ TAB: Apparence ============ -->
-        <section id="tab-apparence" class="tab-panel panel" data-tab-panel="apparence" <?php if ($activeTab !== 'apparence') echo 'hidden'; ?>>
+        <section id="tab-apparence" class="tab-panel panel <?php echo $paywallLocked ? 'paywall-overlay' : ''; ?>" data-tab-panel="apparence" <?php if ($activeTab !== 'apparence') echo 'hidden'; ?>>
           <div class="panel-intro">
             <h2 class="panel-title">🎨 Apparence &amp; contenu dynamique</h2>
             <p class="panel-desc">Couleurs du launcher, musique d'ambiance, popup, compte à rebours, mention « Powered by Xyno ». Tout est géré par la Marketplace — chaque bloc se débloque indépendamment.</p>
@@ -1141,7 +1257,7 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
         </section>
 
         <!-- ============ TAB: Auth ============ -->
-        <section id="tab-auth" class="tab-panel panel" data-tab-panel="auth" <?php if ($activeTab !== 'auth') echo 'hidden'; ?>>
+        <section id="tab-auth" class="tab-panel panel <?php echo $paywallLocked ? 'paywall-overlay' : ''; ?>" data-tab-panel="auth" <?php if ($activeTab !== 'auth') echo 'hidden'; ?>>
           <div class="panel-intro">
             <h2 class="panel-title">🔐 Authentification</h2>
             <p class="panel-desc">Microsoft (comptes premium Minecraft), API Bearer personnalisée, ou offline pour tes tests.</p>
@@ -1229,7 +1345,7 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
         </section>
 
         <!-- ============ TAB: Versions ============ -->
-        <section id="tab-versions" class="tab-panel panel" data-tab-panel="versions" <?php if ($activeTab !== 'versions') echo 'hidden'; ?>>
+        <section id="tab-versions" class="tab-panel panel <?php echo $paywallLocked ? 'paywall-overlay' : ''; ?>" data-tab-panel="versions" <?php if ($activeTab !== 'versions') echo 'hidden'; ?>>
           <div class="panel-intro">
             <h2 class="panel-title">📦 Versions &amp; Builds</h2>
             <p class="panel-desc">Publie un état figé des fichiers (le manifest servi au client) et génère les installers via GitHub Actions.</p>
@@ -1326,7 +1442,7 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
         </section>
 
         <!-- ============ TAB: Monitoring ============ -->
-        <section id="tab-monitoring" class="tab-panel panel" data-tab-panel="monitoring" <?php if ($activeTab !== 'monitoring') echo 'hidden'; ?>>
+        <section id="tab-monitoring" class="tab-panel panel <?php echo $paywallLocked ? 'paywall-overlay' : ''; ?>" data-tab-panel="monitoring" <?php if ($activeTab !== 'monitoring') echo 'hidden'; ?>>
           <div class="panel-intro">
             <h2 class="panel-title">📈 Monitoring &amp; sécurité</h2>
             <p class="panel-desc">Logs remontés par le launcher, limites anti-abus, et deux modules de sécurité premium (protection des fichiers, API REST publique).</p>
@@ -1512,7 +1628,7 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
         </section>
 
         <!-- ============ TAB: Marketplace ============ -->
-        <section id="tab-marketplace" class="tab-panel panel" data-tab-panel="marketplace" <?php if ($activeTab !== 'marketplace') echo 'hidden'; ?>>
+        <section id="tab-marketplace" class="tab-panel panel <?php echo $paywallLocked ? 'paywall-overlay' : ''; ?>" data-tab-panel="marketplace" <?php if ($activeTab !== 'marketplace') echo 'hidden'; ?>>
           <div class="panel-intro">
             <h2 class="panel-title">🛒 Marketplace</h2>
             <p class="panel-desc">Extensions premium achetables à l'unité, <strong>par launcher</strong>. Un achat débloque la feature à vie pour ce launcher uniquement. Paiement unique via Stripe Checkout.</p>

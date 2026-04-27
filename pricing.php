@@ -125,9 +125,9 @@ $supportEmail = 'support@xynoweb.fr';
               <li><span class="check" aria-hidden="true"></span><span>Support communautaire</span></li>
             </ul>
             <div class="cta-row">
-              <a class="btn cta-subscribe" data-base="builder.php?plan=starter" href="builder.php?plan=starter&amp;period=monthly">Choisir Starter</a>
+              <a class="btn cta-subscribe" data-base="/api/pricing_checkout.php?plan=starter" href="/api/pricing_checkout.php?plan=starter&amp;period=monthly">Choisir Starter</a>
             </div>
-            <p class="small" style="margin:12px 0 0">Tu configures ton launcher dans la foulée.</p>
+            <p class="small" style="margin:12px 0 0">Stripe Checkout sécurisé · résiliation en 1 clic.</p>
           </article>
 
           <!-- =================== PRO (highlight) =================== -->
@@ -154,9 +154,9 @@ $supportEmail = 'support@xynoweb.fr';
               <li><span class="check" aria-hidden="true"></span><span>Support par email (réponse sous 48 h)</span></li>
             </ul>
             <div class="cta-row">
-              <a class="btn btn-primary cta-subscribe" data-base="builder.php?plan=pro" href="builder.php?plan=pro&amp;period=monthly">Choisir Pro</a>
+              <a class="btn btn-primary cta-subscribe" data-base="/api/pricing_checkout.php?plan=pro" href="/api/pricing_checkout.php?plan=pro&amp;period=monthly">Choisir Pro</a>
             </div>
-            <p class="small" style="margin:12px 0 0">Tu configures ton launcher dans la foulée.</p>
+            <p class="small" style="margin:12px 0 0">Stripe Checkout sécurisé · résiliation en 1 clic.</p>
           </article>
 
           <!-- =================== PREMIUM =================== -->
@@ -181,9 +181,9 @@ $supportEmail = 'support@xynoweb.fr';
               <li><span class="check" aria-hidden="true"></span><span>Accès anticipé aux nouvelles fonctionnalités</span></li>
             </ul>
             <div class="cta-row">
-              <a class="btn cta-subscribe" data-base="builder.php?plan=premium" href="builder.php?plan=premium&amp;period=monthly">Choisir Premium</a>
+              <a class="btn cta-subscribe" data-base="/api/pricing_checkout.php?plan=premium" href="/api/pricing_checkout.php?plan=premium&amp;period=monthly">Choisir Premium</a>
             </div>
-            <p class="small" style="margin:12px 0 0">Tu configures ton launcher dans la foulée.</p>
+            <p class="small" style="margin:12px 0 0">Stripe Checkout sécurisé · résiliation en 1 clic.</p>
           </article>
 
         </div>
