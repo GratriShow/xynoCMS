@@ -225,6 +225,14 @@ $hostingMonthly = 5;
         <p class="small"><a href="register.php">Inscription</a></p>
         <?php if ($user !== null): ?><p class="small"><a href="dashboard.php">Dashboard</a></p><?php endif; ?>
       </div>
+      <div>
+        <h4>Légal</h4>
+        <p class="small"><a href="mentions-legales.php">Mentions légales</a></p>
+        <p class="small"><a href="politique-confidentialite.php">Confidentialité</a></p>
+        <p class="small"><a href="politique-cookies.php">Cookies</a></p>
+        <p class="small"><a href="cgu.php">CGU</a></p>
+        <p class="small"><a href="cgv.php">CGV</a></p>
+      </div>
     </div>
   </footer>
 
