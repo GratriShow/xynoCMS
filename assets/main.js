@@ -487,6 +487,73 @@ function initUploadPage() {
   });
 }
 
+function initCookieBanner() {
+  // Bannière "info" simple (CNIL-compliant) : on n'utilise que des cookies
+  // strictement essentiels (PHPSESSID, Stripe), donc pas de consentement
+  // granulaire requis. Le bouton OK enregistre xyno_cookie_consent=1
+  // pour 12 mois et masque la bannière.
+  const COOKIE_NAME = 'xyno_cookie_consent';
+
+  function readCookie(name) {
+    return document.cookie.split('; ').reduce((acc, c) => {
+      const [k, v] = c.split('=');
+      return k === name ? decodeURIComponent(v || '') : acc;
+    }, '');
+  }
+
+  function writeCookie(name, value, days) {
+    const exp = new Date(Date.now() + days * 864e5).toUTCString();
+    document.cookie = `${name}=${encodeURIComponent(value)}; expires=${exp}; path=/; SameSite=Lax`;
+  }
+
+  if (readCookie(COOKIE_NAME) === '1') return;
+
+  const wrap = document.createElement('div');
+  wrap.setAttribute('role', 'dialog');
+  wrap.setAttribute('aria-live', 'polite');
+  wrap.setAttribute('aria-label', 'Information cookies');
+  wrap.style.cssText = [
+    'position:fixed',
+    'left:16px',
+    'right:16px',
+    'bottom:16px',
+    'z-index:9999',
+    'max-width:560px',
+    'margin:0 auto',
+    'padding:14px 16px',
+    'border:1px solid rgba(255,255,255,.14)',
+    'border-radius:14px',
+    'background:rgba(15,15,22,.92)',
+    'backdrop-filter:saturate(140%) blur(8px)',
+    '-webkit-backdrop-filter:saturate(140%) blur(8px)',
+    'color:#fff',
+    'font:14px/1.5 Inter,system-ui,sans-serif',
+    'box-shadow:0 10px 30px rgba(0,0,0,.4)',
+    'display:flex',
+    'flex-wrap:wrap',
+    'gap:10px',
+    'align-items:center',
+    'justify-content:space-between',
+  ].join(';');
+
+  wrap.innerHTML =
+    '<div style="flex:1 1 280px;min-width:240px">' +
+      '<strong style="display:block;margin-bottom:4px">🍪 Cookies essentiels</strong>' +
+      '<span style="opacity:.85">XynoLauncher utilise uniquement des cookies nécessaires au fonctionnement (connexion, paiement Stripe). Pas de tracking ni de pub.</span>' +
+      ' <a href="politique-cookies.php" style="color:#a78bfa;text-decoration:underline">En savoir plus</a>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;flex-shrink:0">' +
+      '<button type="button" data-cookie-ok style="cursor:pointer;border:0;border-radius:10px;padding:9px 16px;background:#7c3aed;color:#fff;font-weight:600">OK</button>' +
+    '</div>';
+
+  document.body.appendChild(wrap);
+
+  wrap.querySelector('[data-cookie-ok]').addEventListener('click', () => {
+    writeCookie(COOKIE_NAME, '1', 365);
+    wrap.remove();
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   setActiveNav();
   initNavbarScroll();
@@ -494,4 +561,5 @@ document.addEventListener('DOMContentLoaded', () => {
   initPricing();
   initBuilder();
   initUploadPage();
+  initCookieBanner();
 });
