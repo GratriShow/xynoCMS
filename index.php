@@ -30,6 +30,20 @@ if ($requestPath !== '/' && $requestPath !== '/index.php' && str_ends_with($requ
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>XynoLauncher — Crée ton launcher Minecraft en quelques minutes</title>
   <meta name="description" content="Plateforme SaaS pour créer, configurer et déployer un launcher Minecraft à ton image. 3 thèmes premium, modules prêts à l'emploi, auto-update et hébergement en option." />
+  <link rel="canonical" href="https://xynocms.xynoweb.fr/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://xynocms.xynoweb.fr/" />
+  <meta property="og:title" content="XynoLauncher — Crée ton launcher Minecraft en quelques minutes" />
+  <meta property="og:description" content="Builder no-code, Stripe intégré, auto-update, hébergement Xyno ou auto-hébergé. 3 thèmes premium pour faire décoller ton serveur." />
+  <meta property="og:image" content="https://xynocms.xynoweb.fr/assets/social/og-default.svg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:site_name" content="XynoLauncher" />
+  <meta property="og:locale" content="fr_FR" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="XynoLauncher — Crée ton launcher Minecraft" />
+  <meta name="twitter:description" content="Builder no-code, Stripe intégré, auto-update, hébergement Xyno ou auto-hébergé." />
+  <meta name="twitter:image" content="https://xynocms.xynoweb.fr/assets/social/og-default.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />

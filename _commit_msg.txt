@@ -1,0 +1,30 @@
+feat: compte utilisateur, emails Resend, admin, SEO, 3 themes launcher
+
+- Compte (account/settings.php + confirm-email.php) : changement
+  d email avec verification, changement de mot de passe, suppression
+  de compte soft-delete 30j (RGPD), restauration auto au login.
+- Emails transactionnels via Resend (api/email_helpers.php) :
+  inscription, paiement OK/echec, resiliation, verification d email,
+  suppression de compte, mail admin manuel. Layout brande avec footer
+  legal. Best-effort cote webhook Stripe et register : un Resend KO
+  ne bloque jamais le flow.
+- Admin (admin/) : dashboard avec stats + MRR, liste users avec
+  recherche/filtres, fiche user (launchers, abonnements, emails),
+  liste abonnements, logs emails, envoi de mail manuel. Actions
+  CSRF-protegees (soft-delete/restore, grant/revoke admin) loggees
+  dans admin_actions. Lecture seule sur Stripe.
+- SEO : robots.txt, sitemap.xml, og-default.svg (1200x630 brande),
+  meta OG/Twitter/canonical sur toutes les pages publiques,
+  noindex,nofollow sur auth/admin/account.
+- Launcher : 3 nouveaux themes Electron (Dark Tactical, Mystic Purple,
+  Neon Frontier) drop-in compatibles avec launcher-ui.js. Exposes
+  dans le select Apparence du dashboard et passes en defaut dans
+  builder.php.
+
+Deploiement :
+- Lancer migrations_v5.sql (idempotent : nouvelles colonnes users,
+  tables user_tokens, email_log, admin_actions).
+- Ajouter dans .env.local : RESEND_API_KEY, EMAIL_FROM, EMAIL_FROM_NAME,
+  EMAIL_REPLY_TO, APP_URL.
+- Promouvoir le compte admin via UPDATE users SET is_admin=1.
+- Soumettre sitemap.xml dans Google Search Console.

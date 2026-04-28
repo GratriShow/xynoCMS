@@ -1,0 +1,32 @@
+User-agent: *
+Allow: /
+Allow: /pricing.php
+Allow: /builder.php
+Allow: /self-hosting.php
+Allow: /mentions-legales.php
+Allow: /politique-confidentialite.php
+Allow: /politique-cookies.php
+Allow: /cgu.php
+Allow: /cgv.php
+
+# Zones privées : pas d'indexation
+Disallow: /admin/
+Disallow: /account/
+Disallow: /dashboard/
+Disallow: /dashboard.php
+Disallow: /auth/
+Disallow: /api/
+Disallow: /launcher/
+Disallow: /tools/
+Disallow: /files/
+Disallow: /update_*.php
+Disallow: /create_launcher.php
+Disallow: /delete_launcher.php
+Disallow: /download_launcher.php
+Disallow: /publish_version.php
+Disallow: /activate_version.php
+Disallow: /reactivate_subscription.php
+Disallow: /cancel_subscription.php
+Disallow: /build_installer.php
+
+Sitemap: https://xynocms.xynoweb.fr/sitemap.xml

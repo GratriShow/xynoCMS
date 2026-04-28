@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="XynoLauncher">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b0b0f"/>
+      <stop offset="60%" stop-color="#13131a"/>
+      <stop offset="100%" stop-color="#1a0b22"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="100%" stop-color="#22d3ee"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.85" cy="0.15" r="0.6">
+      <stop offset="0%" stop-color="#7c3aed" stop-opacity="0.55"/>
+      <stop offset="60%" stop-color="#7c3aed" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#7c3aed" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="0.10" cy="0.95" r="0.6">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.45"/>
+      <stop offset="60%" stop-color="#22d3ee" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect width="1200" height="630" fill="url(#glow2)"/>
+
+  <!-- subtle grid -->
+  <g opacity="0.06" stroke="#ffffff" stroke-width="1">
+    <path d="M0 100 H1200 M0 200 H1200 M0 300 H1200 M0 400 H1200 M0 500 H1200"/>
+    <path d="M100 0 V630 M200 0 V630 M300 0 V630 M400 0 V630 M500 0 V630 M600 0 V630 M700 0 V630 M800 0 V630 M900 0 V630 M1000 0 V630 M1100 0 V630"/>
+  </g>
+
+  <!-- logo mark -->
+  <g transform="translate(80,80)">
+    <rect x="0" y="0" width="56" height="56" rx="14" fill="url(#accent)"/>
+    <text x="80" y="40" font-family="Inter, system-ui, sans-serif" font-size="28" font-weight="800" fill="#ffffff" letter-spacing="0.5">XynoLauncher</text>
+  </g>
+
+  <!-- title -->
+  <text x="80" y="280" font-family="Inter, system-ui, sans-serif" font-size="74" font-weight="800" fill="#ffffff" letter-spacing="-1.5">
+    Crée ton launcher Minecraft
+  </text>
+  <text x="80" y="370" font-family="Inter, system-ui, sans-serif" font-size="74" font-weight="800" fill="url(#accent)" letter-spacing="-1.5">
+    en quelques minutes.
+  </text>
+
+  <!-- subtitle -->
+  <text x="80" y="450" font-family="Inter, system-ui, sans-serif" font-size="26" font-weight="500" fill="#c4b5fd" letter-spacing="0.2">
+    Builder no-code · Stripe intégré · Auto-update · Hébergement Xyno ou auto-hébergé
+  </text>
+
+  <!-- CTA chips -->
+  <g transform="translate(80,510)" font-family="Inter, system-ui, sans-serif" font-size="20" font-weight="700">
+    <g>
+      <rect x="0" y="0" width="170" height="46" rx="23" fill="#7c3aed"/>
+      <text x="85" y="30" text-anchor="middle" fill="#ffffff">Voir les tarifs</text>
+    </g>
+    <g transform="translate(190,0)">
+      <rect x="0" y="0" width="200" height="46" rx="23" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.18)"/>
+      <text x="100" y="30" text-anchor="middle" fill="#ffffff">Créer un launcher</text>
+    </g>
+  </g>
+
+  <!-- domain -->
+  <text x="1120" y="600" font-family="Inter, system-ui, sans-serif" font-size="18" font-weight="600" fill="#8a8aa0" text-anchor="end" letter-spacing="0.4">
+    xynocms.xynoweb.fr
+  </text>
+</svg>

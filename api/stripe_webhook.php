@@ -5,6 +5,47 @@ declare(strict_types=1);
 require_once __DIR__ . '/../config/bootstrap.php';
 require_once __DIR__ . '/utils.php';
 require_once __DIR__ . '/subscription_helpers.php';
+require_once __DIR__ . '/email_helpers.php';
+
+/**
+ * Helper : best-effort lookup of (email, launcher_name) from a subscription row.
+ * Returns null if anything is missing — never throws.
+ */
+function wh_lookup_user_for_sub(PDO $pdo, string $stripeSubId): ?array
+{
+    if ($stripeSubId === '') return null;
+    try {
+        $st = $pdo->prepare(
+            "SELECT u.id AS user_id, u.email AS email, l.name AS launcher_name, "
+          . "       s.plan, s.period, s.amount_cents, s.currency, s.expires_at "
+          . "FROM subscriptions s "
+          . "INNER JOIN users u ON u.id = s.user_id "
+          . "LEFT JOIN launchers l ON l.id = s.launcher_id "
+          . "WHERE s.stripe_subscription_id = ? LIMIT 1"
+        );
+        $st->execute([$stripeSubId]);
+        $row = $st->fetch();
+        return $row ? $row : null;
+    } catch (Throwable $e) { return null; }
+}
+
+function wh_lookup_user_for_session(PDO $pdo, string $stripeSessionId): ?array
+{
+    if ($stripeSessionId === '') return null;
+    try {
+        $st = $pdo->prepare(
+            "SELECT u.id AS user_id, u.email AS email, l.name AS launcher_name, "
+          . "       s.plan, s.period, s.amount_cents, s.currency "
+          . "FROM subscriptions s "
+          . "INNER JOIN users u ON u.id = s.user_id "
+          . "LEFT JOIN launchers l ON l.id = s.launcher_id "
+          . "WHERE s.stripe_session_id = ? LIMIT 1"
+        );
+        $st->execute([$stripeSessionId]);
+        $row = $st->fetch();
+        return $row ? $row : null;
+    } catch (Throwable $e) { return null; }
+}
 
 /**
  * POST /api/stripe_webhook.php
@@ -341,6 +382,22 @@ function wh_handle_subscription_checkout(PDO $pdo, array $object, string $eventT
         }
     }
 
+    // Email de confirmation (best-effort, n'empêche jamais le webhook).
+    try {
+        $info = wh_lookup_user_for_session($pdo, $sessionId);
+        if ($info && !empty($info['email'])) {
+            send_payment_success_email(
+                (string)$info['email'],
+                (int)$info['user_id'],
+                (string)($info['launcher_name'] ?? 'Mon launcher'),
+                (string)($info['plan'] ?? $plan),
+                (string)($info['period'] ?? $period),
+                (int)($info['amount_cents'] ?? $amount),
+                (string)($info['currency'] ?? $currency)
+            );
+        }
+    } catch (Throwable $e) { /* ignore */ }
+
     wh_respond(200, [
         'ok'              => true,
         'applied'         => 'subscription_active',
@@ -423,6 +480,19 @@ function wh_handle_subscription_deleted(PDO $pdo, array $object): void
     );
     $stmt->execute([$subId]);
 
+    try {
+        $info = wh_lookup_user_for_sub($pdo, $subId);
+        if ($info && !empty($info['email'])) {
+            $exp = !empty($info['expires_at']) ? date('d/m/Y', strtotime((string)$info['expires_at'])) : date('d/m/Y');
+            send_subscription_cancelled_email(
+                (string)$info['email'],
+                (int)$info['user_id'],
+                (string)($info['launcher_name'] ?? 'Mon launcher'),
+                $exp
+            );
+        }
+    } catch (Throwable $e) { /* ignore */ }
+
     wh_respond(200, [
         'ok'      => true,
         'applied' => 'subscription_deleted',
@@ -492,6 +562,17 @@ function wh_handle_invoice_failed(PDO $pdo, array $object): void
       . "LIMIT 1"
     );
     $stmt->execute([$subId]);
+
+    try {
+        $info = wh_lookup_user_for_sub($pdo, $subId);
+        if ($info && !empty($info['email'])) {
+            send_payment_failed_email(
+                (string)$info['email'],
+                (int)$info['user_id'],
+                (string)($info['launcher_name'] ?? 'Mon launcher')
+            );
+        }
+    } catch (Throwable $e) { /* ignore */ }
 
     wh_respond(200, [
         'ok'      => true,

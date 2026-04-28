@@ -12,6 +12,20 @@ $supportEmail = 'support@xynoweb.fr';
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Tarifs — XynoLauncher</title>
   <meta name="description" content="3 formules, 4 fréquences de facturation (mensuel, trimestriel, semestriel, annuel). Hébergement Xyno ou auto-hébergement. Jusqu’à −15 % en annuel." />
+  <link rel="canonical" href="https://xynocms.xynoweb.fr/pricing.php" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://xynocms.xynoweb.fr/pricing.php" />
+  <meta property="og:title" content="Tarifs XynoLauncher — à partir de quelques euros par mois" />
+  <meta property="og:description" content="3 formules, 4 fréquences (mensuel à annuel), jusqu'à −15 % sur l'annuel. Hébergement Xyno ou auto-hébergement." />
+  <meta property="og:image" content="https://xynocms.xynoweb.fr/assets/social/og-default.svg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:site_name" content="XynoLauncher" />
+  <meta property="og:locale" content="fr_FR" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Tarifs XynoLauncher" />
+  <meta name="twitter:description" content="3 formules, 4 fréquences, jusqu'à −15 % sur l'annuel." />
+  <meta name="twitter:image" content="https://xynocms.xynoweb.fr/assets/social/og-default.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />

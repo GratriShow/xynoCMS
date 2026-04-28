@@ -32,7 +32,7 @@ $periodLabel = $periodLabels[$periodFromUrl] ?? '';
 // Defaults attribués automatiquement : le plan choisi à la souscription
 // donne déjà accès à tous les thèmes, modules et versions — rien à choisir ici.
 // Tout peut être ajusté plus tard depuis le dashboard.
-$defaultTheme   = 'Violet Neon';
+$defaultTheme   = 'Mystic Purple';
 $defaultVersion = '1.21.4';
 $defaultLoader  = 'fabric';
 $defaultModules = 'modpack,news,discord,autoupdate,analytics';
@@ -47,6 +47,20 @@ $hostingMonthly = 5;
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Créer un launcher — XynoLauncher</title>
   <meta name="description" content="Crée ton launcher en moins d'une minute : un nom, une description, on s'occupe du reste." />
+  <link rel="canonical" href="https://xynocms.xynoweb.fr/builder.php" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://xynocms.xynoweb.fr/builder.php" />
+  <meta property="og:title" content="Créer un launcher Minecraft en moins d'une minute" />
+  <meta property="og:description" content="Builder no-code XynoLauncher : un nom, une description, on s'occupe du reste. Auto-update et thèmes premium inclus." />
+  <meta property="og:image" content="https://xynocms.xynoweb.fr/assets/social/og-default.svg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:site_name" content="XynoLauncher" />
+  <meta property="og:locale" content="fr_FR" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Créer un launcher Minecraft" />
+  <meta name="twitter:description" content="Un nom, une description, on s'occupe du reste." />
+  <meta name="twitter:image" content="https://xynocms.xynoweb.fr/assets/social/og-default.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />

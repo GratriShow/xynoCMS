@@ -11,6 +11,20 @@ $supportEmail = 'support@xynoweb.fr';
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Auto-hébergement des fichiers — XynoLauncher</title>
   <meta name="description" content="Garde le contrôle de tes mods et assets : tu les héberges, nous gérons le launcher. Une clé API à poser dans un fichier, et c'est parti." />
+  <link rel="canonical" href="https://xynocms.xynoweb.fr/self-hosting.php" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://xynocms.xynoweb.fr/self-hosting.php" />
+  <meta property="og:title" content="Auto-hébergement XynoLauncher — garde le contrôle de tes fichiers" />
+  <meta property="og:description" content="Tu héberges tes mods et assets, on gère le launcher. Une clé API et c'est parti." />
+  <meta property="og:image" content="https://xynocms.xynoweb.fr/assets/social/og-default.svg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:site_name" content="XynoLauncher" />
+  <meta property="og:locale" content="fr_FR" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Auto-hébergement XynoLauncher" />
+  <meta name="twitter:description" content="Tu héberges tes fichiers, on gère le launcher." />
+  <meta name="twitter:image" content="https://xynocms.xynoweb.fr/assets/social/og-default.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />

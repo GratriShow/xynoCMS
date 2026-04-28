@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../config/bootstrap.php';
+require_once __DIR__ . '/../api/email_helpers.php';
 
 start_secure_session();
 
@@ -41,6 +42,9 @@ if (is_post()) {
 
             $userId = (int)$pdo->lastInsertId();
 
+            // Send welcome email (best-effort, never blocks registration).
+            try { send_welcome_email($email, $userId); } catch (Throwable $e) { /* ignore */ }
+
             session_regenerate_id(true);
             $_SESSION['user_id'] = $userId;
             $_SESSION['user_uuid'] = $uuid;
@@ -68,7 +72,18 @@ if (is_post()) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Inscription — XynoLauncher</title>
-  <meta name="description" content="Inscription à la plateforme XynoLauncher." />
+  <meta name="description" content="Inscription à la plateforme XynoLauncher. Crée ton compte en quelques secondes pour lancer ton launcher Minecraft." />
+  <meta name="robots" content="noindex,nofollow" />
+  <link rel="canonical" href="https://xynocms.xynoweb.fr/auth/register.php" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://xynocms.xynoweb.fr/auth/register.php" />
+  <meta property="og:title" content="Inscription — XynoLauncher" />
+  <meta property="og:description" content="Crée ton compte en quelques secondes pour lancer ton launcher Minecraft." />
+  <meta property="og:image" content="https://xynocms.xynoweb.fr/assets/social/og-default.svg" />
+  <meta property="og:site_name" content="XynoLauncher" />
+  <meta property="og:locale" content="fr_FR" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://xynocms.xynoweb.fr/assets/social/og-default.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />

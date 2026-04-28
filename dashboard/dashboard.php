@@ -362,6 +362,7 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
 
       <div class="nav-actions">
         <a class="btn btn-ghost" href="builder.php">Créer un launcher</a>
+        <a class="btn btn-ghost" href="../account/settings.php">Mon compte</a>
         <a class="btn" href="logout.php">Se déconnecter</a>
       </div>
     </div>
@@ -824,8 +825,22 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
                 <input class="input" name="name" placeholder="Ex: Xyno RP" value="<?php echo e((string)$selected['name']); ?>" required /></label>
               <label class="label"><span>Thème</span>
                 <select name="theme" required>
-                  <?php foreach (['Violet Neon','Glacier','Cosmic'] as $theme): ?>
-                    <option value="<?php echo e($theme); ?>" <?php echo ((string)$selected['theme'] === $theme) ? 'selected' : ''; ?>><?php echo e($theme); ?></option>
+                  <?php
+                    $availableThemes = [
+                      'Dark Tactical'  => 'Dark Tactical — black ops, accents rouges',
+                      'Mystic Purple'  => 'Mystic Purple — gradients violets, glassmorphism',
+                      'Neon Frontier'  => 'Neon Frontier — cyberpunk cyan/vert',
+                      'Cosmic'         => 'Cosmic — tons spatiaux',
+                      'Violet Neon'    => 'Violet Neon (legacy)',
+                      'Glacier'        => 'Glacier (legacy)',
+                    ];
+                    $currentTheme = (string)$selected['theme'];
+                    if ($currentTheme !== '' && !isset($availableThemes[$currentTheme])) {
+                      $availableThemes = [$currentTheme => $currentTheme] + $availableThemes;
+                    }
+                  ?>
+                  <?php foreach ($availableThemes as $themeKey => $themeLabel): ?>
+                    <option value="<?php echo e($themeKey); ?>" <?php echo ($currentTheme === $themeKey) ? 'selected' : ''; ?>><?php echo e($themeLabel); ?></option>
                   <?php endforeach; ?>
                 </select></label>
             </div>
@@ -1715,6 +1730,7 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
       </div>
       <div>
         <h4>Compte</h4>
+        <p class="small"><a href="../account/settings.php">Paramètres</a></p>
         <p class="small"><a href="logout.php">Déconnexion</a></p>
       </div>
       <div>

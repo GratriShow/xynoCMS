@@ -15,6 +15,16 @@ $user = current_user();
   <title>Mentions légales — XynoLauncher</title>
   <meta name="description" content="Mentions légales de la plateforme XynoLauncher (XynoWeb)." />
   <meta name="robots" content="index,follow" />
+  <link rel="canonical" href="https://xynocms.xynoweb.fr/mentions-legales.php" />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://xynocms.xynoweb.fr/mentions-legales.php" />
+  <meta property="og:title" content="Mentions légales — XynoLauncher" />
+  <meta property="og:description" content="Mentions légales de la plateforme XynoLauncher (XynoWeb)." />
+  <meta property="og:image" content="https://xynocms.xynoweb.fr/assets/social/og-default.svg" />
+  <meta property="og:site_name" content="XynoLauncher" />
+  <meta property="og:locale" content="fr_FR" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://xynocms.xynoweb.fr/assets/social/og-default.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />

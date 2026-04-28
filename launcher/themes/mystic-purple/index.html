@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Launcher</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="theme-mystic-purple">
+    <div class="aurora" aria-hidden="true">
+      <div class="orb orb-1"></div>
+      <div class="orb orb-2"></div>
+      <div class="orb orb-3"></div>
+    </div>
+
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-glyph">
+          <img id="launcherLogo" class="brand-logo" alt="" />
+          <span class="brand-glyph-fallback" aria-hidden="true">✦</span>
+        </div>
+        <div class="brand-text">
+          <span class="brand-eyebrow">Mystic edition</span>
+          <h1 id="launcherName">Launcher</h1>
+        </div>
+      </div>
+      <div class="status-pill">
+        <span class="status-dot"></span>
+        <span>Online</span>
+      </div>
+    </header>
+
+    <main class="layout" aria-live="polite">
+      <section class="shell">
+        <div class="shell-glow" aria-hidden="true"></div>
+
+        <section id="screen-init" class="screen active" aria-label="Initialisation">
+          <h2>Invocation</h2>
+          <p class="lead">Initialisation du launcher</p>
+          <div class="spinner" aria-hidden="true"></div>
+          <p class="muted" id="initHint">Connexion et chargement…</p>
+        </section>
+
+        <section id="screen-sync" class="screen" aria-label="Synchronisation">
+          <h2>Alignement</h2>
+          <p class="lead" id="syncStep">Récupération du manifest</p>
+          <div class="row">
+            <progress id="syncProgressBar" max="100" value="0"></progress>
+          </div>
+          <div class="row pct" id="syncProgressText">0%</div>
+        </section>
+
+        <section id="screen-download" class="screen" aria-label="Téléchargement">
+          <h2>Téléchargement</h2>
+          <p class="lead" id="downloadStep">Récupération des artefacts</p>
+          <div class="row muted">Fichier en cours</div>
+          <div class="row mono" id="currentFile"></div>
+          <div class="row">
+            <progress id="downloadProgressBar" max="100" value="0"></progress>
+          </div>
+          <div class="row pct" id="downloadProgressText">0%</div>
+          <div class="row mono muted" id="downloadSpeed" style="display: none"></div>
+        </section>
+
+        <section id="screen-ready" class="screen" aria-label="Prêt">
+          <h2>Prêt à l'aventure</h2>
+          <p class="lead">Le portail est ouvert</p>
+          <p class="muted" id="authHint"></p>
+          <button id="continueBtn" class="btn-primary" type="button">
+            <span class="btn-glow"></span>
+            <span class="btn-icon">⚡</span>
+            <span>Connexion Microsoft</span>
+          </button>
+          <div class="actions">
+            <button id="settingsBtn" type="button" class="btn-ghost">⚙ Paramètres</button>
+          </div>
+
+          <aside id="extPanel" class="ext-panel" aria-label="Extensions" style="display:none">
+            <div class="panel-head">Modules actifs</div>
+            <div id="extItems" class="ext-items"></div>
+          </aside>
+        </section>
+
+        <section id="screen-auth-custom" class="screen" aria-label="Connexion">
+          <h2>Authentification</h2>
+          <p class="lead" id="authCustomLead">Identifie-toi pour continuer</p>
+          <form id="authCustomForm" novalidate>
+            <div class="row">
+              <input id="authCustomEmail" type="email" autocomplete="username" placeholder="Email" required />
+            </div>
+            <div class="row">
+              <input id="authCustomPassword" type="password" autocomplete="current-password" placeholder="Mot de passe" required />
+            </div>
+            <div class="row" id="authCustomError" style="white-space: pre-wrap; display:none"></div>
+            <div class="actions">
+              <button id="authCustomSubmit" type="submit" class="btn-primary">
+                <span class="btn-glow"></span>
+                <span>Se connecter</span>
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section id="screen-blocked" class="screen" aria-label="Abonnement requis">
+          <h2>Le portail est scellé</h2>
+          <p class="lead" id="blockedMessage">Votre abonnement a expiré</p>
+          <div class="actions">
+            <button id="renewBtn" type="button" class="btn-primary">
+              <span class="btn-glow"></span>
+              <span>Réactiver l'accès</span>
+            </button>
+          </div>
+        </section>
+
+        <section id="screen-settings" class="screen" aria-label="Paramètres">
+          <h2>Configuration</h2>
+          <p class="lead">Affine ton expérience</p>
+
+          <div class="row muted">RAM min : <span id="ramMinLabel">2.0 Go</span></div>
+          <div class="row"><input id="ramMinRange" type="range" min="512" max="16384" step="256" /></div>
+
+          <div class="row muted">RAM max : <span id="ramMaxLabel">4.0 Go</span></div>
+          <div class="row"><input id="ramMaxRange" type="range" min="512" max="16384" step="256" /></div>
+
+          <div class="row muted">Java (auto ou manuel)</div>
+          <div class="row"><input id="javaPathInput" type="text" placeholder="Auto (détection)" /></div>
+          <div class="row mono muted" id="javaAutoHint"></div>
+
+          <div class="row"><label><input id="fullscreenToggle" type="checkbox" /> Plein écran</label></div>
+
+          <div class="row muted">Résolution (optionnel)</div>
+          <div class="row" style="display:flex; gap:8px;">
+            <input id="resWidthInput" type="number" min="640" max="7680" step="1" placeholder="Largeur" style="flex:1;" />
+            <input id="resHeightInput" type="number" min="480" max="4320" step="1" placeholder="Hauteur" style="flex:1;" />
+          </div>
+
+          <div class="row" id="settingsError" style="white-space: pre-wrap;"></div>
+          <div class="actions">
+            <button id="settingsBackBtn" type="button" class="btn-ghost">← Retour</button>
+          </div>
+        </section>
+
+        <section id="screen-error" class="screen" aria-label="Erreur">
+          <h2>Échec de l'invocation</h2>
+          <p class="lead">Impossible de démarrer le launcher</p>
+          <div id="errorBox"></div>
+          <div class="actions">
+            <button id="retryBtn" type="button" class="btn-primary">
+              <span class="btn-glow"></span>
+              <span>Réessayer</span>
+            </button>
+            <button id="quitBtn" type="button" class="btn-ghost">Quitter</button>
+          </div>
+        </section>
+      </section>
+
+      <aside id="newsBox" class="news-feed" aria-label="News" style="display:none">
+        <div class="news-head">
+          <span class="news-title-head">Annonces</span>
+          <span class="news-pulse" aria-hidden="true"></span>
+        </div>
+        <div id="newsItems" class="news-items" role="list"></div>
+      </aside>
+    </main>
+
+    <footer id="copyright" class="copyright" aria-label="Copyright">
+      Powered by <a id="copyrightLink" href="https://xynoweb.fr" target="_blank" rel="noopener noreferrer">XynoWeb</a>
+    </footer>
+
+    <script src="../common/launcher-ui.js"></script>
+    <script src="renderer.js"></script>
+  </body>
+</html>

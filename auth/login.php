@@ -22,17 +22,38 @@ if (is_post()) {
         $error = 'Email et mot de passe requis.';
     } else {
         $pdo = db();
-        $stmt = $pdo->prepare('SELECT id, uuid, email, password FROM users WHERE email = ? LIMIT 1');
-        $stmt->execute([$email]);
+        // Tolère les bases pré-v5 (sans deleted_at) en sélectionnant explicitement.
+        try {
+            $stmt = $pdo->prepare('SELECT id, uuid, email, password, deleted_at FROM users WHERE email = ? LIMIT 1');
+            $stmt->execute([$email]);
+        } catch (Throwable $e) {
+            $stmt = $pdo->prepare('SELECT id, uuid, email, password FROM users WHERE email = ? LIMIT 1');
+            $stmt->execute([$email]);
+        }
         $row = $stmt->fetch();
 
         if (!$row || !password_verify($password, (string)$row['password'])) {
             $error = 'Identifiants incorrects.';
+        } elseif (!empty($row['deleted_at'])) {
+            // Compte soft-deleted : on permet la réactivation (annulation suppression)
+            // en la traitant comme une connexion réussie qui efface deleted_at.
+            try {
+                $pdo->prepare('UPDATE users SET deleted_at = NULL WHERE id = ? LIMIT 1')->execute([(int)$row['id']]);
+            } catch (Throwable $e) { /* ignore */ }
+            session_regenerate_id(true);
+            $_SESSION['user_id'] = (int)$row['id'];
+            $_SESSION['user_uuid'] = (string)$row['uuid'];
+            $_SESSION['user_email'] = (string)$row['email'];
+            try { $pdo->prepare('UPDATE users SET last_login_at = NOW() WHERE id = ? LIMIT 1')->execute([(int)$row['id']]); } catch (Throwable $e) {}
+            flash_set('info', 'Bon retour ! Ta suppression de compte a été annulée.');
+            redirect('/dashboard.php');
         } else {
             session_regenerate_id(true);
             $_SESSION['user_id'] = (int)$row['id'];
             $_SESSION['user_uuid'] = (string)$row['uuid'];
             $_SESSION['user_email'] = (string)$row['email'];
+
+            try { $pdo->prepare('UPDATE users SET last_login_at = NOW() WHERE id = ? LIMIT 1')->execute([(int)$row['id']]); } catch (Throwable $e) {}
 
             // Pending checkout from pricing.php : resume Stripe right away.
             if (isset($_SESSION['pending_checkout']) && is_array($_SESSION['pending_checkout'])) {
@@ -56,7 +77,18 @@ if (is_post()) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Connexion — XynoLauncher</title>
-  <meta name="description" content="Connexion à la plateforme XynoLauncher." />
+  <meta name="description" content="Connexion à ton espace XynoLauncher pour gérer tes launchers Minecraft." />
+  <meta name="robots" content="noindex,nofollow" />
+  <link rel="canonical" href="https://xynocms.xynoweb.fr/auth/login.php" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://xynocms.xynoweb.fr/auth/login.php" />
+  <meta property="og:title" content="Connexion — XynoLauncher" />
+  <meta property="og:description" content="Connecte-toi pour gérer tes launchers Minecraft." />
+  <meta property="og:image" content="https://xynocms.xynoweb.fr/assets/social/og-default.svg" />
+  <meta property="og:site_name" content="XynoLauncher" />
+  <meta property="og:locale" content="fr_FR" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://xynocms.xynoweb.fr/assets/social/og-default.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
