@@ -544,8 +544,8 @@ function createPublisher(win) {
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 520,
-    height: 260,
+    width: 540,
+    height: 460,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -571,7 +571,16 @@ function createWindow() {
   });
 
   // Default theme first; real theme will be selected after fetching the manifest.
-  win.loadFile(path.join(__dirname, 'themes', 'default', 'index.html'));
+  // Catch a possible ERR_ABORTED here: if the manifest theme differs from
+  // default, startSync() will fire a second loadFile that supersedes this one,
+  // which makes Electron reject this initial promise. That's expected — we
+  // don't want it surfacing as an unhandled rejection.
+  win.loadFile(path.join(__dirname, 'themes', 'default', 'index.html')).catch((err) => {
+    const m = String(err && err.message || '');
+    if (!m.includes('-3')) {
+      console.error('[ui] initial loadFile failed:', err && err.stack ? err.stack : err);
+    }
+  });
 
   return win;
 }
@@ -1030,6 +1039,7 @@ app.whenReady().then(async () => {
   });
 
   let syncInProgress = false;
+  let loadedThemeKey = 'default';
   async function startSync() {
     if (syncInProgress) return;
     syncInProgress = true;
@@ -1076,14 +1086,26 @@ app.whenReady().then(async () => {
 
         lastManifest = await runSync(apiClient, pub);
 
-        // Switch theme dynamically based on manifest.launcher.theme
+        // Switch theme dynamically based on manifest.launcher.theme.
+        // We compare normalized theme keys (not file URLs) to avoid spurious
+        // reloads caused by encoding/translocation differences in the URL.
         const theme = lastManifest && lastManifest.launcher ? lastManifest.launcher.theme : 'default';
+        const nextThemeKey = normalizeThemeName(theme);
         const nextIndex = await themeIndexPath(theme);
-        console.log(`[ui] theme requested=${String(theme || '')} resolved=${normalizeThemeName(theme)} index=${nextIndex}`);
-        const currentUrl = win.webContents.getURL();
-        const nextUrl = `file://${nextIndex}`;
-        if (currentUrl !== nextUrl) {
-          await win.loadFile(nextIndex);
+        console.log(`[ui] theme requested=${String(theme || '')} resolved=${nextThemeKey} index=${nextIndex}`);
+        if (loadedThemeKey !== nextThemeKey) {
+          try {
+            await win.loadFile(nextIndex);
+            loadedThemeKey = nextThemeKey;
+          } catch (loadErr) {
+            // Electron's loadFile rejects with -3 (ERR_ABORTED) whenever a
+            // newer navigation supersedes this one — that's expected when
+            // the boot loadFile is still in flight. Swallow it; the latest
+            // navigation will still complete on its own.
+            const m = String(loadErr && loadErr.message || '');
+            if (!m.includes('-3')) throw loadErr;
+            console.warn('[ui] loadFile aborted (-3), ignoring:', m);
+          }
         }
     } catch (err) {
       if (err && err.safeUrl) {

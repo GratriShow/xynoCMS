@@ -416,6 +416,17 @@
       return item;
     }
 
+    function syncExtPanelVisibility() {
+      if (!extPanelEl) return;
+      // Only show the ext panel when the launcher is on the READY screen and
+      // we have at least one enabled extension. The panel lives outside the
+      // .shell now (so it isn't clipped by overflow:hidden), so we have to
+      // hide it ourselves when other screens are active.
+      const onReady = uxState === 'READY';
+      const hasEnabled = Array.isArray(lastExtensions) && lastExtensions.length > 0;
+      extPanelEl.style.display = onReady && hasEnabled ? 'block' : 'none';
+    }
+
     function setExtensions(extensions) {
       if (!extPanelEl || !extItemsEl) return;
       const enabled = Array.isArray(extensions)
@@ -430,7 +441,7 @@
         return;
       }
 
-      extPanelEl.style.display = 'block';
+      syncExtPanelVisibility();
       const valueEls = new Map();
 
       for (const ext of enabled) {
@@ -573,6 +584,8 @@
         if (!el) continue;
         el.classList.toggle('active', key === screenKey);
       }
+      // The ext panel lives outside .shell and must follow READY transitions.
+      syncExtPanelVisibility();
     }
 
     function setSyncStep(text) {

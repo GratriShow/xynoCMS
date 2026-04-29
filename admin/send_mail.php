@@ -92,7 +92,7 @@ if (is_post()) {
         <?php endif; ?>
 
         <article class="card form-card" style="max-width:none;margin-top:18px">
-          <form class="form" method="post" action="send-mail.php" novalidate>
+          <form class="form" method="post" action="send_mail.php" novalidate>
             <input type="hidden" name="_csrf" value="<?php echo e(csrf_token()); ?>" />
             <input type="hidden" name="user_id" value="<?php echo (int)$userId; ?>" />
             <label class="label">

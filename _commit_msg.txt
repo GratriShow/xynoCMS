@@ -1,30 +1,22 @@
-feat: compte utilisateur, emails Resend, admin, SEO, 3 themes launcher
+fix(launcher,dashboard): extensions visibles, race loadFile, lien admin
 
-- Compte (account/settings.php + confirm-email.php) : changement
-  d email avec verification, changement de mot de passe, suppression
-  de compte soft-delete 30j (RGPD), restauration auto au login.
-- Emails transactionnels via Resend (api/email_helpers.php) :
-  inscription, paiement OK/echec, resiliation, verification d email,
-  suppression de compte, mail admin manuel. Layout brande avec footer
-  legal. Best-effort cote webhook Stripe et register : un Resend KO
-  ne bloque jamais le flow.
-- Admin (admin/) : dashboard avec stats + MRR, liste users avec
-  recherche/filtres, fiche user (launchers, abonnements, emails),
-  liste abonnements, logs emails, envoi de mail manuel. Actions
-  CSRF-protegees (soft-delete/restore, grant/revoke admin) loggees
-  dans admin_actions. Lecture seule sur Stripe.
-- SEO : robots.txt, sitemap.xml, og-default.svg (1200x630 brande),
-  meta OG/Twitter/canonical sur toutes les pages publiques,
-  noindex,nofollow sur auth/admin/account.
-- Launcher : 3 nouveaux themes Electron (Dark Tactical, Mystic Purple,
-  Neon Frontier) drop-in compatibles avec launcher-ui.js. Exposes
-  dans le select Apparence du dashboard et passes en defaut dans
-  builder.php.
+Launcher
+- Sortir <aside id="extPanel"> de <main> dans les 5 themes (default,
+  cosmic, dark-tactical, mystic-purple, neon-frontier) pour qu il ne
+  soit plus clipe par .shell { overflow:hidden }.
+- launcher-ui.js : ajouter syncExtPanelVisibility() qui n affiche le
+  panneau que sur l ecran READY avec au moins une extension activee,
+  hooke dans setActiveScreen() pour les transitions.
+- main.js : agrandir BrowserWindow 520x260 -> 540x460 pour que le
+  panneau sous la coque soit visible.
+- main.js : fixer la race condition loadFile -3 (ERR_ABORTED). Le
+  boot loadFile non-awaite etait supplante par celui de startSync,
+  ce qui surfaceait l erreur a l utilisateur (visible sur Mac sous
+  AppTranslocation). Comparaison via cle de theme normalisee au lieu
+  d URL string, try/catch qui ignore -3 sur loadFile, .catch sur
+  l initial loadFile.
 
-Deploiement :
-- Lancer migrations_v5.sql (idempotent : nouvelles colonnes users,
-  tables user_tokens, email_log, admin_actions).
-- Ajouter dans .env.local : RESEND_API_KEY, EMAIL_FROM, EMAIL_FROM_NAME,
-  EMAIL_REPLY_TO, APP_URL.
-- Promouvoir le compte admin via UPDATE users SET is_admin=1.
-- Soumettre sitemap.xml dans Google Search Console.
+Dashboard
+- dashboard/dashboard.php : ajouter un bouton Admin dans la navbar,
+  affiche uniquement si is_admin = 1. Tolere l absence de la colonne
+  (migration v5 non appliquee).

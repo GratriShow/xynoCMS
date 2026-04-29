@@ -10,6 +10,18 @@ $user = require_login();
 
 $pdo = db();
 
+// Show admin link in the navbar only for accounts with is_admin = 1.
+$isAdmin = false;
+try {
+    $stIsAdmin = $pdo->prepare('SELECT is_admin FROM users WHERE id = ? LIMIT 1');
+    $stIsAdmin->execute([$user['id']]);
+    $rowIsAdmin = $stIsAdmin->fetch();
+    $isAdmin = $rowIsAdmin && (int)($rowIsAdmin['is_admin'] ?? 0) === 1;
+} catch (Throwable $e) {
+    // Migration v5 not applied yet — silently treat as non-admin.
+    $isAdmin = false;
+}
+
 $stmt = $pdo->prepare('SELECT uuid, name, description, version, loader, theme, created_at FROM launchers WHERE user_id = ? ORDER BY created_at DESC');
 $stmt->execute([$user['id']]);
 $launchers = $stmt->fetchAll();
@@ -361,6 +373,9 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
       </nav>
 
       <div class="nav-actions">
+        <?php if ($isAdmin): ?>
+          <a class="btn btn-ghost" href="../admin/index.php">Admin</a>
+        <?php endif; ?>
         <a class="btn btn-ghost" href="builder.php">Créer un launcher</a>
         <a class="btn btn-ghost" href="../account/settings.php">Mon compte</a>
         <a class="btn" href="logout.php">Se déconnecter</a>

@@ -98,7 +98,7 @@ $error   = flash_get('error');
         <?php if ($error): ?><div class="notice" data-show="true" style="margin:12px 0"><?php echo e($error); ?></div><?php endif; ?>
 
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0">
-          <a class="btn btn-primary" href="send-mail.php?user_id=<?php echo (int)$u['id']; ?>">📧 Envoyer un email manuel</a>
+          <a class="btn btn-primary" href="send_mail.php?user_id=<?php echo (int)$u['id']; ?>">📧 Envoyer un email manuel</a>
           <?php if (empty($u['deleted_at'])): ?>
             <form method="post" action="user_actions.php" style="display:inline" onsubmit="return confirm('Marquer ce compte comme supprimé (soft-delete RGPD) ?');">
               <input type="hidden" name="_csrf" value="<?php echo e(csrf_token()); ?>" />
