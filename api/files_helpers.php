@@ -71,16 +71,16 @@ function file_format_size(int $bytes): string
 /**
  * Storage quota per plan, in bytes.
  *  - free / no plan : 250 MB (just enough to test)
- *  - starter        : 5 GB
- *  - pro            : 20 GB
- *  - premium        : 100 GB
+ *  - starter        : 10 GB
+ *  - pro            : 10 GB
+ *  - premium        : 10 GB
  */
 function file_quota_for_plan(string $plan): int
 {
     return match (strtolower(trim($plan))) {
-        'starter' => 5 * 1024 * 1024 * 1024,
-        'pro'     => 20 * 1024 * 1024 * 1024,
-        'premium' => 100 * 1024 * 1024 * 1024,
+        'starter' => 10 * 1024 * 1024 * 1024,
+        'pro'     => 10 * 1024 * 1024 * 1024,
+        'premium' => 10 * 1024 * 1024 * 1024,
         default   => 250 * 1024 * 1024,
     };
 }

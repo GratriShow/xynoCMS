@@ -46,22 +46,30 @@ if ($selected === null && count($launchers)) {
 }
 
 // ----------------------------------------------------------------------------
-// Paywall : si l'abonnement de ce launcher n'est pas actif, on renvoie sur
-// le dashboard ou le bloc d'abonnement permet de souscrire (la zone fichiers
-// est completement verrouillee tant que le plan n'est pas paye).
+// Paywall : si l'abonnement de ce launcher n'est pas actif OU si hosting
+// n'est pas activé, on renvoie sur le dashboard (la zone fichiers est
+// completement verrouillee sans abonnement + option hébergement Xyno).
 // ----------------------------------------------------------------------------
 if ($selected !== null) {
     try {
         $ps = $pdo->prepare(
-            "SELECT status FROM subscriptions "
-          . "WHERE launcher_id = ? AND user_id = ? "
-          . "ORDER BY (status = 'active') DESC, created_at DESC LIMIT 1"
+            "SELECT s.status, l.hosting FROM subscriptions s "
+          . "INNER JOIN launchers l ON l.id = s.launcher_id "
+          . "WHERE s.launcher_id = ? AND s.user_id = ? "
+          . "ORDER BY (s.status = 'active') DESC, s.created_at DESC LIMIT 1"
         );
         $ps->execute([(int)$selected['id'], $user['id']]);
         $rowSub = $ps->fetch();
         $statusSub = $rowSub ? strtolower((string)$rowSub['status']) : '';
+        $hasHosting = $rowSub ? (int)($rowSub['hosting'] ?? 0) === 1 : false;
+
         if ($statusSub !== 'active') {
             flash_set('error', 'Active ton abonnement pour acceder a la zone Fichiers de ce launcher.');
+            redirect('/dashboard.php?launcher=' . urlencode($selectedUuid) . '&tab=general#sub-card');
+        }
+
+        if (!$hasHosting) {
+            flash_set('error', 'Active l\'hébergement Xyno pour acceder a la zone Fichiers. Sans hébergement, tu dois héberger tes fichiers toi-même.');
             redirect('/dashboard.php?launcher=' . urlencode($selectedUuid) . '&tab=general#sub-card');
         }
     } catch (Throwable $e) {
