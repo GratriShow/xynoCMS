@@ -167,8 +167,8 @@ $payload = [
             'launcher_uuid' => $launcherUuid,
             'user_id'       => (string)$user['id'],
         ],
-        // Start the billing cycle on the 1st of next month
-        'billing_cycle_anchor' => (int)strtotime('first day of next month midnight'),
+        // Start full hosting billing at the launcher's renewal date
+        'billing_cycle_anchor' => (int)strtotime($nextBillingAt),
     ],
     'line_items' => [
         [
