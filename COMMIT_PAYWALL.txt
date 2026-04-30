@@ -1,0 +1,40 @@
+fix: Implémenter un paywall d'offre AVANT le dashboard si pas d'abonnement actif
+
+Améliore l'UX en proposant les offres d'abonnement EN PREMIER au lieu d'afficher
+un dashboard grisé et verrouillé.
+
+## Changements
+
+### Nouvelle page
+- dashboard/pricing_paywall.php: Page de propositions d'offre
+  * Affiche les 3 plans (Starter, Pro, Premium) avec prix et features
+  * Sélection flexible de la périodicité (mensuel, trimestriel, semestriel, annuel)
+  * Formulaire de souscription intégré vers Stripe
+  * Design moderne avec card featured pour le plan recommandé
+  * Bouton "Retour" vers les launchers
+
+### Modification dashboard
+- dashboard/dashboard.php: Redirection automatique vers pricing_paywall
+  * Si launcher sélectionné n'a pas d'abonnement actif
+  * Redirige directement vers pricing_paywall.php au lieu d'afficher le dashboard grisé
+  * Améliore le flow utilisateur: choisir → payer → configurer
+
+## UX Improvement
+✓ Plus clair: on propose les offres immédiatement
+✓ Moins de distraction: pas de dashboard grisé/verrouillé
+✓ Meilleur conversion: focus sur le formulaire de souscription
+✓ Design cohérent: utilise le styling existant du site
+
+## Fonctionnalités
+✓ 3 plans avec descriptions claires
+✓ Liste de features par plan
+✓ Périodicités flexibles avec remises
+✓ Intégration Stripe Checkout
+✓ Message d'erreur si Stripe non configuré
+✓ Lien "Retour" vers dashboard
+
+## Notes
+- Utilise les mêmes fonctions de calcul de prix que le dashboard
+- Compatible avec les redirects post-paiement existantes
+- Respecte l'authentification requise
+- Validation d'ownership du launcher

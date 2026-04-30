@@ -500,6 +500,13 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
       <?php else: /* -------- Level 2: launcher detail view -------- */ ?>
 
         <?php
+          // Redirect to pricing paywall if no active subscription
+          if (!$selectedSub || strtolower((string)($selectedSub['status'] ?? '')) !== 'active') {
+              redirect('pricing_paywall.php?launcher=' . urlencode((string)$selected['uuid']));
+          }
+        ?>
+
+        <?php
           $uuidQ = urlencode((string)$selected['uuid']);
           $tabUrl = fn (string $t): string => 'dashboard.php?launcher=' . $uuidQ . '&tab=' . $t . '#tab-' . $t;
           $tabs = [
