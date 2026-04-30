@@ -52,6 +52,7 @@ function admin_render_nav(string $active = ''): void
         'users'         => ['Utilisateurs',    '/admin/users.php'],
         'launchers'     => ['Launchers',       '/admin/launchers.php'],
         'subscriptions' => ['Abonnements',     '/admin/subscriptions.php'],
+        'gifts'         => ['Cadeaux',         '/admin/gifts.php'],
         'emails'        => ['Logs emails',     '/admin/emails.php'],
         'audit'         => ['Audit log',       '/admin/audit.php'],
     ];
