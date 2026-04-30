@@ -47,9 +47,13 @@ if ($selected === null && count($launchers)) {
 
 // ----------------------------------------------------------------------------
 // Paywall : si l'abonnement de ce launcher n'est pas actif OU si hosting
-// n'est pas activé, on renvoie sur le dashboard (la zone fichiers est
-// completement verrouillee sans abonnement + option hébergement Xyno).
+// n'est pas activé, on affiche une modal pour proposer l'abonnement.
 // ----------------------------------------------------------------------------
+$needsSubscription = false;
+$subscriptionReason = '';
+$prorataDiscount = 0;
+$csrf = csrf_token();
+
 if ($selected !== null) {
     try {
         $ps = $pdo->prepare(
@@ -64,13 +68,17 @@ if ($selected !== null) {
         $hasHosting = $rowSub ? (int)($rowSub['hosting'] ?? 0) === 1 : false;
 
         if ($statusSub !== 'active') {
-            flash_set('error', 'Active ton abonnement pour acceder a la zone Fichiers de ce launcher.');
-            redirect('/dashboard.php?launcher=' . urlencode($selectedUuid) . '&tab=general#sub-card');
+            $needsSubscription = true;
+            $subscriptionReason = 'active_sub';
+        } elseif (!$hasHosting) {
+            $needsSubscription = true;
+            $subscriptionReason = 'hosting';
         }
 
-        if (!$hasHosting) {
-            flash_set('error', 'Active l\'hébergement Xyno pour acceder a la zone Fichiers. Sans hébergement, tu dois héberger tes fichiers toi-même.');
-            redirect('/dashboard.php?launcher=' . urlencode($selectedUuid) . '&tab=general#sub-card');
+        // Calculate prorata discount
+        if ($needsSubscription) {
+            require_once __DIR__ . '/../api/subscription_helpers.php';
+            $prorataDiscount = (int)subscription_prorata_discount_percent();
         }
     } catch (Throwable $e) {
         // table subscriptions absente (pre-v4) -> on laisse passer pour ne pas bloquer le dev local
@@ -1075,5 +1083,82 @@ $eventLabel = [
   <footer class="container small" style="text-align:center;padding:30px 16px;color:var(--muted)">
     © <?php echo date('Y'); ?> XynoCMS — gestion fichiers v4.
   </footer>
+
+  <!-- Modal subscription paywall -->
+  <?php if ($needsSubscription && $selected !== null): ?>
+    <div id="subscription-modal" role="dialog" aria-modal="true" aria-label="Débloquer les fichiers"
+         style="position:fixed;inset:0;z-index:9999;background:rgba(8,10,18,.85);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px;">
+      <div style="max-width:520px;width:100%;background:#14141d;border:1px solid rgba(124,58,237,.35);border-radius:18px;padding:32px;box-shadow:0 24px 70px rgba(0,0,0,.55)">
+        <div style="text-align:center;margin-bottom:24px">
+          <div style="font-size:48px;margin-bottom:12px">🔒</div>
+          <h2 style="margin:0 0 8px;font-size:22px;color:#fff">Débloquer la zone Fichiers</h2>
+          <p style="margin:0;color:#a8a8b8;font-size:14px">
+            <?php if ($subscriptionReason === 'active_sub'): ?>
+              Active un abonnement pour accéder à l'hébergement de fichiers.
+            <?php else: ?>
+              Ajoute l'hébergement Xyno à ton abonnement pour gérer tes fichiers.
+            <?php endif; ?>
+          </p>
+        </div>
+
+        <!-- Pricing cards -->
+        <div style="display:grid;gap:12px;margin-bottom:24px">
+          <?php foreach (['starter' => 'Starter', 'pro' => 'Pro', 'premium' => 'Premium'] as $plan => $label):
+            require_once __DIR__ . '/../api/subscription_helpers.php';
+            $basePrice = subscription_plan_base_cents();
+            $baseCents = $basePrice[$plan];
+            $baseEuro = $baseCents / 100;
+          ?>
+            <label style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid rgba(255,255,255,.1);border-radius:10px;cursor:pointer;transition:all .2s">
+              <input type="radio" name="plan" value="<?php echo e($plan); ?>" style="cursor:pointer" />
+              <div style="flex:1">
+                <div style="color:#fff;font-weight:600"><?php echo e($label); ?> <span style="color:#8a8aa0;font-size:12px;font-weight:normal">— <?php echo number_format($baseEuro, 0); ?>€/mois</span></div>
+                <div style="font-size:12px;color:#8a8aa0">Au prorata : <strong style="color:#a78bfa">-<?php echo (100 - $prorataDiscount); ?>%</strong> ce mois</div>
+              </div>
+            </label>
+          <?php endforeach; ?>
+        </div>
+
+        <!-- Period selection -->
+        <div style="margin-bottom:24px">
+          <label style="display:block;margin-bottom:8px;font-size:14px;color:#fff">Périodicité</label>
+          <select id="period-select" style="width:100%;padding:10px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(255,255,255,.05);color:#fff;font-size:14px">
+            <option value="monthly">Mensuel (plein tarif à partir du mois 2)</option>
+            <option value="quarterly">Trimestriel (-5% ensuite)</option>
+            <option value="semestrial">Semestriel (-10% ensuite)</option>
+            <option value="yearly">Annuel (-15% ensuite)</option>
+          </select>
+        </div>
+
+        <!-- Message -->
+        <div style="padding:12px;background:rgba(124,58,237,.1);border-left:3px solid rgba(124,58,237,.5);border-radius:6px;margin-bottom:24px;font-size:13px;color:#d4d4d8">
+          <strong style="color:#a78bfa">💡 Astuce prorata :</strong> Tu paies <?php echo $prorataDiscount; ?>% ce mois pour les jours restants, puis le prix normal à chaque renouvellement.
+        </div>
+
+        <!-- Action buttons -->
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+          <form action="/api/subscription_checkout.php" method="post" style="flex:1;min-width:140px">
+            <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
+            <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
+            <input type="hidden" id="plan-input" name="plan" value="pro" />
+            <input type="hidden" id="period-input" name="period" value="monthly" />
+            <button class="btn btn-primary" type="submit" style="width:100%;padding:12px">Souscrire maintenant →</button>
+          </form>
+          <a class="btn" href="/dashboard.php?launcher=<?php echo urlencode($selectedUuid); ?>&tab=general#sub-card" style="padding:12px 20px">Plus tard</a>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      document.querySelectorAll('input[name="plan"]').forEach(r => {
+        r.addEventListener('change', e => {
+          document.getElementById('plan-input').value = e.target.value;
+        });
+      });
+      document.getElementById('period-select').addEventListener('change', e => {
+        document.getElementById('period-input').value = e.target.value;
+      });
+    </script>
+  <?php endif; ?>
 </body>
 </html>

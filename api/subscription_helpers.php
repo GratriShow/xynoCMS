@@ -110,6 +110,39 @@ function subscription_normalize_period(string $period): string
 }
 
 /**
+ * Calculate prorata amount for remaining days in current month.
+ * Used when user subscribes mid-month to charge only for remaining days,
+ * then full price for future months.
+ *
+ * @param int $fullMonthCents Full month price in cents
+ * @return int Prorata price in cents for remaining days this month
+ */
+function subscription_prorata_cents(int $fullMonthCents): int
+{
+    $now = new DateTime();
+    $endOfMonth = new DateTime('last day of this month');
+    $daysLeft = $now->diff($endOfMonth)->days + 1; // +1 pour inclure aujourd'hui
+    $daysInMonth = (int)$endOfMonth->format('d');
+
+    // Calcul prorata: (jours restants / jours du mois) × prix du mois
+    return (int)round(($daysLeft / $daysInMonth) * $fullMonthCents);
+}
+
+/**
+ * Calculate discount for early subscription mid-month.
+ * Returns the percentage discount (e.g., 0.5 for 50% off if 15 days left in 30-day month).
+ */
+function subscription_prorata_discount_percent(): float
+{
+    $now = new DateTime();
+    $endOfMonth = new DateTime('last day of this month');
+    $daysLeft = $now->diff($endOfMonth)->days + 1;
+    $daysInMonth = (int)$endOfMonth->format('d');
+
+    return round(($daysLeft / $daysInMonth) * 100);
+}
+
+/**
  * Display label for the plan (capitalised).
  */
 function subscription_plan_label(string $plan): string
