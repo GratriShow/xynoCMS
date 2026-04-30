@@ -9,7 +9,7 @@ $admin = require_admin();
 $pdo   = db();
 
 $subId = (int)($_GET['id'] ?? 0);
-if ($subId <= 0) redirect('/admin/subscriptions.php');
+if ($subId <= 0) redirect('subscriptions.php');
 
 $st = $pdo->prepare(
     "SELECT s.*, u.email AS user_email, u.id AS user_id, "
@@ -23,7 +23,7 @@ $st->execute([$subId]);
 $sub = $st->fetch();
 if (!$sub) {
     flash_set('error', 'Abonnement introuvable.');
-    redirect('/admin/subscriptions.php');
+    redirect('subscriptions.php');
 }
 
 $stripeSubId = (string)($sub['stripe_subscription_id'] ?? '');

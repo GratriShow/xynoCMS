@@ -7,23 +7,23 @@ require_once __DIR__ . '/_helpers.php';
 $admin = require_admin();
 $pdo   = db();
 
-if (!is_post()) redirect('/admin/users.php');
+if (!is_post()) redirect('users.php');
 
 if (!csrf_verify((string)($_POST['_csrf'] ?? ''))) {
     flash_set('error', 'Session expirée.');
-    redirect('/admin/users.php');
+    redirect('users.php');
 }
 
 $action = (string)($_POST['action'] ?? '');
 $userId = (int)($_POST['user_id'] ?? 0);
 if ($userId <= 0) {
     flash_set('error', 'Utilisateur invalide.');
-    redirect('/admin/users.php');
+    redirect('users.php');
 }
 
 if ($userId === (int)$admin['id'] && in_array($action, ['soft_delete', 'revoke_admin'], true)) {
     flash_set('error', "Tu ne peux pas appliquer cette action sur ton propre compte.");
-    redirect('/admin/user.php?id=' . $userId);
+    redirect('user.php?id=' . $userId);
 }
 
 switch ($action) {
@@ -51,4 +51,4 @@ switch ($action) {
         flash_set('error', 'Action inconnue.');
 }
 
-redirect('/admin/user.php?id=' . $userId);
+redirect('user.php?id=' . $userId);

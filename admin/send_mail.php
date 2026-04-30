@@ -8,14 +8,14 @@ $admin = require_admin();
 $pdo   = db();
 
 $userId = (int)($_GET['user_id'] ?? $_POST['user_id'] ?? 0);
-if ($userId <= 0) redirect('/admin/users.php');
+if ($userId <= 0) redirect('users.php');
 
 $st = $pdo->prepare('SELECT id, email FROM users WHERE id = ? LIMIT 1');
 $st->execute([$userId]);
 $target = $st->fetch();
 if (!$target) {
     flash_set('error', 'Utilisateur introuvable.');
-    redirect('/admin/users.php');
+    redirect('users.php');
 }
 
 $err = '';
@@ -52,7 +52,7 @@ if (is_post()) {
 
             if ($result['ok']) {
                 flash_set('success', "Email envoyé à " . $target['email']);
-                redirect('/admin/user.php?id=' . $userId);
+                redirect('user.php?id=' . $userId);
             } else {
                 $err = 'Envoi échoué : ' . (string)($result['error'] ?? 'erreur inconnue');
             }

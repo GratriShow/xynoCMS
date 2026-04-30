@@ -8,7 +8,7 @@ $admin = require_admin();
 $pdo   = db();
 
 $userId = (int)($_GET['id'] ?? 0);
-if ($userId <= 0) redirect('/admin/users.php');
+if ($userId <= 0) redirect('users.php');
 
 try {
     $st = $pdo->prepare('SELECT id, uuid, email, email_pending, is_admin, created_at, updated_at, last_login_at, deleted_at FROM users WHERE id = ? LIMIT 1');
@@ -21,7 +21,7 @@ try {
 }
 if (!$u) {
     flash_set('error', 'Utilisateur introuvable.');
-    redirect('/admin/users.php');
+    redirect('users.php');
 }
 
 // Launchers

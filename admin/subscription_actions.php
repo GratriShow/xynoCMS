@@ -9,11 +9,11 @@ $admin = require_admin();
 $pdo   = db();
 
 if (!is_post()) {
-    redirect('/admin/subscriptions.php');
+    redirect('subscriptions.php');
 }
 if (!csrf_verify((string)($_POST['_csrf'] ?? ''))) {
     flash_set('error', 'Session expirée.');
-    redirect('/admin/subscriptions.php');
+    redirect('subscriptions.php');
 }
 
 $action = (string)($_POST['action'] ?? '');
@@ -21,7 +21,7 @@ $subId  = (int)($_POST['sub_id']  ?? 0);
 
 if ($subId <= 0) {
     flash_set('error', 'sub_id manquant.');
-    redirect('/admin/subscriptions.php');
+    redirect('subscriptions.php');
 }
 
 // Charge la subscription cible.
@@ -36,11 +36,11 @@ $st->execute([$subId]);
 $sub = $st->fetch();
 if (!$sub) {
     flash_set('error', 'Abonnement introuvable.');
-    redirect('/admin/subscriptions.php');
+    redirect('subscriptions.php');
 }
 
 $stripeSubId = (string)($sub['stripe_subscription_id'] ?? '');
-$backUrl = '/admin/subscription.php?id=' . $subId;
+$backUrl = 'subscription.php?id=' . $subId;
 
 // -------------------------------------------------------------------------
 // Dispatch
