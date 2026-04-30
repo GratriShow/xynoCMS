@@ -162,7 +162,15 @@ try {
             // mode=subscription is handled separately from one-shot purchases.
             $mode = strtolower((string)($object['mode'] ?? ''));
             if ($mode === 'subscription') {
-                wh_handle_subscription_checkout($pdo, $object, $type);
+                // Check if this is a hosting upgrade vs a regular subscription
+                $meta = is_array($object['metadata'] ?? null) ? $object['metadata'] : [];
+                $kind = strtolower(trim((string)($meta['kind'] ?? '')));
+
+                if ($kind === 'hosting_upgrade') {
+                    wh_handle_hosting_upgrade_checkout($pdo, $object, $type);
+                } else {
+                    wh_handle_subscription_checkout($pdo, $object, $type);
+                }
                 // wh_handle_* always exits via wh_respond.
             }
 
@@ -578,5 +586,83 @@ function wh_handle_invoice_failed(PDO $pdo, array $object): void
         'ok'      => true,
         'applied' => 'invoice_failed',
         'rows'    => $stmt->rowCount(),
+    ]);
+}
+
+/**
+ * Handle hosting upgrade subscription checkout.
+ *
+ * When a user adds hosting (+5€/month) to an existing subscription via
+ * /api/subscription_hosting_upgrade.php, this Stripe subscription event
+ * fires to activate the hosting upgrade.
+ *
+ * We update the hosting_upgrades table to 'active' and flip launcher.hosting to 1.
+ */
+function wh_handle_hosting_upgrade_checkout(PDO $pdo, array $object, string $eventType): void
+{
+    $sessionId      = (string)($object['id'] ?? '');
+    $subscriptionId = (string)($object['subscription'] ?? '');
+    $customerId     = (string)($object['customer'] ?? '');
+    $meta           = is_array($object['metadata'] ?? null) ? $object['metadata'] : [];
+
+    $launcherId = (int)($meta['launcher_id'] ?? 0);
+    $userId     = (int)($meta['user_id'] ?? 0);
+    $launcherUuid = (string)($meta['launcher_uuid'] ?? '');
+
+    if ($launcherId <= 0 || $sessionId === '') {
+        wh_respond(200, ['ok' => true, 'ignored' => 'unresolvable_hosting_upgrade', 'event' => $eventType]);
+    }
+
+    // Update hosting_upgrades row to 'active'
+    try {
+        $stmt = $pdo->prepare(
+            "UPDATE hosting_upgrades "
+            . "SET status = 'active', "
+            . "    updated_at = NOW() "
+            . "WHERE stripe_session_id = ? "
+            . "LIMIT 1"
+        );
+        $stmt->execute([$sessionId]);
+    } catch (Throwable $e) {
+        // Table may not exist yet
+    }
+
+    // Update launcher.hosting = 1 to enable hosting for this launcher
+    try {
+        $stmt = $pdo->prepare(
+            "UPDATE launchers "
+            . "SET hosting = 1, hosting_price_cents = 500 "
+            . "WHERE id = ? "
+            . "LIMIT 1"
+        );
+        $stmt->execute([$launcherId]);
+    } catch (Throwable $e) {
+        // Column may not exist yet
+    }
+
+    // Send confirmation email (best-effort)
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT u.email, u.id, l.name FROM users u "
+            . "LEFT JOIN launchers l ON l.id = ? "
+            . "WHERE u.id = ? LIMIT 1"
+        );
+        $stmt->execute([$launcherId, $userId]);
+        $info = $stmt->fetch();
+        if ($info && !empty($info['email'])) {
+            send_hosting_upgrade_email(
+                (string)$info['email'],
+                (int)$info['id'],
+                (string)($info['name'] ?? 'Mon launcher')
+            );
+        }
+    } catch (Throwable $e) { /* ignore */ }
+
+    wh_respond(200, [
+        'ok'              => true,
+        'applied'         => 'hosting_upgrade_active',
+        'launcher_id'     => $launcherId,
+        'launcher_uuid'   => $launcherUuid,
+        'subscription_id' => $subscriptionId,
     ]);
 }

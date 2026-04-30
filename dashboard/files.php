@@ -1091,60 +1091,81 @@ $eventLabel = [
       <div style="max-width:520px;width:100%;background:#14141d;border:1px solid rgba(124,58,237,.35);border-radius:18px;padding:32px;box-shadow:0 24px 70px rgba(0,0,0,.55)">
         <div style="text-align:center;margin-bottom:24px">
           <div style="font-size:48px;margin-bottom:12px">🔒</div>
-          <h2 style="margin:0 0 8px;font-size:22px;color:#fff">Débloquer la zone Fichiers</h2>
-          <p style="margin:0;color:#a8a8b8;font-size:14px">
-            <?php if ($subscriptionReason === 'active_sub'): ?>
-              Active un abonnement pour accéder à l'hébergement de fichiers.
-            <?php else: ?>
-              Ajoute l'hébergement Xyno à ton abonnement pour gérer tes fichiers.
-            <?php endif; ?>
-          </p>
-        </div>
 
-        <!-- Pricing cards -->
-        <div style="display:grid;gap:12px;margin-bottom:24px">
-          <?php foreach (['starter' => 'Starter', 'pro' => 'Pro', 'premium' => 'Premium'] as $plan => $label):
-            require_once __DIR__ . '/../api/subscription_helpers.php';
-            $basePrice = subscription_plan_base_cents();
-            $baseCents = $basePrice[$plan];
-            $baseEuro = $baseCents / 100;
-          ?>
-            <label style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid rgba(255,255,255,.1);border-radius:10px;cursor:pointer;transition:all .2s">
-              <input type="radio" name="plan" value="<?php echo e($plan); ?>" style="cursor:pointer" />
-              <div style="flex:1">
-                <div style="color:#fff;font-weight:600"><?php echo e($label); ?> <span style="color:#8a8aa0;font-size:12px;font-weight:normal">— <?php echo number_format($baseEuro, 0); ?>€/mois</span></div>
-                <div style="font-size:12px;color:#8a8aa0">Au prorata : <strong style="color:#a78bfa">-<?php echo (100 - $prorataDiscount); ?>%</strong> ce mois</div>
-              </div>
-            </label>
-          <?php endforeach; ?>
-        </div>
+          <?php if ($subscriptionReason === 'hosting'): ?>
+            <!-- Cas: Ajouter l'hébergement -->
+            <h2 style="margin:0 0 8px;font-size:22px;color:#fff">Ajouter l'hébergement Xyno</h2>
+            <p style="margin:0;color:#a8a8b8;font-size:14px">Héberge tes fichiers de jeu chez nous. Pas de configuration tiers.</p>
 
-        <!-- Period selection -->
-        <div style="margin-bottom:24px">
-          <label style="display:block;margin-bottom:8px;font-size:14px;color:#fff">Périodicité</label>
-          <select id="period-select" style="width:100%;padding:10px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(255,255,255,.05);color:#fff;font-size:14px">
-            <option value="monthly">Mensuel (plein tarif à partir du mois 2)</option>
-            <option value="quarterly">Trimestriel (-5% ensuite)</option>
-            <option value="semestrial">Semestriel (-10% ensuite)</option>
-            <option value="yearly">Annuel (-15% ensuite)</option>
-          </select>
-        </div>
+            <div style="margin:24px 0;padding:20px;background:rgba(124,58,237,.1);border-radius:12px;border:1px solid rgba(124,58,237,.3)">
+              <div style="font-size:32px;font-weight:800;color:#a78bfa;margin-bottom:4px">5€<span style="font-size:14px;color:#8a8aa0;font-weight:400">/mois</span></div>
+              <p style="margin:8px 0 0;color:#d4d4d8;font-size:13px">
+                Au prorata: <strong><?php echo $prorataDiscount; ?>%</strong> ce mois<br>
+                (<strong style="color:#a78bfa">-<?php echo (100 - $prorataDiscount); ?>%</strong> d'économie ce premier mois)
+              </p>
+            </div>
 
-        <!-- Message -->
-        <div style="padding:12px;background:rgba(124,58,237,.1);border-left:3px solid rgba(124,58,237,.5);border-radius:6px;margin-bottom:24px;font-size:13px;color:#d4d4d8">
-          <strong style="color:#a78bfa">💡 Astuce prorata :</strong> Tu paies <?php echo $prorataDiscount; ?>% ce mois pour les jours restants, puis le prix normal à chaque renouvellement.
-        </div>
+            <form action="/api/subscription_hosting_upgrade.php" method="post" style="margin-bottom:16px">
+              <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
+              <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
+              <button class="btn btn-primary" type="submit" style="width:100%;padding:12px">Activer l'hébergement →</button>
+            </form>
+          <?php else: ?>
+            <!-- Cas: Choisir un abonnement -->
+            <h2 style="margin:0 0 8px;font-size:22px;color:#fff">Débloquer la zone Fichiers</h2>
+            <p style="margin:0;color:#a8a8b8;font-size:14px">Active un abonnement pour accéder à l'hébergement de fichiers.</p>
 
-        <!-- Action buttons -->
-        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-          <form action="/api/subscription_checkout.php" method="post" style="flex:1;min-width:140px">
-            <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
-            <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
-            <input type="hidden" id="plan-input" name="plan" value="pro" />
-            <input type="hidden" id="period-input" name="period" value="monthly" />
-            <button class="btn btn-primary" type="submit" style="width:100%;padding:12px">Souscrire maintenant →</button>
-          </form>
-          <a class="btn" href="/dashboard.php?launcher=<?php echo urlencode($selectedUuid); ?>&tab=general#sub-card" style="padding:12px 20px">Plus tard</a>
+            <!-- Pricing cards -->
+            <div style="display:grid;gap:12px;margin:24px 0">
+              <?php foreach (['starter' => 'Starter', 'pro' => 'Pro', 'premium' => 'Premium'] as $plan => $label):
+                require_once __DIR__ . '/../api/subscription_helpers.php';
+                $basePrice = subscription_plan_base_cents();
+                $baseCents = $basePrice[$plan];
+                $baseEuro = $baseCents / 100;
+              ?>
+                <label style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid rgba(255,255,255,.1);border-radius:10px;cursor:pointer;transition:all .2s">
+                  <input type="radio" name="plan" value="<?php echo e($plan); ?>" style="cursor:pointer" />
+                  <div style="flex:1">
+                    <div style="color:#fff;font-weight:600"><?php echo e($label); ?> <span style="color:#8a8aa0;font-size:12px;font-weight:normal">— <?php echo number_format($baseEuro, 0); ?>€/mois</span></div>
+                    <div style="font-size:12px;color:#8a8aa0">Au prorata : <strong style="color:#a78bfa">-<?php echo (100 - $prorataDiscount); ?>%</strong> ce mois</div>
+                  </div>
+                </label>
+              <?php endforeach; ?>
+            </div>
+
+            <!-- Period selection -->
+            <div style="margin-bottom:24px">
+              <label style="display:block;margin-bottom:8px;font-size:14px;color:#fff">Périodicité</label>
+              <select id="period-select" style="width:100%;padding:10px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(255,255,255,.05);color:#fff;font-size:14px">
+                <option value="monthly">Mensuel (plein tarif à partir du mois 2)</option>
+                <option value="quarterly">Trimestriel (-5% ensuite)</option>
+                <option value="semestrial">Semestriel (-10% ensuite)</option>
+                <option value="yearly">Annuel (-15% ensuite)</option>
+              </select>
+            </div>
+
+            <!-- Message -->
+            <div style="padding:12px;background:rgba(124,58,237,.1);border-left:3px solid rgba(124,58,237,.5);border-radius:6px;margin-bottom:24px;font-size:13px;color:#d4d4d8">
+              <strong style="color:#a78bfa">💡 Astuce prorata :</strong> Tu paies <?php echo $prorataDiscount; ?>% ce mois pour les jours restants, puis le prix normal à chaque renouvellement.
+            </div>
+
+            <!-- Action buttons -->
+            <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+              <form action="/api/subscription_checkout.php" method="post" style="flex:1;min-width:140px">
+                <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
+                <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
+                <input type="hidden" id="plan-input" name="plan" value="pro" />
+                <input type="hidden" id="period-input" name="period" value="monthly" />
+                <button class="btn btn-primary" type="submit" style="width:100%;padding:12px">Souscrire maintenant →</button>
+              </form>
+              <a class="btn" href="/dashboard.php?launcher=<?php echo urlencode($selectedUuid); ?>&tab=general#sub-card" style="padding:12px 20px">Plus tard</a>
+            </div>
+          <?php endif; ?>
+
+          <!-- Fallback close for hosting case -->
+          <?php if ($subscriptionReason === 'hosting'): ?>
+            <a class="btn btn-ghost" href="/dashboard.php?launcher=<?php echo urlencode($selectedUuid); ?>&tab=general#sub-card" style="width:100%;margin-top:12px">Retour au dashboard</a>
+          <?php endif; ?>
         </div>
       </div>
     </div>
@@ -1155,9 +1176,12 @@ $eventLabel = [
           document.getElementById('plan-input').value = e.target.value;
         });
       });
-      document.getElementById('period-select').addEventListener('change', e => {
-        document.getElementById('period-input').value = e.target.value;
-      });
+      const periodSelect = document.getElementById('period-select');
+      if (periodSelect) {
+        periodSelect.addEventListener('change', e => {
+          document.getElementById('period-input').value = e.target.value;
+        });
+      }
     </script>
   <?php endif; ?>
 </body>

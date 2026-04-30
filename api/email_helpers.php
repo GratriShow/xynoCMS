@@ -385,6 +385,23 @@ function send_admin_custom_email(string $toEmail, int $userId, int $adminId, str
     );
 }
 
+/**
+ * Hosting upgrade confirmation email.
+ */
+function send_hosting_upgrade_email(string $toEmail, int $userId, string $launcherName): array
+{
+    $body  = '<p>Ton launcher <strong>' . htmlspecialchars($launcherName, ENT_QUOTES, 'UTF-8') . '</strong> est maintenant hébergé sur nos serveurs Xyno ! 🚀</p>'
+           . '<p>L\'option d\'hébergement (+<strong>5€/mois</strong>) est active et facturée au prorata ce mois-ci, puis intégralement à partir du mois prochain.</p>'
+           . '<p style="color:#a8a8b8;font-size:14px">Tu peux accéder à la gestion des fichiers de ton launcher directement depuis le dashboard.</p>';
+    return send_email(
+        $toEmail,
+        'Hébergement Xyno activé ✅',
+        email_layout('Hébergement activé', $body, app_url() . '/dashboard.php', 'Accéder au dashboard'),
+        'hosting_upgrade',
+        ['user_id' => $userId]
+    );
+}
+
 /* -------------------------------------------------------------------------
  *  Tokens (email change / account delete)
  * ------------------------------------------------------------------------- */
