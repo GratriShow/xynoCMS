@@ -90,17 +90,27 @@ try {
 $plan = (string)($subscription['plan'] ?? '');
 $period = (string)($subscription['period'] ?? '');
 $nextBillingAt = (string)($subscription['next_billing_at'] ?? '');
+$createdAt = (string)($subscription['created_at'] ?? '');
 
 // Calculate base hosting cost (5€/month = 500 cents)
 $hostingMonthCents = 500;
 
 // Calculate prorata hosting cost until next subscription renewal
-// Use the subscription's next_billing_at date, not calendar month end
+// Formula: (days left until next_billing_at / total days in subscription cycle) × monthly price
 $now = new DateTime();
-$billingDate = $nextBillingAt ? new DateTime($nextBillingAt) : new DateTime('last day of this month');
-$daysLeft = $now->diff($billingDate)->days + 1;
-$daysInMonth = (int)$billingDate->format('d');
-$prorataHostingCents = (int)round(($daysLeft / $daysInMonth) * $hostingMonthCents);
+$cycleStart = new DateTime($createdAt);
+$cycleEnd = $nextBillingAt ? new DateTime($nextBillingAt) : new DateTime('last day of this month');
+
+// Total days in the subscription cycle
+$cycleDays = $cycleStart->diff($cycleEnd)->days;
+if ($cycleDays <= 0) $cycleDays = 30; // fallback
+
+// Days remaining until next billing
+$daysLeft = $now->diff($cycleEnd)->days + 1;
+if ($daysLeft < 0) $daysLeft = 0;
+
+// Prorata: (days remaining / total cycle days) × monthly price
+$prorataHostingCents = (int)round(($daysLeft / $cycleDays) * $hostingMonthCents);
 
 // Get currency from config (default EUR)
 $currency = strtolower(trim(api_env('MARKETPLACE_CURRENCY', 'eur'))) ?: 'eur';
