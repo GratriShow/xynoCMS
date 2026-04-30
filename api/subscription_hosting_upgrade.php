@@ -99,7 +99,19 @@ $hostingMonthCents = 500;
 // Formula: (days left until next_billing_at / total days in subscription cycle) × monthly price
 $now = new DateTime();
 $cycleStart = new DateTime($createdAt);
-$cycleEnd = $nextBillingAt ? new DateTime($nextBillingAt) : new DateTime('last day of this month');
+
+// If next_billing_at is not set, calculate it from the period
+$cycleEnd = null;
+if ($nextBillingAt) {
+    $cycleEnd = new DateTime($nextBillingAt);
+} else {
+    // Fallback: calculate next billing date from subscription period
+    $periodConfig = subscription_period_config();
+    $periodCfg = $periodConfig[strtolower($period)] ?? $periodConfig['monthly'];
+    $months = (int)($periodCfg['months'] ?? 1);
+    $cycleEnd = new DateTime($createdAt);
+    $cycleEnd->modify('+' . $months . ' months');
+}
 
 // Total days in the subscription cycle
 $cycleDays = $cycleStart->diff($cycleEnd)->days;
