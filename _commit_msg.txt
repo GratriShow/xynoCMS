@@ -41,6 +41,18 @@ Admin - Page abonnement detaillee + actions Stripe
 - admin/subscription_actions.php : handler POST CSRF-protege,
   branche les helpers Stripe et appelle admin_log() pour chaque
   action. Redirige vers /admin/subscription.php?id=X avec flash.
+  Envoie une notification email au client pour chaque action :
+  cancel_at_period_end, cancel_now, resume, extend_local, coupon
+  Stripe, refund (best-effort, n'echoue jamais l'action si l'email
+  ne part pas).
+- api/email_helpers.php : 5 nouveaux templates HTML (Resend) :
+  send_subscription_cancel_scheduled_email,
+  send_subscription_resumed_email,
+  send_subscription_extended_email,
+  send_subscription_coupon_email,
+  send_refund_email. Tous logges dans email_log avec le bon template.
+- admin/user.php : colonne "Detail" ajoutee a la table abonnements
+  (lien direct vers /admin/subscription.php?id=X).
 - migrations_v6.sql : ajout extended_until DATETIME et
   cancel_at_period_end TINYINT(1) sur subscriptions pour materialiser
   les ajouts de temps locaux et refleter l'etat Stripe.

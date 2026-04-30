@@ -279,6 +279,98 @@ function send_account_deleted_email(string $toEmail, int $userId, string $purgeA
     );
 }
 
+/**
+ * Annulation programmée à la fin de la période (cancel_at_period_end).
+ */
+function send_subscription_cancel_scheduled_email(string $toEmail, int $userId, string $launcherName, string $endsAt): array
+{
+    $body  = '<p>L\'annulation de ton abonnement pour le launcher <strong>' . htmlspecialchars($launcherName, ENT_QUOTES, 'UTF-8') . '</strong> a été programmée.</p>'
+           . '<p>Tu gardes l\'accès complet jusqu\'au <strong>' . htmlspecialchars($endsAt, ENT_QUOTES, 'UTF-8') . '</strong>. Aucun nouveau prélèvement ne sera effectué.</p>'
+           . '<p style="color:#a8a8b8;font-size:14px">Tu peux annuler cette résiliation à tout moment depuis ton dashboard tant que la date n\'est pas atteinte.</p>';
+    return send_email(
+        $toEmail,
+        'Résiliation programmée pour la fin de période',
+        email_layout('Résiliation programmée', $body, app_url() . '/dashboard.php', 'Voir mon abonnement'),
+        'sub_cancel_scheduled',
+        ['user_id' => $userId]
+    );
+}
+
+/**
+ * Reprise d'un abonnement (annulation programmée annulée).
+ */
+function send_subscription_resumed_email(string $toEmail, int $userId, string $launcherName): array
+{
+    $body  = '<p>Bonne nouvelle : ton abonnement pour le launcher <strong>' . htmlspecialchars($launcherName, ENT_QUOTES, 'UTF-8') . '</strong> a été repris.</p>'
+           . '<p>L\'annulation programmée a été annulée et la facturation reprend son cours normal.</p>';
+    return send_email(
+        $toEmail,
+        'Abonnement repris ✅',
+        email_layout('Abonnement repris', $body, app_url() . '/dashboard.php', 'Voir mon dashboard'),
+        'sub_resumed',
+        ['user_id' => $userId]
+    );
+}
+
+/**
+ * Geste commercial : prolongation locale de N jours.
+ */
+function send_subscription_extended_email(string $toEmail, int $userId, string $launcherName, int $days, string $newDate, string $note = ''): array
+{
+    $body  = '<p>L\'équipe XynoLauncher t\'offre <strong>' . (int)$days . ' jour' . ($days > 1 ? 's' : '') . '</strong> supplémentaire' . ($days > 1 ? 's' : '') . ' sur ton abonnement pour le launcher <strong>' . htmlspecialchars($launcherName, ENT_QUOTES, 'UTF-8') . '</strong>.</p>'
+           . '<p>Ton accès est désormais garanti jusqu\'au <strong>' . htmlspecialchars($newDate, ENT_QUOTES, 'UTF-8') . '</strong>.</p>';
+    if ($note !== '') {
+        $body .= '<p style="background:rgba(124,58,237,.10);border-left:3px solid #7c3aed;padding:10px 14px;border-radius:6px;color:#c4b5fd;font-size:14px"><em>' . htmlspecialchars($note, ENT_QUOTES, 'UTF-8') . '</em></p>';
+    }
+    $body .= '<p style="color:#a8a8b8;font-size:14px">Aucune action de ta part n\'est nécessaire — la prolongation est appliquée automatiquement.</p>';
+    return send_email(
+        $toEmail,
+        '🎁 +' . (int)$days . ' jour' . ($days > 1 ? 's' : '') . ' sur ton abonnement',
+        email_layout('Prolongation offerte', $body, app_url() . '/dashboard.php', 'Voir mon abonnement'),
+        'sub_extended',
+        ['user_id' => $userId]
+    );
+}
+
+/**
+ * Coupon Stripe appliqué (geste commercial côté facturation).
+ */
+function send_subscription_coupon_email(string $toEmail, int $userId, string $launcherName, int $percentOff, string $duration, int $months = 1): array
+{
+    $durationLabel = match ($duration) {
+        'forever'   => 'sur toutes tes prochaines factures',
+        'repeating' => 'pendant les ' . (int)$months . ' prochain' . ($months > 1 ? 's' : '') . ' mois',
+        default     => 'sur ta prochaine facture',
+    };
+    $body  = '<p>L\'équipe XynoLauncher t\'offre une réduction de <strong>' . (int)$percentOff . ' %</strong> ' . $durationLabel . ' pour ton launcher <strong>' . htmlspecialchars($launcherName, ENT_QUOTES, 'UTF-8') . '</strong>.</p>'
+           . '<p>La réduction est automatiquement appliquée — rien à faire de ton côté. Tu la verras sur ta prochaine facture Stripe.</p>';
+    return send_email(
+        $toEmail,
+        '🎁 Réduction de ' . (int)$percentOff . '% appliquée',
+        email_layout('Réduction offerte', $body, app_url() . '/dashboard.php', 'Voir mon abonnement'),
+        'sub_coupon',
+        ['user_id' => $userId]
+    );
+}
+
+/**
+ * Remboursement Stripe.
+ */
+function send_refund_email(string $toEmail, int $userId, string $launcherName, int $amountCents, string $currency = 'eur'): array
+{
+    $amount = number_format($amountCents / 100, 2, ',', ' ') . ' ' . strtoupper($currency);
+    $body  = '<p>Un remboursement de <strong>' . htmlspecialchars($amount, ENT_QUOTES, 'UTF-8') . '</strong> a été initié sur ton paiement pour le launcher <strong>' . htmlspecialchars($launcherName, ENT_QUOTES, 'UTF-8') . '</strong>.</p>'
+           . '<p>Le montant sera recrédité sur ton moyen de paiement d\'origine sous <strong>5 à 10 jours ouvrés</strong> (selon ta banque).</p>'
+           . '<p style="color:#a8a8b8;font-size:14px">Si tu ne vois pas le remboursement passé ce délai, contacte-nous à <a href="mailto:contact@xynoweb.fr" style="color:#a78bfa">contact@xynoweb.fr</a>.</p>';
+    return send_email(
+        $toEmail,
+        'Remboursement de ' . $amount,
+        email_layout('Remboursement effectué', $body),
+        'sub_refund',
+        ['user_id' => $userId]
+    );
+}
+
 function send_admin_custom_email(string $toEmail, int $userId, int $adminId, string $subject, string $messageHtml): array
 {
     $body  = $messageHtml

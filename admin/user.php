@@ -165,7 +165,7 @@ $error   = flash_get('error');
         <article class="card" style="margin-top:14px">
           <h2 style="margin:0 0 6px;font-size:16px">Abonnements (<?php echo count($subs); ?>)</h2>
           <table class="admin-table">
-            <thead><tr><th>Launcher</th><th>Plan</th><th>Status</th><th>Montant</th><th>Expire</th><th>Stripe sub</th></tr></thead>
+            <thead><tr><th>Launcher</th><th>Plan</th><th>Status</th><th>Montant</th><th>Expire</th><th>Stripe sub</th><th></th></tr></thead>
             <tbody>
               <?php foreach ($subs as $s): ?>
                 <?php
@@ -183,9 +183,10 @@ $error   = flash_get('error');
                   <td><?php echo e($amount); ?> <?php echo e(strtoupper((string)$s['currency'])); ?></td>
                   <td><?php echo !empty($s['expires_at']) ? e(date('d/m/Y', strtotime((string)$s['expires_at']))) : '—'; ?></td>
                   <td><?php if (!empty($s['stripe_subscription_id'])): ?><a target="_blank" rel="noopener" href="https://dashboard.stripe.com/test/subscriptions/<?php echo e((string)$s['stripe_subscription_id']); ?>" style="color:#a78bfa;font-size:12px;font-family:monospace"><?php echo e(substr((string)$s['stripe_subscription_id'], 0, 14)); ?>…</a><?php else: ?>—<?php endif; ?></td>
+                  <td><a class="btn btn-ghost" style="padding:4px 10px;font-size:12px" href="/admin/subscription.php?id=<?php echo (int)$s['id']; ?>">Détail →</a></td>
                 </tr>
               <?php endforeach; ?>
-              <?php if (empty($subs)): ?><tr><td colspan="6" style="color:#8a8aa0">Aucun abonnement.</td></tr><?php endif; ?>
+              <?php if (empty($subs)): ?><tr><td colspan="7" style="color:#8a8aa0">Aucun abonnement.</td></tr><?php endif; ?>
             </tbody>
           </table>
         </article>

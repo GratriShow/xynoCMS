@@ -66,7 +66,23 @@ switch ($action) {
             $upd->execute([$subId]);
         } catch (Throwable $e) { /* migration v6 manquante */ }
         admin_log($admin['id'], 'sub_cancel_period_end', 'subscription', $subId, 'stripe_sub=' . $stripeSubId);
-        flash_set('success', 'Abonnement programmé pour annulation à la fin de la période.');
+
+        // Notification utilisateur (best-effort).
+        if (!empty($sub['user_email']) && (int)($sub['user_id'] ?? 0) > 0) {
+            $endsAt = !empty($sub['expires_at'])
+                ? date('d/m/Y', strtotime((string)$sub['expires_at']))
+                : 'la fin de la période en cours';
+            try {
+                send_subscription_cancel_scheduled_email(
+                    (string)$sub['user_email'],
+                    (int)$sub['user_id'],
+                    (string)($sub['launcher_name'] ?? '—'),
+                    $endsAt
+                );
+            } catch (Throwable $e) {}
+        }
+
+        flash_set('success', 'Abonnement programmé pour annulation à la fin de la période. Email envoyé au client.');
         redirect($backUrl);
     }
 
@@ -89,7 +105,20 @@ switch ($action) {
             $upd->execute([$subId]);
         } catch (Throwable $e) {}
         admin_log($admin['id'], 'sub_cancel_now', 'subscription', $subId, 'stripe_sub=' . $stripeSubId);
-        flash_set('success', 'Abonnement annulé immédiatement.');
+
+        // Notification utilisateur (annulation immédiate = expires_at = aujourd'hui).
+        if (!empty($sub['user_email']) && (int)($sub['user_id'] ?? 0) > 0) {
+            try {
+                send_subscription_cancelled_email(
+                    (string)$sub['user_email'],
+                    (int)$sub['user_id'],
+                    (string)($sub['launcher_name'] ?? '—'),
+                    date('d/m/Y')
+                );
+            } catch (Throwable $e) {}
+        }
+
+        flash_set('success', 'Abonnement annulé immédiatement. Email envoyé au client.');
         redirect($backUrl);
     }
 
@@ -111,7 +140,19 @@ switch ($action) {
             $upd->execute([$subId]);
         } catch (Throwable $e) {}
         admin_log($admin['id'], 'sub_resume', 'subscription', $subId, 'stripe_sub=' . $stripeSubId);
-        flash_set('success', 'Annulation programmée annulée — abonnement repris.');
+
+        // Notification utilisateur.
+        if (!empty($sub['user_email']) && (int)($sub['user_id'] ?? 0) > 0) {
+            try {
+                send_subscription_resumed_email(
+                    (string)$sub['user_email'],
+                    (int)$sub['user_id'],
+                    (string)($sub['launcher_name'] ?? '—')
+                );
+            } catch (Throwable $e) {}
+        }
+
+        flash_set('success', 'Annulation programmée annulée — abonnement repris. Email envoyé au client.');
         redirect($backUrl);
     }
 
@@ -146,7 +187,22 @@ switch ($action) {
         }
 
         admin_log($admin['id'], 'sub_extend_local', 'subscription', $subId, '+' . $days . 'j' . ($note ? ' · ' . $note : ''));
-        flash_set('success', 'Abonnement prolongé de ' . $days . ' jour(s) (local). Nouvelle date : ' . substr($newDate, 0, 10));
+
+        // Notification utilisateur.
+        if (!empty($sub['user_email']) && (int)($sub['user_id'] ?? 0) > 0) {
+            try {
+                send_subscription_extended_email(
+                    (string)$sub['user_email'],
+                    (int)$sub['user_id'],
+                    (string)($sub['launcher_name'] ?? '—'),
+                    $days,
+                    date('d/m/Y', strtotime($newDate)),
+                    $note
+                );
+            } catch (Throwable $e) {}
+        }
+
+        flash_set('success', 'Abonnement prolongé de ' . $days . ' jour(s) (local). Nouvelle date : ' . substr($newDate, 0, 10) . '. Email envoyé.');
         redirect($backUrl);
     }
 
@@ -172,7 +228,22 @@ switch ($action) {
 
         admin_log($admin['id'], 'sub_coupon', 'subscription', $subId,
             $percent . '% · ' . $duration . ($duration === 'repeating' ? ' (' . $months . 'mois)' : ''));
-        flash_set('success', 'Coupon ' . $percent . '% appliqué (' . $duration . ').');
+
+        // Notification utilisateur.
+        if (!empty($sub['user_email']) && (int)($sub['user_id'] ?? 0) > 0) {
+            try {
+                send_subscription_coupon_email(
+                    (string)$sub['user_email'],
+                    (int)$sub['user_id'],
+                    (string)($sub['launcher_name'] ?? '—'),
+                    $percent,
+                    $duration,
+                    $months
+                );
+            } catch (Throwable $e) {}
+        }
+
+        flash_set('success', 'Coupon ' . $percent . '% appliqué (' . $duration . '). Email envoyé au client.');
         redirect($backUrl);
     }
 
@@ -196,7 +267,25 @@ switch ($action) {
         }
         admin_log($admin['id'], 'sub_refund', 'subscription', $subId,
             'charge=' . $chargeId . ($amount > 0 ? (' · ' . number_format($amount / 100, 2, ',', ' ') . '€') : ' · total'));
-        flash_set('success', 'Refund Stripe effectué.');
+
+        // Notification utilisateur. On utilise le montant remboursé renvoyé par Stripe si dispo.
+        if (!empty($sub['user_email']) && (int)($sub['user_id'] ?? 0) > 0) {
+            $refundedCents = (int)($res['data']['amount'] ?? $amount);
+            $refundedCur   = (string)($res['data']['currency'] ?? ($sub['currency'] ?? 'eur'));
+            if ($refundedCents > 0) {
+                try {
+                    send_refund_email(
+                        (string)$sub['user_email'],
+                        (int)$sub['user_id'],
+                        (string)($sub['launcher_name'] ?? '—'),
+                        $refundedCents,
+                        $refundedCur
+                    );
+                } catch (Throwable $e) {}
+            }
+        }
+
+        flash_set('success', 'Refund Stripe effectué. Email envoyé au client.');
         redirect($backUrl);
     }
 
