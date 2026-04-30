@@ -1,22 +1,75 @@
-fix(launcher,dashboard): extensions visibles, race loadFile, lien admin
+feat(admin,launcher): observabilite launchers + actions Stripe + Cmd+K + audit log
 
-Launcher
-- Sortir <aside id="extPanel"> de <main> dans les 5 themes (default,
-  cosmic, dark-tactical, mystic-purple, neon-frontier) pour qu il ne
-  soit plus clipe par .shell { overflow:hidden }.
-- launcher-ui.js : ajouter syncExtPanelVisibility() qui n affiche le
-  panneau que sur l ecran READY avec au moins une extension activee,
-  hooke dans setActiveScreen() pour les transitions.
-- main.js : agrandir BrowserWindow 520x260 -> 540x460 pour que le
-  panneau sous la coque soit visible.
-- main.js : fixer la race condition loadFile -3 (ERR_ABORTED). Le
-  boot loadFile non-awaite etait supplante par celui de startSync,
-  ce qui surfaceait l erreur a l utilisateur (visible sur Mac sous
-  AppTranslocation). Comparaison via cle de theme normalisee au lieu
-  d URL string, try/catch qui ignore -3 sur loadFile, .catch sur
-  l initial loadFile.
+Admin - Observabilite launchers (heartbeats, tick rate)
+- migrations_v6.sql : nouvelle table launcher_heartbeats (launcher_id,
+  user_id, app_version, os, os_version, arch, theme, uptime_s,
+  tick_rate_ms, session_id, state, ip, created_at) avec index idoines.
+  Colonnes denormalisees ajoutees a launchers (last_seen_at,
+  last_app_version, last_os) pour eviter les SELECT MAX a chaque page.
+  Idempotent via INFORMATION_SCHEMA.COLUMNS.
+- api/launcher_heartbeat.php : endpoint POST authentifie (uuid + key
+  via api_get_launcher_by_uuid + api_validate_key), rate-limit 6/min/IP,
+  insert + update best-effort, repond 204 No Content. Ne casse jamais
+  le launcher en cas d'erreur serveur.
+- launcher/main.js : envoie un heartbeat toutes les 30s via le
+  proxyRequest existant, embarque app_version, os, os_version, arch,
+  theme actif, uptime, tick_rate_ms (intervalle reel mesure), state
+  (licenseState.status) et un session_id stable (crypto.randomUUID).
+  clearInterval propre sur app.before-quit.
+- admin/launchers.php : dashboard live avec 4 stat cards (total,
+  online <90s, offline, with active sub), filtres tabs
+  (all/online/offline/with_sub), recherche par nom/uuid/email, table
+  riche (statut dot+pill, version, OS avec emoji, tick avg 24h,
+  pings 24h, vu il y a X, abo actif, lien detail).
+- admin/index.php : nouvelles stats "X launchers en ligne" et
+  "Heartbeats 24h", recap dans le hero de la console.
 
-Dashboard
-- dashboard/dashboard.php : ajouter un bouton Admin dans la navbar,
-  affiche uniquement si is_admin = 1. Tolere l absence de la colonne
-  (migration v5 non appliquee).
+Admin - Page abonnement detaillee + actions Stripe
+- admin/_stripe.php : helpers cURL bas niveau pour l'API Stripe
+  (Stripe-Version 2024-06-20, basic auth via base64) :
+  admin_stripe_subscription (avec expand[]), admin_stripe_charges,
+  admin_stripe_cancel_at_period_end, admin_stripe_cancel_now,
+  admin_stripe_resume, admin_stripe_create_coupon_and_apply,
+  admin_stripe_refund. Reponse uniformisee {ok, data|error, http}.
+- admin/subscription.php : page detail 2 colonnes (donnees xynoCMS
+  vs donnees live Stripe : status, cancel_at_period_end,
+  current_period_end, carte brand/last4/expiry, coupon actif),
+  grille d'actions conditionnelles (cancel at period end, resume,
+  extend local en jours + note, coupon Stripe percent/duration/months,
+  cancel now, cancel local), table des charges Stripe avec bouton
+  refund par charge.
+- admin/subscription_actions.php : handler POST CSRF-protege,
+  branche les helpers Stripe et appelle admin_log() pour chaque
+  action. Redirige vers /admin/subscription.php?id=X avec flash.
+- migrations_v6.sql : ajout extended_until DATETIME et
+  cancel_at_period_end TINYINT(1) sur subscriptions pour materialiser
+  les ajouts de temps locaux et refleter l'etat Stripe.
+
+Admin - Recherche globale Cmd+K
+- admin/search.php : endpoint JSON qui interroge en parallele users
+  (email/uuid), launchers (name/uuid/user email), subscriptions
+  (stripe_id/user email), emails (to/subject). Renvoie une liste
+  uniformisee {kind,label,sublabel,url} avec emojis et truncation.
+- admin/_helpers.php : nouvelle fonction admin_render_cmdk()
+  auto-injectee une seule fois (static $rendered) depuis
+  admin_render_nav(). Modal full-screen avec input debounce 180ms,
+  navigation clavier (Cmd/Ctrl+K, Esc, fleches haut/bas, Enter), fetch
+  /admin/search.php. Bouton dedie dans la navbar (libelle "Cmd+K").
+
+Admin - Audit log
+- admin/audit.php : visualisation de admin_actions avec filtres
+  (recherche full-text dans notes/action/target/email admin, dropdown
+  action, dropdown admin), pills colorees (danger pour
+  cancel/delete/refund, warn pour extend/coupon/grant, ok pour
+  restore/send_email), helper targetLink() qui resout
+  user/subscription/launcher vers les pages admin correspondantes.
+  300 dernieres entrees.
+- admin/_helpers.php : nav etendue avec les entrees Launchers et
+  Audit log. Toutes les actions admin existantes
+  (subscription_actions, user_actions, send_mail) appellent deja
+  admin_log() pour tracer dans admin_actions.
+
+Deploiement
+- Apres pull serveur : `mysql -u xyno -p xynocms < migrations_v6.sql`
+  (idempotent, peut etre rejouee). Optionnel : prune via
+  `DELETE FROM launcher_heartbeats WHERE created_at < NOW() - INTERVAL 30 DAY`.

@@ -374,7 +374,7 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
 
       <div class="nav-actions">
         <?php if ($isAdmin): ?>
-          <a class="btn btn-ghost" href="../admin/index.php">Admin</a>
+          <a class="btn btn-ghost" href="/admin/index.php">Admin</a>
         <?php endif; ?>
         <a class="btn btn-ghost" href="builder.php">Créer un launcher</a>
         <a class="btn btn-ghost" href="../account/settings.php">Mon compte</a>

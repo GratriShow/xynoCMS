@@ -44,8 +44,8 @@ try {
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="../assets/style.css" />
-  <script src="../assets/main.js" defer></script>
+  <link rel="stylesheet" href="/assets/style.css" />
+  <script src="/assets/main.js" defer></script>
   <style>
     .admin-table{width:100%;border-collapse:collapse;margin-top:14px;font-size:14px}
     .admin-table th,.admin-table td{text-align:left;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.06)}
@@ -76,7 +76,7 @@ try {
         <div class="filter-bar">
           <?php $tabs = ['all'=>'Tous','sent'=>'Envoyés','failed'=>'Échecs','queued'=>'En queue']; ?>
           <?php foreach ($tabs as $k => $lbl): ?>
-            <a href="emails.php?status=<?php echo urlencode($k); ?>" class="<?php echo $status===$k?'active':''; ?>"><?php echo e($lbl); ?></a>
+            <a href="/admin/emails.php?status=<?php echo urlencode($k); ?>" class="<?php echo $status===$k?'active':''; ?>"><?php echo e($lbl); ?></a>
           <?php endforeach; ?>
         </div>
 
@@ -89,7 +89,7 @@ try {
                 <td><?php echo e(date('d/m H:i', strtotime((string)$l['created_at']))); ?></td>
                 <td>
                   <?php if (!empty($l['user_id'])): ?>
-                    <a href="user.php?id=<?php echo (int)$l['user_id']; ?>" style="color:#a78bfa;text-decoration:none"><?php echo e((string)$l['to_email']); ?></a>
+                    <a href="/admin/user.php?id=<?php echo (int)$l['user_id']; ?>" style="color:#a78bfa;text-decoration:none"><?php echo e((string)$l['to_email']); ?></a>
                   <?php else: ?>
                     <?php echo e((string)$l['to_email']); ?>
                   <?php endif; ?>

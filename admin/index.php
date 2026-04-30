@@ -13,12 +13,14 @@ $stats = [
     'users_30d'         => 0,
     'users_deleted'     => 0,
     'launchers_total'   => 0,
+    'launchers_online'  => 0,
     'subs_active'       => 0,
     'subs_pending'      => 0,
     'subs_past_due'     => 0,
     'subs_cancelled'    => 0,
     'mrr_cents'         => 0,
     'emails_sent_24h'   => 0,
+    'heartbeats_24h'    => 0,
 ];
 
 try {
@@ -32,6 +34,8 @@ try {
     $stats['subs_cancelled']  = (int)$pdo->query("SELECT COUNT(*) FROM subscriptions WHERE status IN ('cancelled','expired')")->fetchColumn();
     $stats['mrr_cents']       = (int)$pdo->query("SELECT COALESCE(SUM(amount_cents), 0) FROM subscriptions WHERE status = 'active' AND period = 'monthly'")->fetchColumn();
     try { $stats['emails_sent_24h'] = (int)$pdo->query("SELECT COUNT(*) FROM email_log WHERE status = 'sent' AND created_at >= NOW() - INTERVAL 1 DAY")->fetchColumn(); } catch (Throwable $e) {}
+    try { $stats['launchers_online'] = (int)$pdo->query("SELECT COUNT(*) FROM launchers WHERE last_seen_at >= NOW() - INTERVAL 90 SECOND")->fetchColumn(); } catch (Throwable $e) {}
+    try { $stats['heartbeats_24h'] = (int)$pdo->query("SELECT COUNT(*) FROM launcher_heartbeats WHERE created_at >= NOW() - INTERVAL 1 DAY")->fetchColumn(); } catch (Throwable $e) {}
 } catch (Throwable $e) { /* tolérer schémas anciens */ }
 
 // Derniers signups
@@ -72,8 +76,8 @@ $mrr = number_format($stats['mrr_cents'] / 100, 2, ',', ' ');
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="../assets/style.css" />
-  <script src="../assets/main.js" defer></script>
+  <link rel="stylesheet" href="/assets/style.css" />
+  <script src="/assets/main.js" defer></script>
   <style>
     .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-top:16px}
     .stat{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px}
@@ -108,7 +112,8 @@ $mrr = number_format($stats['mrr_cents'] / 100, 2, ',', ' ');
           <div class="stat"><div class="lbl">Utilisateurs</div><div class="val"><?php echo (int)$stats['users_total']; ?></div><div class="lbl" style="margin-top:6px">+<?php echo (int)$stats['users_30d']; ?> les 30 derniers jours</div></div>
           <div class="stat"><div class="lbl">Abonnements actifs</div><div class="val" style="color:#34d399"><?php echo (int)$stats['subs_active']; ?></div><div class="lbl" style="margin-top:6px"><?php echo (int)$stats['subs_pending']; ?> pending · <?php echo (int)$stats['subs_past_due']; ?> past due</div></div>
           <div class="stat"><div class="lbl">MRR estimé (mensuels)</div><div class="val"><?php echo e($mrr); ?> €</div><div class="lbl" style="margin-top:6px">Stripe (subscriptions actives, plan monthly)</div></div>
-          <div class="stat"><div class="lbl">Launchers</div><div class="val"><?php echo (int)$stats['launchers_total']; ?></div></div>
+          <div class="stat"><div class="lbl">Launchers</div><div class="val"><?php echo (int)$stats['launchers_total']; ?></div><div class="lbl" style="margin-top:6px"><span style="color:#34d399">●</span> <?php echo (int)$stats['launchers_online']; ?> en ligne</div></div>
+          <div class="stat"><div class="lbl">Heartbeats 24h</div><div class="val"><?php echo (int)$stats['heartbeats_24h']; ?></div><div class="lbl" style="margin-top:6px">Pings reçus depuis les launchers</div></div>
           <div class="stat"><div class="lbl">Comptes supprimés (RGPD)</div><div class="val"><?php echo (int)$stats['users_deleted']; ?></div><div class="lbl" style="margin-top:6px">Soft-delete, fenêtre 30j</div></div>
           <div class="stat"><div class="lbl">Emails 24h</div><div class="val"><?php echo (int)$stats['emails_sent_24h']; ?></div></div>
         </div>
@@ -123,7 +128,7 @@ $mrr = number_format($stats['mrr_cents'] / 100, 2, ',', ' ');
                   <td><?php echo e((string)$u['email']); ?></td>
                   <td><?php echo e(date('d/m/Y H:i', strtotime((string)$u['created_at']))); ?></td>
                   <td><?php echo !empty($u['last_login_at']) ? e(date('d/m/Y H:i', strtotime((string)$u['last_login_at']))) : '<span style="color:#8a8aa0">—</span>'; ?></td>
-                  <td><a class="btn btn-ghost" style="padding:4px 10px;font-size:12px" href="user.php?id=<?php echo (int)$u['id']; ?>">Détail</a></td>
+                  <td><a class="btn btn-ghost" style="padding:4px 10px;font-size:12px" href="/admin/user.php?id=<?php echo (int)$u['id']; ?>">Détail</a></td>
                 </tr>
               <?php endforeach; ?>
               <?php if (empty($recentUsers)): ?><tr><td colspan="4" style="color:#8a8aa0">Aucun utilisateur.</td></tr><?php endif; ?>

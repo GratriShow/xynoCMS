@@ -40,8 +40,8 @@ try {
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="../assets/style.css" />
-  <script src="../assets/main.js" defer></script>
+  <link rel="stylesheet" href="/assets/style.css" />
+  <script src="/assets/main.js" defer></script>
   <style>
     .admin-table{width:100%;border-collapse:collapse;margin-top:14px;font-size:14px}
     .admin-table th,.admin-table td{text-align:left;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.06)}
@@ -70,7 +70,7 @@ try {
         <div class="filter-bar">
           <?php $tabs = ['all'=>'Tous','active'=>'Actifs','pending'=>'Pending','past_due'=>'Past due','cancelled'=>'Cancelled','expired'=>'Expirés']; ?>
           <?php foreach ($tabs as $k => $lbl): ?>
-            <a href="subscriptions.php?status=<?php echo urlencode($k); ?>" class="<?php echo $status===$k?'active':''; ?>"><?php echo e($lbl); ?></a>
+            <a href="/admin/subscriptions.php?status=<?php echo urlencode($k); ?>" class="<?php echo $status===$k?'active':''; ?>"><?php echo e($lbl); ?></a>
           <?php endforeach; ?>
         </div>
 
@@ -87,14 +87,14 @@ try {
                 $amount = number_format(((int)$r['amount_cents']) / 100, 2, ',', ' ');
               ?>
               <tr>
-                <td><a href="user.php?id=<?php echo (int)$r['user_id']; ?>" style="color:#a78bfa;text-decoration:none"><?php echo e((string)$r['user_email']); ?></a></td>
+                <td><a href="/admin/user.php?id=<?php echo (int)$r['user_id']; ?>" style="color:#a78bfa;text-decoration:none"><?php echo e((string)$r['user_email']); ?></a></td>
                 <td><?php echo e((string)($r['launcher_name'] ?? '—')); ?></td>
                 <td><?php echo e(ucfirst((string)$r['plan'])); ?> · <?php echo e((string)$r['period']); ?></td>
                 <td><span class="pill <?php echo $cls; ?>"><?php echo e($st); ?></span></td>
                 <td><?php echo e($amount); ?> <?php echo e(strtoupper((string)$r['currency'])); ?></td>
                 <td><?php echo !empty($r['expires_at']) ? e(date('d/m/Y', strtotime((string)$r['expires_at']))) : '—'; ?></td>
                 <td><?php if (!empty($r['stripe_subscription_id'])): ?><a target="_blank" rel="noopener" href="https://dashboard.stripe.com/test/subscriptions/<?php echo e((string)$r['stripe_subscription_id']); ?>" style="color:#a78bfa;font-size:12px;font-family:monospace"><?php echo e(substr((string)$r['stripe_subscription_id'], 0, 12)); ?>…</a><?php else: ?>—<?php endif; ?></td>
-                <td><a class="btn btn-ghost" style="padding:4px 10px;font-size:12px" href="user.php?id=<?php echo (int)$r['user_id']; ?>">Voir →</a></td>
+                <td><a class="btn btn-ghost" style="padding:4px 10px;font-size:12px" href="/admin/subscription.php?id=<?php echo (int)$r['id']; ?>">Détail →</a></td>
               </tr>
             <?php endforeach; ?>
             <?php if (empty($rows)): ?><tr><td colspan="8" style="color:#8a8aa0;padding:20px">Aucun abonnement.</td></tr><?php endif; ?>

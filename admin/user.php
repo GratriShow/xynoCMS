@@ -67,8 +67,8 @@ $error   = flash_get('error');
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="../assets/style.css" />
-  <script src="../assets/main.js" defer></script>
+  <link rel="stylesheet" href="/assets/style.css" />
+  <script src="/assets/main.js" defer></script>
   <style>
     .admin-table{width:100%;border-collapse:collapse;margin-top:8px;font-size:14px}
     .admin-table th,.admin-table td{text-align:left;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.06)}
@@ -90,7 +90,7 @@ $error   = flash_get('error');
   <main id="contenu">
     <section class="section">
       <div class="container">
-        <p class="badge"><a href="users.php" style="color:#a78bfa">← Utilisateurs</a></p>
+        <p class="badge"><a href="/admin/users.php" style="color:#a78bfa">← Utilisateurs</a></p>
         <h1 class="section-title" style="margin:10px 0 0"><?php echo e((string)$u['email']); ?></h1>
         <p class="section-desc" style="margin-top:8px">Compte #<?php echo (int)$u['id']; ?> · UUID <code><?php echo e((string)$u['uuid']); ?></code></p>
 
@@ -98,16 +98,16 @@ $error   = flash_get('error');
         <?php if ($error): ?><div class="notice" data-show="true" style="margin:12px 0"><?php echo e($error); ?></div><?php endif; ?>
 
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0">
-          <a class="btn btn-primary" href="send_mail.php?user_id=<?php echo (int)$u['id']; ?>">📧 Envoyer un email manuel</a>
+          <a class="btn btn-primary" href="/admin/send_mail.php?user_id=<?php echo (int)$u['id']; ?>">📧 Envoyer un email manuel</a>
           <?php if (empty($u['deleted_at'])): ?>
-            <form method="post" action="user_actions.php" style="display:inline" onsubmit="return confirm('Marquer ce compte comme supprimé (soft-delete RGPD) ?');">
+            <form method="post" action="/admin/user_actions.php" style="display:inline" onsubmit="return confirm('Marquer ce compte comme supprimé (soft-delete RGPD) ?');">
               <input type="hidden" name="_csrf" value="<?php echo e(csrf_token()); ?>" />
               <input type="hidden" name="action" value="soft_delete" />
               <input type="hidden" name="user_id" value="<?php echo (int)$u['id']; ?>" />
               <button class="btn" style="background:rgba(239,68,68,.15);border-color:rgba(239,68,68,.3);color:#fca5a5">Supprimer (RGPD)</button>
             </form>
           <?php else: ?>
-            <form method="post" action="user_actions.php" style="display:inline">
+            <form method="post" action="/admin/user_actions.php" style="display:inline">
               <input type="hidden" name="_csrf" value="<?php echo e(csrf_token()); ?>" />
               <input type="hidden" name="action" value="restore" />
               <input type="hidden" name="user_id" value="<?php echo (int)$u['id']; ?>" />
@@ -115,14 +115,14 @@ $error   = flash_get('error');
             </form>
           <?php endif; ?>
           <?php if ((int)($u['is_admin'] ?? 0) === 0): ?>
-            <form method="post" action="user_actions.php" style="display:inline" onsubmit="return confirm('Promouvoir admin ?');">
+            <form method="post" action="/admin/user_actions.php" style="display:inline" onsubmit="return confirm('Promouvoir admin ?');">
               <input type="hidden" name="_csrf" value="<?php echo e(csrf_token()); ?>" />
               <input type="hidden" name="action" value="grant_admin" />
               <input type="hidden" name="user_id" value="<?php echo (int)$u['id']; ?>" />
               <button class="btn">Promouvoir admin</button>
             </form>
           <?php else: ?>
-            <form method="post" action="user_actions.php" style="display:inline" onsubmit="return confirm('Retirer les droits admin ?');">
+            <form method="post" action="/admin/user_actions.php" style="display:inline" onsubmit="return confirm('Retirer les droits admin ?');">
               <input type="hidden" name="_csrf" value="<?php echo e(csrf_token()); ?>" />
               <input type="hidden" name="action" value="revoke_admin" />
               <input type="hidden" name="user_id" value="<?php echo (int)$u['id']; ?>" />

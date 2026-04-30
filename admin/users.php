@@ -48,8 +48,8 @@ try {
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="../assets/style.css" />
-  <script src="../assets/main.js" defer></script>
+  <link rel="stylesheet" href="/assets/style.css" />
+  <script src="/assets/main.js" defer></script>
   <style>
     .admin-table{width:100%;border-collapse:collapse;margin-top:14px;font-size:14px}
     .admin-table th,.admin-table td{text-align:left;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.06)}
@@ -76,16 +76,16 @@ try {
         <p class="badge">Admin</p>
         <h1 class="section-title" style="margin:10px 0 0">Utilisateurs (<?php echo count($users); ?>)</h1>
 
-        <form method="get" action="users.php" class="filter-bar">
+        <form method="get" action="/admin/users.php" class="filter-bar">
           <input type="text" name="q" value="<?php echo e($q); ?>" placeholder="Rechercher par email ou UUID..." autocomplete="off" />
           <button class="btn btn-primary" type="submit">Filtrer</button>
         </form>
 
         <div class="filter-bar" style="margin-top:8px">
-          <a href="users.php?q=<?php echo urlencode($q); ?>&filter=all" class="<?php echo $filter==='all'?'active':''; ?>">Tous</a>
-          <a href="users.php?q=<?php echo urlencode($q); ?>&filter=active" class="<?php echo $filter==='active'?'active':''; ?>">Actifs</a>
-          <a href="users.php?q=<?php echo urlencode($q); ?>&filter=deleted" class="<?php echo $filter==='deleted'?'active':''; ?>">Supprimés</a>
-          <a href="users.php?q=<?php echo urlencode($q); ?>&filter=admin" class="<?php echo $filter==='admin'?'active':''; ?>">Admins</a>
+          <a href="/admin/users.php?q=<?php echo urlencode($q); ?>&filter=all" class="<?php echo $filter==='all'?'active':''; ?>">Tous</a>
+          <a href="/admin/users.php?q=<?php echo urlencode($q); ?>&filter=active" class="<?php echo $filter==='active'?'active':''; ?>">Actifs</a>
+          <a href="/admin/users.php?q=<?php echo urlencode($q); ?>&filter=deleted" class="<?php echo $filter==='deleted'?'active':''; ?>">Supprimés</a>
+          <a href="/admin/users.php?q=<?php echo urlencode($q); ?>&filter=admin" class="<?php echo $filter==='admin'?'active':''; ?>">Admins</a>
         </div>
 
         <table class="admin-table">
@@ -103,7 +103,7 @@ try {
                   <?php if ((int)($u['is_admin'] ?? 0) === 1): ?><span class="pill pill-admin">admin</span> <?php endif; ?>
                   <?php if (!empty($u['deleted_at'])): ?><span class="pill pill-deleted">supprimé</span><?php endif; ?>
                 </td>
-                <td><a class="btn btn-ghost" style="padding:4px 10px;font-size:12px" href="user.php?id=<?php echo (int)$u['id']; ?>">Détail →</a></td>
+                <td><a class="btn btn-ghost" style="padding:4px 10px;font-size:12px" href="/admin/user.php?id=<?php echo (int)$u['id']; ?>">Détail →</a></td>
               </tr>
             <?php endforeach; ?>
             <?php if (empty($users)): ?><tr><td colspan="8" style="color:#8a8aa0;padding:20px">Aucun utilisateur trouvé.</td></tr><?php endif; ?>

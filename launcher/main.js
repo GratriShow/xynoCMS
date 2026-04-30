@@ -6,6 +6,7 @@ const path = require('node:path');
 const fs = require('node:fs/promises');
 const fsSync = require('node:fs');
 const crypto = require('node:crypto');
+const os = require('node:os');
 
 const { createClient: createApiV2Client } = require('./services/apiV2');
 const { parseManifest } = require('./services/manifest');
@@ -1178,6 +1179,67 @@ app.whenReady().then(async () => {
         }
       }
     }, recheckMs);
+  }
+
+  // -------------------------------------------------------------------------
+  // Heartbeat (admin observability).
+  //
+  // POST /api/launcher_heartbeat.php every 30s with version, OS, theme,
+  // uptime, tick rate (real interval since last beat) and current UX state.
+  // Best-effort: any failure is swallowed, the launcher keeps working.
+  // -------------------------------------------------------------------------
+  try {
+    const sessionId   = crypto.randomUUID();
+    const sessionStart = Date.now();
+    let lastBeatAt    = sessionStart;
+    let beatTimer     = null;
+
+    async function sendHeartbeat() {
+      try {
+        const uuid       = requireEnv('LAUNCHER_UUID');
+        const apiBaseUrl = requireEnv('API_BASE_URL');
+        const apiKey     = requireEnv('LAUNCHER_KEY');
+        const url = buildProxyUrl(apiBaseUrl, '/api/launcher_heartbeat.php');
+
+        const now = Date.now();
+        const tickRateMs = now - lastBeatAt;
+        lastBeatAt = now;
+
+        const body = {
+          uuid,
+          key: apiKey,
+          app_version: app.getVersion(),
+          os: process.platform,                  // 'darwin' | 'win32' | 'linux'
+          os_version: os.release(),              // e.g. "23.4.0"
+          arch: process.arch,                    // 'x64' | 'arm64'
+          theme: loadedThemeKey || 'default',
+          uptime_s: Math.round((now - sessionStart) / 1000),
+          tick_rate_ms: tickRateMs,
+          session_id: sessionId,
+          state: licenseState && licenseState.status
+            ? String(licenseState.status)
+            : 'unknown',
+        };
+
+        await proxyRequest(url, { method: 'POST', bodyObj: body, timeoutMs: 6000 });
+      } catch (e) {
+        // Heartbeat is best-effort.
+        // console.warn('[heartbeat] failed:', e && e.message ? e.message : e);
+      }
+    }
+
+    // Fire one immediately, then every 30 seconds.
+    sendHeartbeat();
+    beatTimer = setInterval(sendHeartbeat, 30_000);
+
+    app.on('before-quit', () => {
+      if (beatTimer) {
+        clearInterval(beatTimer);
+        beatTimer = null;
+      }
+    });
+  } catch (e) {
+    console.warn('[heartbeat] init failed:', e && e.message ? e.message : e);
   }
 });
 

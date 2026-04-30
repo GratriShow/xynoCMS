@@ -70,8 +70,8 @@ if (is_post()) {
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="../assets/style.css" />
-  <script src="../assets/main.js" defer></script>
+  <link rel="stylesheet" href="/assets/style.css" />
+  <script src="/assets/main.js" defer></script>
   <style>
     textarea.input{min-height:240px;resize:vertical;font-family:Inter,system-ui,sans-serif;line-height:1.5}
   </style>
@@ -83,7 +83,7 @@ if (is_post()) {
   <main id="contenu">
     <section class="section">
       <div class="container" style="max-width:760px">
-        <p class="badge"><a href="user.php?id=<?php echo (int)$userId; ?>" style="color:#a78bfa">← Retour au compte</a></p>
+        <p class="badge"><a href="/admin/user.php?id=<?php echo (int)$userId; ?>" style="color:#a78bfa">← Retour au compte</a></p>
         <h1 class="section-title" style="margin:10px 0 0">Envoyer un email manuel</h1>
         <p class="section-desc" style="margin-top:8px">Destinataire : <strong><?php echo e((string)$target['email']); ?></strong> · expéditeur : <code>reply@xynoweb.fr</code></p>
 
@@ -92,7 +92,7 @@ if (is_post()) {
         <?php endif; ?>
 
         <article class="card form-card" style="max-width:none;margin-top:18px">
-          <form class="form" method="post" action="send_mail.php" novalidate>
+          <form class="form" method="post" action="/admin/send_mail.php" novalidate>
             <input type="hidden" name="_csrf" value="<?php echo e(csrf_token()); ?>" />
             <input type="hidden" name="user_id" value="<?php echo (int)$userId; ?>" />
             <label class="label">
@@ -106,7 +106,7 @@ if (is_post()) {
             </label>
             <div style="display:flex;gap:10px;flex-wrap:wrap">
               <button class="btn btn-primary" type="submit">Envoyer maintenant</button>
-              <a class="btn btn-ghost" href="user.php?id=<?php echo (int)$userId; ?>">Annuler</a>
+              <a class="btn btn-ghost" href="/admin/user.php?id=<?php echo (int)$userId; ?>">Annuler</a>
             </div>
           </form>
         </article>
