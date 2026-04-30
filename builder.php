@@ -177,6 +177,7 @@ $hostingMonthly = 5;
                 <input type="hidden" name="modules" value="<?php echo e($defaultModules); ?>" />
                 <input type="hidden" name="plan"    value="<?php echo e($planFromUrl); ?>" />
                 <input type="hidden" name="period"  value="<?php echo e($periodFromUrl); ?>" />
+                <!-- hosting value captured from radio button above -->
 
                 <div class="cta-row" style="margin-top:6px">
                   <button class="btn btn-primary btn-lg" type="submit">Créer mon launcher</button>

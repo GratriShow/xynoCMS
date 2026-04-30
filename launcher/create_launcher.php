@@ -21,6 +21,7 @@ $modulesRaw = trim((string)($_POST['modules'] ?? ''));
 $promo = trim((string)($_POST['promo'] ?? ''));
 $plan = subscription_normalize_plan((string)($_POST['plan'] ?? ''));
 $period = subscription_normalize_period((string)($_POST['period'] ?? ''));
+$hosting = strtolower(trim((string)($_POST['hosting'] ?? 'no'))) === 'yes' ? 1 : 0;
 
 if ($name === '' || $version === '' || $loader === '' || $theme === '') {
     flash_set('error', 'Champs manquants : nom, version, loader et thème sont requis.');
@@ -54,7 +55,7 @@ try {
     $pdo = db();
 
     try {
-        $stmt = $pdo->prepare('INSERT INTO launchers (user_id, uuid, api_key, name, description, version, loader, theme, modules, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())');
+        $stmt = $pdo->prepare('INSERT INTO launchers (user_id, uuid, api_key, name, description, version, loader, theme, modules, hosting, hosting_price_cents, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())');
         $stmt->execute([
             $user['id'],
             $uuid,
@@ -65,22 +66,45 @@ try {
             strtolower($loader),
             $theme,
             $modulesCsv,
+            $hosting,
+            $hosting ? 500 : 0, // 5€/mois = 500 cents
         ]);
     } catch (PDOException $e2) {
         $raw2 = $e2->getMessage();
-        if (stripos($raw2, 'unknown column') !== false && stripos($raw2, 'modules') !== false) {
-            // Backward compatible insert.
-            $stmt = $pdo->prepare('INSERT INTO launchers (user_id, uuid, api_key, name, description, version, loader, theme, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())');
-            $stmt->execute([
-                $user['id'],
-                $uuid,
-                $apiKey,
-                $name,
-                $description,
-                $version,
-                strtolower($loader),
-                $theme,
-            ]);
+        if (stripos($raw2, 'unknown column') !== false && (stripos($raw2, 'hosting') !== false || stripos($raw2, 'modules') !== false)) {
+            // Backward compatible: try without hosting columns
+            try {
+                $stmt = $pdo->prepare('INSERT INTO launchers (user_id, uuid, api_key, name, description, version, loader, theme, modules, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())');
+                $stmt->execute([
+                    $user['id'],
+                    $uuid,
+                    $apiKey,
+                    $name,
+                    $description,
+                    $version,
+                    strtolower($loader),
+                    $theme,
+                    $modulesCsv,
+                ]);
+            } catch (PDOException $e3) {
+                $raw3 = $e3->getMessage();
+                if (stripos($raw3, 'unknown column') !== false && stripos($raw3, 'modules') !== false) {
+                    // Old schema without modules
+                    $stmt = $pdo->prepare('INSERT INTO launchers (user_id, uuid, api_key, name, description, version, loader, theme, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())');
+                    $stmt->execute([
+                        $user['id'],
+                        $uuid,
+                        $apiKey,
+                        $name,
+                        $description,
+                        $version,
+                        strtolower($loader),
+                        $theme,
+                    ]);
+                } else {
+                    throw $e3;
+                }
+            }
         } else {
             throw $e2;
         }
@@ -119,7 +143,8 @@ if ($plan !== '' && $period !== '' && strtoupper($promo) !== 'FREE100') {
         (int)$launcherId,
         (string)$launcherUuidNew,
         $plan,
-        $period
+        $period,
+        $hosting === 1
     );
 
     if (($checkout['ok'] ?? false) === true) {

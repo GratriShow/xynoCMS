@@ -48,10 +48,22 @@ function subscription_period_config(): array
 }
 
 /**
+ * Hosting cost per month in cents (5€/mo).
+ */
+function subscription_hosting_cost_cents(): int
+{
+    return 500; // 5€
+}
+
+/**
  * Compute the amount (in cents) charged at every Stripe billing cycle for
  * the given plan + period. Returns 0 for unknown plan/period.
+ *
+ * @param string $plan       Plan name (starter|pro|premium)
+ * @param string $period     Period (monthly|quarterly|semestrial|yearly)
+ * @param bool $hosting      Add Xyno hosting cost (+5€/mo)
  */
-function subscription_amount_cents(string $plan, string $period): int
+function subscription_amount_cents(string $plan, string $period, bool $hosting = false): int
 {
     $plan   = strtolower(trim($plan));
     $period = strtolower(trim($period));
@@ -66,7 +78,17 @@ function subscription_amount_cents(string $plan, string $period): int
     $base = $plans[$plan];
     $cfg  = $periods[$period];
 
-    return (int)round($base * $cfg['months'] * $cfg['discount']);
+    // Calculate plan cost for the period
+    $planCost = (int)round($base * $cfg['months'] * $cfg['discount']);
+
+    // Add hosting cost if selected (5€/mo × months × discount)
+    if ($hosting) {
+        $hostingBase = subscription_hosting_cost_cents();
+        $hostingCost = (int)round($hostingBase * $cfg['months'] * $cfg['discount']);
+        $planCost += $hostingCost;
+    }
+
+    return $planCost;
 }
 
 /**
@@ -110,7 +132,8 @@ function subscription_create_stripe_checkout(
     int $launcherId,
     string $launcherUuid,
     string $plan,
-    string $period
+    string $period,
+    bool $hosting = false
 ): array {
     $plan   = subscription_normalize_plan($plan);
     $period = subscription_normalize_period($period);
@@ -119,7 +142,7 @@ function subscription_create_stripe_checkout(
         return ['ok' => false, 'error' => 'Plan ou période invalide.'];
     }
 
-    $amount = subscription_amount_cents($plan, $period);
+    $amount = subscription_amount_cents($plan, $period, $hosting);
     if ($amount <= 0) {
         return ['ok' => false, 'error' => 'Tarif introuvable pour ce plan.'];
     }
