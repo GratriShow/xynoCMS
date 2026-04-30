@@ -1100,8 +1100,8 @@ $eventLabel = [
             <div style="margin:24px 0;padding:20px;background:rgba(124,58,237,.1);border-radius:12px;border:1px solid rgba(124,58,237,.3)">
               <div style="font-size:32px;font-weight:800;color:#a78bfa;margin-bottom:4px">5€<span style="font-size:14px;color:#8a8aa0;font-weight:400">/mois</span></div>
               <p style="margin:8px 0 0;color:#d4d4d8;font-size:13px">
-                Au prorata: <strong><?php echo $prorataDiscount; ?>%</strong> ce mois<br>
-                (<strong style="color:#a78bfa">-<?php echo (100 - $prorataDiscount); ?>%</strong> d'économie ce premier mois)
+                <strong style="color:#22d3ee">Tarif ce mois:</strong> <?php echo $prorataDiscount; ?>% du prix normal<br>
+                <strong style="color:#a78bfa">À partir du mois prochain:</strong> 5€/mois complet
               </p>
             </div>
 

@@ -71,7 +71,7 @@ try {
 
     // Fetch active subscription (must exist)
     $stmt = $pdo->prepare(
-        "SELECT id, plan, period, status, created_at FROM subscriptions "
+        "SELECT id, plan, period, status, created_at, next_billing_at FROM subscriptions "
         . "WHERE launcher_id = ? AND status = 'active' "
         . "ORDER BY id DESC LIMIT 1"
     );
@@ -89,13 +89,18 @@ try {
 
 $plan = (string)($subscription['plan'] ?? '');
 $period = (string)($subscription['period'] ?? '');
-$subCreatedAt = (string)($subscription['created_at'] ?? '');
+$nextBillingAt = (string)($subscription['next_billing_at'] ?? '');
 
 // Calculate base hosting cost (5€/month = 500 cents)
 $hostingMonthCents = 500;
 
-// Calculate prorata hosting cost for remaining days in current month
-$prorataHostingCents = subscription_prorata_cents($hostingMonthCents);
+// Calculate prorata hosting cost until next subscription renewal
+// Use the subscription's next_billing_at date, not calendar month end
+$now = new DateTime();
+$billingDate = $nextBillingAt ? new DateTime($nextBillingAt) : new DateTime('last day of this month');
+$daysLeft = $now->diff($billingDate)->days + 1;
+$daysInMonth = (int)$billingDate->format('d');
+$prorataHostingCents = (int)round(($daysLeft / $daysInMonth) * $hostingMonthCents);
 
 // Get currency from config (default EUR)
 $currency = strtolower(trim(api_env('MARKETPLACE_CURRENCY', 'eur'))) ?: 'eur';
