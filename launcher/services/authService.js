@@ -57,7 +57,9 @@ async function writeSession(paths, session) {
 	const payload = JSON.stringify(session, null, 2) + '\n';
 
 	await fsp.mkdir(path.dirname(authPath), { recursive: true });
+	// Write with restrictive mode so we can secure it before rename
 	await fsp.writeFile(tmpPath, payload, 'utf8');
+	await fsp.chmod(tmpPath, 0o600); // owner read/write only
 
 	try {
 		await fsp.rename(tmpPath, authPath);
@@ -69,11 +71,15 @@ async function writeSession(paths, session) {
 				if (!(e && e.code === 'ENOENT')) throw e;
 			}
 			await fsp.rename(tmpPath, authPath);
+			// Re-apply secure permissions after rename
+			await fsp.chmod(authPath, 0o600);
 		} else {
 			throw err;
 		}
 	}
 
+	// Ensure secure permissions on final file
+	await fsp.chmod(authPath, 0o600);
 	return authPath;
 }
 

@@ -21,7 +21,10 @@
     "build:obfuscate": "node tools/obfuscate.js",
     "start:obf": "npm run build:obfuscate && electron dist",
 
-    "lint": "node -c main.js"
+    "lint": "eslint . --ext .js",
+    "format": "prettier --write \"**/*.js\"",
+    "audit-fix": "npm audit fix --audit-level=moderate",
+    "test": "node --test tests/**/*.test.js"
   },
 
   "build": {
@@ -79,9 +82,11 @@
   },
 
   "devDependencies": {
-    "electron": "^32.3.3",
+    "electron": "^33.0.0",
     "electron-builder": "^26.8.1",
-    "javascript-obfuscator": "^4.1.0"
+    "javascript-obfuscator": "^4.1.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.2.0"
   },
 
   "dependencies": {

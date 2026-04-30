@@ -1,0 +1,32 @@
+{
+  "name": "launcher-core",
+  "version": "1.0.0",
+  "description": "Generic Electron launcher core - API agnostic, framework for any CMS",
+  "main": "index.js",
+  "private": true,
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "test": "node --test tests/**/*.test.js",
+    "lint": "eslint ."
+  },
+  "keywords": [
+    "launcher",
+    "electron",
+    "minecraft",
+    "modular",
+    "cms-agnostic"
+  ],
+  "author": "XynoWeb",
+  "license": "MIT",
+  "dependencies": {
+    "minecraft-launcher-core": "^3.18.2",
+    "prismarine-auth": "^3.1.1",
+    "yazl": "^2.5.1",
+    "yauzl": "^2.10.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0"
+  }
+}

@@ -27,11 +27,33 @@ function tryLoadJson(filePath) {
   }
 }
 
+/**
+ * Validate and set environment variable.
+ * For API_BASE_URL, enforces HTTPS protocol.
+ */
 function setEnv(name, value) {
   if (value === undefined || value === null) return;
   // Ne jamais écraser une env var déjà fournie (ex. CI ou test local).
   if (process.env[name] !== undefined && process.env[name] !== '') return;
-  process.env[name] = String(value);
+
+  const strValue = String(value).trim();
+
+  // SECURITY: API_BASE_URL must use HTTPS
+  if (name === 'API_BASE_URL' && strValue) {
+    try {
+      const url = new URL(strValue);
+      if (url.protocol !== 'https:') {
+        throw new Error('API_BASE_URL must use HTTPS protocol (received: ' + url.protocol + ')');
+      }
+    } catch (err) {
+      if (err.message && err.message.includes('must use HTTPS')) {
+        throw err; // Re-throw HTTPS validation errors
+      }
+      throw new Error('Invalid API_BASE_URL: ' + (err && err.message || 'unknown error'));
+    }
+  }
+
+  process.env[name] = strValue;
 }
 
 (function bootstrap() {
