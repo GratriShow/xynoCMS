@@ -113,9 +113,12 @@ if ($nextBillingAt) {
     $cycleEnd->modify('+' . $months . ' months');
 }
 
-// Total days in the subscription cycle
-$cycleDays = $cycleStart->diff($cycleEnd)->days;
-if ($cycleDays <= 0) $cycleDays = 30; // fallback
+// Total days in the subscription cycle (based on period, not actual dates)
+// This ensures prorata is calculated correctly even if next_billing_at has been modified
+$periodConfig = subscription_period_config();
+$periodCfg = $periodConfig[strtolower($period)] ?? $periodConfig['monthly'];
+$months = (int)($periodCfg['months'] ?? 1);
+$cycleDays = ($months === 12) ? 365 : ($months * 30);
 
 // Days remaining until next billing
 $daysLeft = $now->diff($cycleEnd)->days + 1;
