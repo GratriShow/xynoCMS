@@ -174,17 +174,29 @@ $payload = [
         'billing_cycle_anchor' => (int)strtotime($nextBillingAt),
     ],
     'line_items' => [
+        // Prorata charge for remaining days (one-time, charged now)
         [
             'quantity' => 1,
             'price_data' => [
                 'currency' => $currency,
                 'unit_amount' => $prorataHostingCents,
+                'product_data' => [
+                    'name' => 'XynoLauncher Hébergement (prorata)',
+                ],
+            ],
+        ],
+        // Recurring charge starting at launcher renewal date (5€/month)
+        [
+            'quantity' => 1,
+            'price_data' => [
+                'currency' => $currency,
+                'unit_amount' => 500,  // Full monthly price
                 'recurring' => [
                     'interval'       => 'month',
                     'interval_count' => 1,
                 ],
                 'product_data' => [
-                    'name' => $productName,
+                    'name' => 'XynoLauncher Hébergement — 5€/mois',
                 ],
             ],
         ],
