@@ -1148,7 +1148,7 @@ app.whenReady().then(async () => {
 
         debugLog('[sync] Running sync...');
         lastManifest = await runSync(apiClient, pub);
-        debugLog('[sync] Sync complete');
+        debugLog(`[sync] Sync complete, manifest exists: ${!!lastManifest}`);
 
         // Switch theme dynamically based on manifest.launcher.theme.
         // We compare normalized theme keys (not file URLs) to avoid spurious
@@ -1156,10 +1156,12 @@ app.whenReady().then(async () => {
         const theme = lastManifest && lastManifest.launcher ? lastManifest.launcher.theme : 'default';
         const nextThemeKey = normalizeThemeName(theme);
         const nextIndex = await themeIndexPath(theme);
-        console.log(`[ui] theme requested=${String(theme || '')} resolved=${nextThemeKey} index=${nextIndex}`);
+        debugLog(`[ui] theme requested=${String(theme || '')} resolved=${nextThemeKey}`);
         if (loadedThemeKey !== nextThemeKey) {
           try {
+            debugLog(`[ui] Loading theme file: ${nextIndex}`);
             await win.loadFile(nextIndex);
+            debugLog(`[ui] Theme loaded successfully`);
             loadedThemeKey = nextThemeKey;
           } catch (loadErr) {
             // Electron's loadFile rejects with -3 (ERR_ABORTED) whenever a
@@ -1167,9 +1169,14 @@ app.whenReady().then(async () => {
             // the boot loadFile is still in flight. Swallow it; the latest
             // navigation will still complete on its own.
             const m = String(loadErr && loadErr.message || '');
-            if (!m.includes('-3')) throw loadErr;
-            console.warn('[ui] loadFile aborted (-3), ignoring:', m);
+            if (!m.includes('-3')) {
+              debugLog(`[ui] loadFile failed: ${m}`);
+              throw loadErr;
+            }
+            debugLog(`[ui] loadFile aborted (-3), ignoring`);
           }
+        } else {
+          debugLog(`[ui] Theme already loaded (${nextThemeKey}), skipping reload`);
         }
     } catch (err) {
       if (err && err.safeUrl) {
