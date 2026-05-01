@@ -310,6 +310,8 @@
     const state = payload && payload.state ? String(payload.state) : '';
     const step = payload && payload.step ? String(payload.step) : '';
 
+    console.log('[renderer] onUx received:', { state, step });
+
     if (state === 'BLOCKED') {
       const msg = payload && payload.message ? String(payload.message) : 'Votre abonnement a expiré';
       const renewUrl = payload && payload.renewUrl ? String(payload.renewUrl) : '';
@@ -321,6 +323,7 @@
     }
 
     if (state) {
+      console.log('[renderer] setActiveScreen:', state);
       setActiveScreen(state);
       if (state === 'FETCH_MANIFEST') {
         setSyncStep(step || 'Récupération du manifest');

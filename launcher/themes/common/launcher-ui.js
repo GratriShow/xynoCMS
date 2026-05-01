@@ -577,12 +577,16 @@
     }
 
     function setActiveScreen(state) {
+      console.log('[launcher-ui] setActiveScreen called with:', state);
       uxState = state;
       const screenKey = screenForState(state);
+      console.log('[launcher-ui] screen key:', screenKey, 'screens:', Object.keys(screens));
       for (const key of Object.keys(screens)) {
         const el = screens[key];
         if (!el) continue;
-        el.classList.toggle('active', key === screenKey);
+        const shouldBeActive = key === screenKey;
+        console.log(`[launcher-ui] screen ${key}: active=${shouldBeActive}, element=${!!el}`);
+        el.classList.toggle('active', shouldBeActive);
       }
       // The ext panel lives outside .shell and must follow READY transitions.
       syncExtPanelVisibility();
