@@ -6,17 +6,30 @@
     <title>Game Launcher</title>
     <style>
         /* --- Styles de base et mise en page --- */
-        body {
+        * {
             margin: 0;
             padding: 0;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+
+        body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #1a1c2a;
             color: white;
-            height: 100vh;
             display: flex;
             overflow: hidden;
             -webkit-user-select: none;
             user-select: none;
+            background-image:
+                linear-gradient(135deg, rgba(26, 28, 42, 0.95), rgba(26, 28, 42, 0.95)),
+                url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect fill="%23283c3c" width="128" height="128"/><rect fill="%232a4444" x="128" width="128" height="128"/><rect fill="%232a4444" y="128" width="128" height="128"/><rect fill="%23283c3c" x="128" y="128" width="128" height="128"/></svg>');
+            background-size: cover, 256px 256px;
+            background-position: center, 0 0;
+            background-attachment: fixed;
         }
 
         /* --- Barre latérale --- */
@@ -106,23 +119,39 @@
         }
 
         .win-btn {
-            background: none;
-            border: none;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
             color: #6a6f87;
             cursor: pointer;
-            font-size: 16px;
-            padding: 5px;
-            transition: color 0.2s;
+            font-size: 14px;
+            padding: 6px 10px;
+            border-radius: 4px;
+            transition: all 0.2s;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
-        .win-btn:hover { color: white; }
-        .win-btn.close:hover { color: #e84118; }
+        .win-btn:hover {
+            background: rgba(76, 209, 55, 0.15);
+            color: #4cd137;
+            border-color: rgba(76, 209, 55, 0.3);
+        }
+
+        .win-btn.close:hover {
+            background: rgba(232, 65, 24, 0.15);
+            color: #e84118;
+            border-color: rgba(232, 65, 24, 0.3);
+        }
 
         /* --- Gestion des écrans --- */
         #screens-container {
             flex: 1;
-            padding: 40px;
+            padding: 30px 40px;
             position: relative;
+            overflow: hidden;
         }
 
         .screen {
@@ -580,5 +609,21 @@
 
     <script src="../common/launcher-ui.js"></script>
     <script src="renderer.js"></script>
+    <script>
+        // Window controls for Electron
+        document.addEventListener('DOMContentLoaded', () => {
+            const windowControls = document.querySelectorAll('.win-btn');
+
+            windowControls.forEach((btn, index) => {
+                btn.addEventListener('click', () => {
+                    if (window.electronAPI) {
+                        if (index === 0) window.electronAPI.minimize?.();
+                        else if (index === 1) window.electronAPI.maximize?.();
+                        else if (index === 2) window.electronAPI.close?.();
+                    }
+                });
+            });
+        });
+    </script>
 </body>
 </html>
