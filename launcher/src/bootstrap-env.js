@@ -86,7 +86,10 @@ function setEnv(name, value) {
   setEnv('LAUNCHER_PUBLIC_CONFIG', JSON.stringify(publicSnapshot));
 
   if (!process.env.LAUNCHER_UUID) {
-    console.warn('[bootstrap-env] no config.json found and no LAUNCHER_UUID in env — launcher will fail to start.');
+    console.warn('[bootstrap-env] ⚠️  no config.json found and no LAUNCHER_UUID in env — launcher will fail to start.');
+    console.warn('[bootstrap-env] 💡 For development: create /launcher/config.json (see CONFIG_DEV.md)');
+  } else {
+    console.log(`[bootstrap-env] ✓ Loaded config: uuid=${process.env.LAUNCHER_UUID.substring(0, 8)}... theme=${publicSnapshot.theme}`);
   }
 })();
 

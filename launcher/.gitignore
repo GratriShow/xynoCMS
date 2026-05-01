@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+
+# Build output
+dist/
+release/
+*.asar
+*.dmg
+*.exe
+*.AppImage
+*.zip
+
+# Environment & Config
+config.json
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime
+*.log
+.cache/
+
+# Electron cache
+.cache
+build
+
