@@ -7,63 +7,46 @@
     return;
   }
 
+  // Mount the launcher UI
   window.LauncherUI.mount();
 
   // --- Extension Toggle Support ---
-  // Listen for when launcher-ui.js populates the extensions
+  // Observe for extensions being added by launcher-ui.js and add toggle functionality
   const observeExtensions = setInterval(() => {
     const extItemsContainer = document.getElementById('extItems');
-    if (!extItemsContainer) return;
+    if (!extItemsContainer || extItemsContainer.textContent.trim() === '▶') return;
 
-    const extItems = extItemsContainer.querySelectorAll('.ext-item');
+    const extItems = extItemsContainer.querySelectorAll('.ext-item:not([data-processed])');
     if (extItems.length === 0) return;
 
-    clearInterval(observeExtensions);
-
-    // Add checkbox and toggle functionality to each extension
     extItems.forEach((item) => {
-      // Check if already processed
-      if (item.dataset.processed === 'true') return;
       item.dataset.processed = 'true';
 
       const nameEl = item.querySelector('.ext-name');
-      const valueEl = item.querySelector('.ext-value');
+      if (!nameEl) return;
 
-      if (nameEl) {
-        // Create checkbox
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.className = 'ext-item-checkbox';
-        checkbox.checked = true;
-        checkbox.setAttribute('aria-label', `Activer/Désactiver ${nameEl.textContent}`);
+      const extName = nameEl.textContent;
+      const currentHTML = item.innerHTML;
 
-        // Rebuild item structure
-        item.innerHTML = '';
-        item.appendChild(checkbox);
+      // Create wrapper with checkbox
+      item.innerHTML = `
+        <input type="checkbox" class="ext-checkbox" checked style="width: 18px; height: 18px; cursor: pointer; accent-color: #4cd137;">
+        <div style="flex: 1; overflow: hidden;">${currentHTML}</div>
+      `;
 
-        const contentDiv = document.createElement('div');
-        contentDiv.style.overflow = 'hidden';
-        contentDiv.appendChild(nameEl);
-        if (valueEl) contentDiv.appendChild(valueEl);
-        item.appendChild(contentDiv);
+      const checkbox = item.querySelector('.ext-checkbox');
+      checkbox.addEventListener('change', (e) => {
+        item.style.opacity = e.target.checked ? '1' : '0.6';
 
-        // Toggle handler
-        checkbox.addEventListener('change', (e) => {
-          const enabled = e.target.checked;
-          item.style.opacity = enabled ? '1' : '0.6';
-          item.style.backgroundColor = enabled ? 'rgba(0, 0, 0, 0.2)' : 'rgba(76, 175, 80, 0.05)';
-
-          // Store state
-          if (window.launcherAPI && typeof window.launcherAPI.setExtensionState === 'function') {
-            window.launcherAPI.setExtensionState(nameEl.textContent, enabled);
-          }
-        });
-      }
+        if (window.launcherAPI && typeof window.launcherAPI.setExtensionState === 'function') {
+          window.launcherAPI.setExtensionState(extName, e.target.checked);
+        }
+      });
     });
+
+    if (extItems.length > 0) clearInterval(observeExtensions);
   }, 100);
 
-  // Cleanup observer after 5 seconds
-  setTimeout(() => {
-    clearInterval(observeExtensions);
-  }, 5000);
+  // Stop observing after 10 seconds
+  setTimeout(() => clearInterval(observeExtensions), 10000);
 })();
