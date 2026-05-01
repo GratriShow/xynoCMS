@@ -37,8 +37,9 @@
     "files": [
       "**/*",
       "!release/**",
-      "!node_modules/.cache/**",
-      "src/config.json"
+      "!node_modules/**",
+      "src/config.json",
+      "src/assets/**"
     ],
 
     "directories": {

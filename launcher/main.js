@@ -753,28 +753,36 @@ app.whenReady().then(async () => {
   async function bootstrapApiClient() {
     if (apiClient) return;
 
+    console.log('[api] Bootstrapping API client...');
     const uuid = requireEnv('LAUNCHER_UUID');
     const apiBaseUrl = requireEnv('API_BASE_URL');
+    console.log(`[api] UUID: ${uuid.substring(0, 8)}..., Base URL: ${apiBaseUrl}`);
 
     // Always check updates at startup (once per run).
     if (!updateChecked) {
       try {
+        console.log('[api] Starting update check...');
         const localVersion = await readLocalVersion(app);
+        console.log(`[api] Local version: ${localVersion}`);
         // Keep a canonical local version file (requested by spec).
         try {
           await writeLocalVersion(app, app.getVersion());
         } catch {
           // ignore
         }
+        console.log('[api] Running autoUpdate...');
         await runAutoUpdate(app, pub, { apiBaseUrl, uuid, currentVersion: localVersion });
+        console.log('[api] Update check completed');
         updateChecked = true;
       } catch (e) {
         // If update check fails, block: cannot guarantee integrity.
+        console.error('[api] Update check failed:', e && e.message ? e.message : e);
         updateChecked = false;
         throw e;
       }
     }
 
+    console.log('[api] Creating API client...');
     const apiKey = requireEnv('LAUNCHER_KEY');
 
     // Integrity hash is computed locally (packaged) and sent to the server for enforcement.
@@ -1075,14 +1083,19 @@ app.whenReady().then(async () => {
     if (syncInProgress) return;
     syncInProgress = true;
     try {
+        console.log('[sync] startSync called, bootstrapping API client...');
         await bootstrapApiClient();
+        console.log('[sync] API client ready');
 
         pub.ux({ state: 'INIT' });
         pub.status("Vérification de l'abonnement…");
+        console.log('[sync] Checking license...');
         const lic = await checkLicense(apiClient, { pub });
+        console.log(`[sync] License check complete: active=${lic.active}, status=${lic.status}`);
         licenseState = { active: lic.active, status: lic.status, checkedAt: Date.now() };
 
         if (!lic.active) {
+          console.log('[sync] License is not active, aborting sync');
           lastManifest = null;
           return;
         }
@@ -1097,10 +1110,12 @@ app.whenReady().then(async () => {
 
         // Maintenance gate: if the tenant's maintenance API says "active",
         // short-circuit before we even fetch the manifest.
+        console.log('[sync] Checking maintenance status...');
         const uuidForExt = requireEnv('LAUNCHER_UUID');
         const apiBaseUrlForExt = requireEnv('API_BASE_URL');
         const apiKeyForExt = requireEnv('LAUNCHER_KEY');
         const maintenance = await checkMaintenance(apiBaseUrlForExt, uuidForExt, apiKeyForExt);
+        console.log(`[sync] Maintenance check complete: active=${maintenance.active}`);
         if (maintenance.active) {
           lastManifest = null;
           pub.ux({
@@ -1113,9 +1128,12 @@ app.whenReady().then(async () => {
         }
 
         // Fire-and-forget Discord Rich Presence (never blocks the sync).
+        console.log('[sync] Starting Discord RPC...');
         ensureDiscordRpc(apiBaseUrlForExt, uuidForExt, apiKeyForExt).catch(() => {});
 
+        console.log('[sync] Running sync...');
         lastManifest = await runSync(apiClient, pub);
+        console.log('[sync] Sync complete');
 
         // Switch theme dynamically based on manifest.launcher.theme.
         // We compare normalized theme keys (not file URLs) to avoid spurious

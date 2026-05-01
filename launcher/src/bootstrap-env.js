@@ -59,10 +59,23 @@ function setEnv(name, value) {
 (function bootstrap() {
   // config.json est bundlé à côté de ce fichier dans src/
   const here = __dirname;
-  const config =
-    tryLoadJson(path.join(here, 'config.json')) ||
-    tryLoadJson(path.join(here, '..', 'config.json')) ||
-    {};
+  const path1 = path.join(here, 'config.json');
+  const path2 = path.join(here, '..', 'config.json');
+
+  console.log(`[bootstrap-env] Attempting to load config from: ${path1}`);
+  let config = tryLoadJson(path1);
+
+  if (!config) {
+    console.log(`[bootstrap-env] First path failed, trying: ${path2}`);
+    config = tryLoadJson(path2);
+  }
+
+  if (!config) {
+    console.warn(`[bootstrap-env] ⚠️  config.json not found at either path`);
+    config = {};
+  } else {
+    console.log(`[bootstrap-env] ✓ config.json loaded successfully`);
+  }
 
   // --- Mapping config -> env (clé courte côté config, env var côté launcher) ---
   setEnv('LAUNCHER_UUID', config.uuid);
@@ -86,10 +99,12 @@ function setEnv(name, value) {
   setEnv('LAUNCHER_PUBLIC_CONFIG', JSON.stringify(publicSnapshot));
 
   if (!process.env.LAUNCHER_UUID) {
-    console.warn('[bootstrap-env] ⚠️  no config.json found and no LAUNCHER_UUID in env — launcher will fail to start.');
+    console.warn('[bootstrap-env] ⚠️  LAUNCHER_UUID not set — launcher will fail when trying to initialize API client');
     console.warn('[bootstrap-env] 💡 For development: create /launcher/config.json (see CONFIG_DEV.md)');
+    console.warn(`[bootstrap-env] 💾 Checked paths: [${path1}], [${path2}]`);
   } else {
     console.log(`[bootstrap-env] ✓ Loaded config: uuid=${process.env.LAUNCHER_UUID.substring(0, 8)}... theme=${publicSnapshot.theme}`);
+    console.log(`[bootstrap-env] ✓ API_BASE_URL: ${process.env.API_BASE_URL}`);
   }
 })();
 
