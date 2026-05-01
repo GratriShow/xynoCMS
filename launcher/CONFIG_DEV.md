@@ -4,77 +4,80 @@
 
 Le fichier `config.json` est **nécessaire** pour tester le launcher localement. Il est **JAMAIS** commité dans Git (voir `.gitignore`).
 
+Chaque launcher a son propre UUID généré par le CMS. Le `config.json` est généré dynamiquement par `/api/build_config.php`.
+
 ## Setup Développement Local
 
-### 1. Créer un config.json local
+### Option 1: Récupérer la config depuis votre CMS (Recommandé)
 
-Un fichier `config.json` exemple est fourni à la racine du dossier `/launcher`. C'est ce fichier qui sera utilisé lors du développement.
+Si vous avez un launcher configuré dans votre CMS sur votre VPS:
 
-**NE PAS committer ce fichier dans Git avec de vraies clés API.**
-
-### 2. Configurer pour votre API
-
-Modifiez le `config.json` pour pointer vers votre API :
-
-```json
-{
-  "uuid": "votre-uuid-launcher",
-  "api_base_url": "https://votre-site.com",
-  "api_key": "votre-clé-api",
-  "theme": "minecraft-forest",
-  ...
-}
+```bash
+# Récupérez la config généré par votre CMS
+curl -s "https://votre-vps.com/api/build_config.php?uuid=YOUR_LAUNCHER_UUID" \
+  -H "X-Build-Token: YOUR_BUILD_TOKEN" > launcher/config.json
 ```
 
-### 3. Démarrer le launcher en développement
-
+Puis démarrez:
 ```bash
 cd launcher
 npm install
 npm run dev
 ```
 
-### 4. Variables d'environnement alternatives
+### Option 2: Générer la config via votre CMS
 
-Si vous préférez ne pas committer de config.json, vous pouvez définir les variables d'environnement :
+1. Allez dans l'admin du CMS: **Clients > Launchers**
+2. Créez ou sélectionnez un launcher (ex: `minecraft-forest`)
+3. Récupérez son UUID
+4. Appelez l'API build_config avec le token Build Token configuré dans le CMS
+
+### Option 3: Variables d'environnement
+
+Si vous préférez définir directement:
 
 ```bash
-export LAUNCHER_UUID="mon-uuid"
-export API_BASE_URL="https://mon-api.com"
-export LAUNCHER_KEY="ma-clé-api"
+export LAUNCHER_UUID="550e8400-e29b-41d4-a716-446655440000"
+export API_BASE_URL="https://votre-vps.com"
+export LAUNCHER_KEY="votre-api-key"
 npm run dev
 ```
 
-## Structure de config.json
+## Où trouver les valeurs?
 
-| Clé | Description | Exemple |
-|-----|-------------|---------|
-| `uuid` | UUID du launcher | `550e8400-e29b-41d4-a716-446655440000` |
-| `api_base_url` | URL de base de l'API (HTTPS requis) | `https://monsite.com` |
-| `api_key` | Clé API pour authentifier les requêtes | `secret-key-12345` |
-| `theme` | Thème par défaut | `minecraft-forest` ou `cosmic` |
-| `name` | Nom du launcher | `Mon Launcher` |
-| `version` | Version du launcher | `1.0.0` |
+| Valeur | Où la trouver |
+|--------|---------------|
+| `LAUNCHER_UUID` | Admin CMS → Clients → Launchers → UUID du launcher |
+| `API_BASE_URL` | L'URL publique de votre CMS (ex: https://mon-vps.com) |
+| `LAUNCHER_KEY` | Admin CMS → Launchers → API Key (générée automatiquement) |
+| `X-Build-Token` | Admin CMS → Settings → Build Token (pour GitHub Actions) |
 
-## En Production
+## Architecture
 
-En production, `config.json` est généré automatiquement par :
-- **GitHub Actions** (via `/api/build_config.php`)
-- **Ou** `launcher/build-multi-launchers.js`
-
-Le fichier local de développement n'est jamais utilisé.
+```
+CMS (votre VPS)
+  └── /api/build_config.php (génère config.json basé sur l'UUID du launcher)
+         ↓
+     config.json (téléchargé localement pour dev)
+         ↓
+     launcher/main.js (bootstrap-env.js charge la config)
+         ↓
+     Launcher démarre avec le thème configuré
+```
 
 ## Troubleshooting
 
 ### "Missing env var: LAUNCHER_UUID"
 
-→ Assurez-vous que `config.json` existe et contient une valeur pour `uuid`.
+→ Le `config.json` n'existe pas ou la variable d'environnement n'est pas définie.
+→ Utilisez l'option 1 ou 2 ci-dessus pour récupérer la config.
 
 ### "API unreachable"
 
-→ Vérifiez que `api_base_url` pointe vers une API valide et accessible.
-→ Si vous testez localement, créez une API mock ou utilisez votre VPS.
+→ Vérifiez que `api_base_url` dans la config pointe vers votre CMS.
+→ Assurez-vous que votre CMS est accessible (HTTPS requis).
 
-### "Configuration manquante"
+### Localhost ne fonctionne pas
 
-→ Le config.json manque, est invalide, ou une variable d'environnement n'est pas définie.
+→ Le launcher DOIT pointer vers une vraie instance CMS (https://votre-vps.com).
+→ Impossible de tester avec un mock ou localhost (architecture centralisée CMS).
