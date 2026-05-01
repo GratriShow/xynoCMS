@@ -554,12 +554,19 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      devTools: !app.isPackaged,
+      devTools: true,
       preload: path.join(__dirname, 'preload.js'),
     },
   });
 
+  // Open DevTools automatically for debugging
+  if (true) { // Enable devtools
+    win.webContents.openDevTools({ mode: 'right' });
+  }
+
   // Fail-safe: if devtools get opened in production, stop.
+  // DISABLED for debugging purposes
+  /*
   win.webContents.on('devtools-opened', () => {
     if (!app.isPackaged) return;
     try {
@@ -574,6 +581,7 @@ function createWindow() {
     }
     app.quit();
   });
+  */
 
   // Default theme first; real theme will be selected after fetching the manifest.
   // Catch a possible ERR_ABORTED here: if the manifest theme differs from
