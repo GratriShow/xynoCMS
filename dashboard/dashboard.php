@@ -1136,6 +1136,53 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
             <p class="panel-desc">Couleurs du launcher, musique d'ambiance, popup, compte à rebours, mention « Powered by Xyno ». Tout est géré par la Marketplace — chaque bloc se débloque indépendamment.</p>
           </div>
 
+          <!-- ============ THEME SELECTOR ============ -->
+          <div class="sub-card">
+            <div class="sub-card-head">
+              <div><h3>🎨 Thème du Launcher</h3><p>Sélectionnez l'apparence visuelle de votre launcher.</p></div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px;">
+              <?php
+                // Get available themes
+                $themesDir = __DIR__ . '/../launcher/themes';
+                $themes = [];
+                if (is_dir($themesDir)) {
+                  foreach (scandir($themesDir) as $entry) {
+                    if ($entry[0] === '.') continue;
+                    $themePath = $themesDir . '/' . $entry;
+                    if (!is_dir($themePath) || !file_exists($themePath . '/index.html')) continue;
+
+                    $emoji = '🎮';
+                    if (stripos($entry, 'cosmic') !== false) $emoji = '🌌';
+                    if (stripos($entry, 'neon') !== false) $emoji = '⚡';
+                    if (stripos($entry, 'tactical') !== false) $emoji = '🎯';
+                    if (stripos($entry, 'mystic') !== false) $emoji = '🔮';
+                    if (stripos($entry, 'minecraft') !== false) $emoji = '🌲';
+                    if (stripos($entry, 'default') !== false) $emoji = '📦';
+
+                    $themes[] = ['id' => $entry, 'name' => ucwords(str_replace('-', ' ', $entry)), 'emoji' => $emoji];
+                  }
+                  usort($themes, fn($a, $b) => strcmp($a['id'], $b['id']));
+                }
+                $currentTheme = (string)($selected['theme'] ?? 'default');
+              ?>
+              <?php foreach ($themes as $theme): ?>
+                <form method="post" action="api/set_launcher_theme.php" style="margin: 0;">
+                  <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
+                  <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
+                  <input type="hidden" name="theme_id" value="<?php echo e($theme['id']); ?>" />
+                  <button type="submit" style="width: 100%; padding: 12px 8px; background: <?php echo $theme['id'] === $currentTheme ? 'rgba(76, 175, 80, 0.2)' : 'rgba(255, 255, 255, 0.05)'; ?>; border: 2px solid <?php echo $theme['id'] === $currentTheme ? 'rgba(76, 175, 80, 0.8)' : 'rgba(255, 255, 255, 0.1)'; ?>; border-radius: 8px; cursor: pointer; color: white; font-size: 12px; text-align: center; transition: all 0.3s ease;" onmouseover="this.style.borderColor='rgba(76, 175, 80, 0.5)'" onmouseout="this.style.borderColor='<?php echo $theme['id'] === $currentTheme ? 'rgba(76, 175, 80, 0.8)' : 'rgba(255, 255, 255, 0.1)'; ?>'">
+                    <div style="font-size: 32px; margin-bottom: 4px;"><?php echo $theme['emoji']; ?></div>
+                    <div style="font-weight: 600; margin-bottom: 2px;"><?php echo e($theme['name']); ?></div>
+                    <?php if ($theme['id'] === $currentTheme): ?>
+                      <div style="font-size: 11px; color: #4caf50;">✓ Actif</div>
+                    <?php endif; ?>
+                  </button>
+                </form>
+              <?php endforeach; ?>
+            </div>
+          </div>
+
           <?php if (!$marketplaceAvailable): ?>
             <div class="sub-card"><p class="small" style="margin:0">Les tables marketplace n'existent pas encore. Importe <code>migrations_v3.sql</code>.</p></div>
           <?php else: ?>
