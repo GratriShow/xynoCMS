@@ -287,76 +287,96 @@
             display: block;
         }
 
-        /* Panneaux */
-        #panels-area {
-            position: absolute;
-            bottom: 0;
-            right: 0;
-            display: flex;
-            gap: 20px;
+        /* --- News & Extensions Panels (shown on READY screen) --- */
+        .news {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            width: 300px;
+            max-height: 200px;
+            background-color: rgba(20, 21, 33, 0.95);
+            border: 1px solid rgba(76, 209, 55, 0.2);
+            border-radius: 12px;
+            padding: 15px;
+            overflow-y: auto;
+            z-index: 1000;
         }
 
-        .panel-card {
-            background-color: rgba(20, 21, 33, 0.8);
+        .news-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(76, 209, 55, 0.1);
+        }
+
+        .news-items {
+            display: grid;
+            gap: 8px;
+        }
+
+        .news-item {
+            display: grid;
+            gap: 2px;
+        }
+
+        .news-title {
+            font-weight: bold;
+            font-size: 13px;
+            color: #4cd137;
+        }
+
+        .news-date {
+            font-size: 11px;
+            color: #a5a5a5;
+        }
+
+        .ext-panel {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            min-width: 100px;
+            max-height: 200px;
+            background-color: rgba(10, 10, 15, 0.95);
+            border: 1px solid rgba(76, 209, 55, 0.2);
             border-radius: 12px;
-            width: 250px;
-            height: 140px;
             padding: 15px;
-            border: 1px solid rgba(255,255,255,0.05);
+            overflow-y: auto;
             display: flex;
             flex-direction: column;
-            justify-content: flex-end;
-            cursor: pointer;
-            transition: transform 0.3s, border-color 0.3s;
-            overflow: hidden;
-            position: relative;
+            gap: 10px;
+            z-index: 1000;
         }
 
-        .panel-card:hover {
-            transform: translateY(-5px);
-            border-color: rgba(255,255,255,0.1);
-        }
-
-        #newsBox.news {
-            background-image: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
-            background-color: #353b48;
-            background-size: cover;
-        }
-
-        .update-badge {
-            background-color: #3867d6;
-            color: white;
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 4px;
-            text-transform: uppercase;
-            width: max-content;
-            margin-bottom: 5px;
-        }
-
-        .news-title { font-weight: bold; font-size: 14px; margin: 3px 0; }
-        .news-date { font-size: 11px; color: #a5a5a5; }
-
-        #extPanel {
-            background-color: rgba(10, 10, 15, 0.9);
-            justify-content: center;
-            align-items: center;
+        .ext-items {
+            display: grid;
+            gap: 6px;
         }
 
         .ext-item {
-            font-size: 40px;
-            color: rgba(255,255,255,0.6);
-            border: 2px solid rgba(255,255,255,0.3);
-            border-radius: 50%;
-            width: 70px; height: 70px;
-            display: flex; justify-content: center; align-items: center;
-            transition: color 0.3s, border-color 0.3s, background 0.3s;
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 6px;
+            align-items: center;
+            font-size: 12px;
+            padding: 8px;
+            border-radius: 8px;
+            background-color: rgba(76, 209, 55, 0.05);
+            border: 1px solid rgba(76, 209, 55, 0.1);
             cursor: pointer;
+            transition: all 0.3s;
         }
 
-        #extPanel:hover .ext-item {
-            color: white; border-color: white;
-            background-color: rgba(255,255,255,0.1);
+        .ext-item:hover {
+            background-color: rgba(76, 209, 55, 0.1);
+            border-color: rgba(76, 209, 55, 0.3);
+            color: #4cd137;
+        }
+
+        .ext-name {
+            font-weight: 500;
+            color: #fff;
         }
 
         /* --- Styles écrans secondaires --- */
