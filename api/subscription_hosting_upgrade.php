@@ -150,9 +150,10 @@ $cancelUrl = api_public_url(
 );
 
 // Build Stripe payload
-// For hosting, we charge prorata this month, then recurring 5€/month starting next month
+// For hosting, we only charge prorata now via one-time payment.
+// The webhook will create the recurring subscription (5€/month) starting at next_billing_at
 $payload = [
-    'mode'                 => 'subscription',
+    'mode'                 => 'payment',
     'payment_method_types' => ['card'],
     'success_url'          => $successUrl,
     'cancel_url'           => $cancelUrl,
@@ -163,15 +164,7 @@ $payload = [
         'launcher_uuid' => $launcherUuid,
         'kind'          => 'hosting_upgrade',
         'user_id'       => (string)$user['id'],
-    ],
-    'subscription_data' => [
-        'metadata' => [
-            'launcher_id'   => (string)$launcherId,
-            'launcher_uuid' => $launcherUuid,
-            'user_id'       => (string)$user['id'],
-        ],
-        // Start full hosting billing at the launcher's renewal date
-        'billing_cycle_anchor' => (int)strtotime($nextBillingAt),
+        'next_billing_at' => $nextBillingAt,
     ],
     'line_items' => [
         // Prorata charge for remaining days (one-time, charged now)
@@ -181,22 +174,7 @@ $payload = [
                 'currency' => $currency,
                 'unit_amount' => $prorataHostingCents,
                 'product_data' => [
-                    'name' => 'XynoLauncher Hébergement (prorata)',
-                ],
-            ],
-        ],
-        // Recurring charge starting at launcher renewal date (5€/month)
-        [
-            'quantity' => 1,
-            'price_data' => [
-                'currency' => $currency,
-                'unit_amount' => 500,  // Full monthly price
-                'recurring' => [
-                    'interval'       => 'month',
-                    'interval_count' => 1,
-                ],
-                'product_data' => [
-                    'name' => 'XynoLauncher Hébergement — 5€/mois',
+                    'name' => 'XynoLauncher Hébergement Xyno (prorata jusqu\'au ' . $nextBillingAt . ')',
                 ],
             ],
         ],

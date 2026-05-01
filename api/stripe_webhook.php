@@ -159,18 +159,20 @@ try {
     switch ($type) {
         case 'checkout.session.completed':
         case 'checkout.session.async_payment_succeeded': {
+            // Check metadata kind first to detect hosting upgrades (can be mode=payment or mode=subscription)
+            $meta = is_array($object['metadata'] ?? null) ? $object['metadata'] : [];
+            $kind = strtolower(trim((string)($meta['kind'] ?? '')));
+
+            if ($kind === 'hosting_upgrade') {
+                // Hosting upgrades: one-time payment (mode=payment) or legacy subscription (mode=subscription)
+                wh_handle_hosting_upgrade_checkout($pdo, $object, $type);
+                // wh_handle_* always exits via wh_respond.
+            }
+
             // mode=subscription is handled separately from one-shot purchases.
             $mode = strtolower((string)($object['mode'] ?? ''));
             if ($mode === 'subscription') {
-                // Check if this is a hosting upgrade vs a regular subscription
-                $meta = is_array($object['metadata'] ?? null) ? $object['metadata'] : [];
-                $kind = strtolower(trim((string)($meta['kind'] ?? '')));
-
-                if ($kind === 'hosting_upgrade') {
-                    wh_handle_hosting_upgrade_checkout($pdo, $object, $type);
-                } else {
-                    wh_handle_subscription_checkout($pdo, $object, $type);
-                }
+                wh_handle_subscription_checkout($pdo, $object, $type);
                 // wh_handle_* always exits via wh_respond.
             }
 
@@ -590,24 +592,27 @@ function wh_handle_invoice_failed(PDO $pdo, array $object): void
 }
 
 /**
- * Handle hosting upgrade subscription checkout.
+ * Handle hosting upgrade checkout (one-time payment).
  *
  * When a user adds hosting (+5€/month) to an existing subscription via
- * /api/subscription_hosting_upgrade.php, this Stripe subscription event
- * fires to activate the hosting upgrade.
+ * /api/subscription_hosting_upgrade.php:
+ *   1. Payment mode is 'payment' (one-time charge for prorata)
+ *   2. After payment succeeds, we create a recurring subscription for 5€/month
+ *   3. Recurring subscription starts at next_billing_at (launcher renewal date)
  *
- * We update the hosting_upgrades table to 'active' and flip launcher.hosting to 1.
+ * We update the hosting_upgrades table to 'active', flip launcher.hosting to 1,
+ * and create the recurring subscription via Stripe API.
  */
 function wh_handle_hosting_upgrade_checkout(PDO $pdo, array $object, string $eventType): void
 {
     $sessionId      = (string)($object['id'] ?? '');
-    $subscriptionId = (string)($object['subscription'] ?? '');
     $customerId     = (string)($object['customer'] ?? '');
     $meta           = is_array($object['metadata'] ?? null) ? $object['metadata'] : [];
 
-    $launcherId = (int)($meta['launcher_id'] ?? 0);
-    $userId     = (int)($meta['user_id'] ?? 0);
+    $launcherId   = (int)($meta['launcher_id'] ?? 0);
+    $userId       = (int)($meta['user_id'] ?? 0);
     $launcherUuid = (string)($meta['launcher_uuid'] ?? '');
+    $nextBillingAt = (string)($meta['next_billing_at'] ?? '');
 
     if ($launcherId <= 0 || $sessionId === '') {
         wh_respond(200, ['ok' => true, 'ignored' => 'unresolvable_hosting_upgrade', 'event' => $eventType]);
@@ -640,6 +645,71 @@ function wh_handle_hosting_upgrade_checkout(PDO $pdo, array $object, string $eve
         // Column may not exist yet
     }
 
+    // Create recurring subscription for 5€/month starting at next_billing_at
+    // This is done via Stripe API, not via the checkout session
+    if ($customerId !== '' && $nextBillingAt !== '') {
+        try {
+            $secretKey = trim(api_env('STRIPE_SECRET_KEY', ''));
+            $currency  = strtolower(trim(api_env('MARKETPLACE_CURRENCY', 'eur'))) ?: 'eur';
+
+            if ($secretKey === '') {
+                throw new Exception('STRIPE_SECRET_KEY not configured');
+            }
+
+            // Create subscription via Stripe API
+            $subPayload = [
+                'customer'            => $customerId,
+                'items[0][price_data][currency]'           => $currency,
+                'items[0][price_data][unit_amount]'        => 500,  // 5€ in cents
+                'items[0][price_data][recurring][interval]' => 'month',
+                'items[0][price_data][product_data][name]' => 'XynoLauncher Hébergement — 5€/mois',
+                'items[0][quantity]'                        => 1,
+                'billing_cycle_anchor' => (int)strtotime($nextBillingAt),
+                'off_session'          => 'true',
+                'metadata[launcher_id]'   => (string)$launcherId,
+                'metadata[launcher_uuid]' => $launcherUuid,
+                'metadata[user_id]'       => (string)$userId,
+                'metadata[kind]'          => 'hosting_recurring',
+            ];
+
+            $ch = curl_init('https://api.stripe.com/v1/subscriptions');
+            if ($ch === false) {
+                throw new Exception('curl_init failed');
+            }
+
+            curl_setopt_array($ch, [
+                CURLOPT_POST           => true,
+                CURLOPT_POSTFIELDS     => http_build_query($subPayload, '', '&', PHP_QUERY_RFC3986),
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 20,
+                CURLOPT_CONNECTTIMEOUT => 10,
+                CURLOPT_HTTPHEADER     => [
+                    'Content-Type: application/x-www-form-urlencoded',
+                    'Authorization: Basic ' . base64_encode($secretKey . ':'),
+                    'Stripe-Version: 2024-06-20',
+                    'Accept: application/json',
+                ],
+            ]);
+
+            $resp = curl_exec($ch);
+            $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            // Stripe API success is 2xx
+            if ($code < 200 || $code >= 300) {
+                $decoded = json_decode((string)$resp, true);
+                $errMsg  = is_array($decoded['error'] ?? null)
+                    ? (string)($decoded['error']['message'] ?? 'Unknown error')
+                    : 'HTTP ' . $code;
+                throw new Exception('Stripe subscription creation failed: ' . $errMsg);
+            }
+        } catch (Throwable $e) {
+            // Log the error but don't fail the webhook response
+            // Hosting is already enabled; subscription will be retried or created manually if needed
+            error_log('Failed to create hosting recurring subscription: ' . $e->getMessage());
+        }
+    }
+
     // Send confirmation email (best-effort)
     try {
         $stmt = $pdo->prepare(
@@ -663,6 +733,5 @@ function wh_handle_hosting_upgrade_checkout(PDO $pdo, array $object, string $eve
         'applied'         => 'hosting_upgrade_active',
         'launcher_id'     => $launcherId,
         'launcher_uuid'   => $launcherUuid,
-        'subscription_id' => $subscriptionId,
     ]);
 }
