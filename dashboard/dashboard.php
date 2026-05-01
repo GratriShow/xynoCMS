@@ -1139,9 +1139,9 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
           <!-- ============ THEME SELECTOR ============ -->
           <div class="sub-card">
             <div class="sub-card-head">
-              <div><h3>🎨 Thème du Launcher</h3><p>Sélectionnez l'apparence visuelle de votre launcher.</p></div>
+              <div><h3>🎨 Thème du Launcher</h3><p>Sélectionnez l'apparence visuelle de votre launcher. Cliquez pour prévisualiser.</p></div>
             </div>
-            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;">
               <?php
                 // Get available themes
                 $themesDir = __DIR__ . '/../launcher/themes';
@@ -1152,6 +1152,18 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
                     $themePath = $themesDir . '/' . $entry;
                     if (!is_dir($themePath) || !file_exists($themePath . '/index.html')) continue;
 
+                    // Theme colors for preview
+                    $colors = [
+                      'cosmic' => ['#1a1a2e', '#16213e', '#0f3460'],
+                      'neon-frontier' => ['#0a0e27', '#1a1f3a', '#2a2f5a'],
+                      'dark-tactical' => ['#1a1a1a', '#2d2d2d', '#404040'],
+                      'mystic-purple' => ['#1a0f2e', '#2d1b4e', '#3d2b6e'],
+                      'minecraft-forest' => ['#0a0e27', '#1a3a3a', '#0d1f2d'],
+                      'default' => ['#0c0c14', '#1a1a2e', '#2a2a3e'],
+                    ];
+
+                    $themeColors = $colors[$entry] ?? ['#1a1a1a', '#2a2a2a', '#3a3a3a'];
+
                     $emoji = '🎮';
                     if (stripos($entry, 'cosmic') !== false) $emoji = '🌌';
                     if (stripos($entry, 'neon') !== false) $emoji = '⚡';
@@ -1160,26 +1172,32 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
                     if (stripos($entry, 'minecraft') !== false) $emoji = '🌲';
                     if (stripos($entry, 'default') !== false) $emoji = '📦';
 
-                    $themes[] = ['id' => $entry, 'name' => ucwords(str_replace('-', ' ', $entry)), 'emoji' => $emoji];
+                    $themes[] = ['id' => $entry, 'name' => ucwords(str_replace('-', ' ', $entry)), 'emoji' => $emoji, 'colors' => $themeColors];
                   }
                   usort($themes, fn($a, $b) => strcmp($a['id'], $b['id']));
                 }
                 $currentTheme = (string)($selected['theme'] ?? 'default');
               ?>
               <?php foreach ($themes as $theme): ?>
-                <form method="post" action="api/set_launcher_theme.php" style="margin: 0;">
+                <form method="post" action="api/set_launcher_theme.php" style="margin: 0;" title="<?php echo e($theme['name']); ?>">
                   <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
                   <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
                   <input type="hidden" name="theme_id" value="<?php echo e($theme['id']); ?>" />
-                  <button type="submit" style="width: 100%; padding: 12px 8px; background: <?php echo $theme['id'] === $currentTheme ? 'rgba(76, 175, 80, 0.2)' : 'rgba(255, 255, 255, 0.05)'; ?>; border: 2px solid <?php echo $theme['id'] === $currentTheme ? 'rgba(76, 175, 80, 0.8)' : 'rgba(255, 255, 255, 0.1)'; ?>; border-radius: 8px; cursor: pointer; color: white; font-size: 12px; text-align: center; transition: all 0.3s ease;" onmouseover="this.style.borderColor='rgba(76, 175, 80, 0.5)'" onmouseout="this.style.borderColor='<?php echo $theme['id'] === $currentTheme ? 'rgba(76, 175, 80, 0.8)' : 'rgba(255, 255, 255, 0.1)'; ?>'">
-                    <div style="font-size: 32px; margin-bottom: 4px;"><?php echo $theme['emoji']; ?></div>
-                    <div style="font-weight: 600; margin-bottom: 2px;"><?php echo e($theme['name']); ?></div>
+                  <button type="submit" style="width: 100%; height: 160px; padding: 0; background: linear-gradient(135deg, <?php echo $theme['colors'][0]; ?> 0%, <?php echo $theme['colors'][1]; ?> 50%, <?php echo $theme['colors'][2]; ?> 100%); border: 3px solid <?php echo $theme['id'] === $currentTheme ? '#4caf50' : 'rgba(255, 255, 255, 0.1)'; ?>; border-radius: 8px; cursor: pointer; color: white; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;" onmouseover="this.style.borderColor='rgba(76, 175, 80, 0.8)'; this.style.transform='translateY(-4px)'; this.style.boxShadow='0 8px 20px rgba(76, 175, 80, 0.3)'" onmouseout="this.style.borderColor='<?php echo $theme['id'] === $currentTheme ? '#4caf50' : 'rgba(255, 255, 255, 0.1)'; ?>'; this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                    <div style="font-size: 40px;"><?php echo $theme['emoji']; ?></div>
+                    <div style="font-weight: 600; font-size: 13px;"><?php echo e($theme['name']); ?></div>
                     <?php if ($theme['id'] === $currentTheme): ?>
-                      <div style="font-size: 11px; color: #4caf50;">✓ Actif</div>
+                      <div style="font-size: 11px; color: #4caf50; margin-top: 4px; padding: 2px 6px; background: rgba(76, 175, 80, 0.2); border-radius: 3px;">✓ Actif</div>
                     <?php endif; ?>
                   </button>
                 </form>
               <?php endforeach; ?>
+            </div>
+
+            <!-- Preview Section -->
+            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
+              <h4 style="margin-bottom: 12px; color: #fff;">Aperçu complet du thème actuel</h4>
+              <iframe src="<?php echo e('/' . (empty($currentTheme) || $currentTheme === 'default' ? 'launcher/themes/default' : 'launcher/themes/' . $currentTheme) . '/index.html'); ?>" style="width: 100%; height: 400px; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; background: #0c0c14;"></iframe>
             </div>
           </div>
 
