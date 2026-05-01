@@ -661,19 +661,22 @@
             const maximizeBtn = document.getElementById('maximize-btn');
             const closeBtn = document.getElementById('close-btn');
 
-            minimizeBtn?.addEventListener('click', () => {
-                if (window.electronAPI?.minimize) window.electronAPI.minimize();
-                else if (window.launcher?.minimize) window.launcher.minimize();
+            minimizeBtn?.addEventListener('click', async () => {
+                if (window.launcherAPI?.window?.minimize) {
+                    await window.launcherAPI.window.minimize();
+                }
             });
 
-            maximizeBtn?.addEventListener('click', () => {
-                if (window.electronAPI?.maximize) window.electronAPI.maximize();
-                else if (window.launcher?.maximize) window.launcher.maximize();
+            maximizeBtn?.addEventListener('click', async () => {
+                if (window.launcherAPI?.window?.maximize) {
+                    await window.launcherAPI.window.maximize();
+                }
             });
 
-            closeBtn?.addEventListener('click', () => {
-                if (window.electronAPI?.close) window.electronAPI.close();
-                else if (window.launcher?.quit) window.launcher.quit();
+            closeBtn?.addEventListener('click', async () => {
+                if (window.launcherAPI?.window?.close) {
+                    await window.launcherAPI.window.close();
+                }
             });
         });
     </script>

@@ -91,4 +91,11 @@ contextBridge.exposeInMainWorld('launcherAPI', {
       }
     });
   },
+
+  // Window controls (custom title bar)
+  window: {
+    minimize: async () => await ipcRenderer.invoke('window:minimize'),
+    maximize: async () => await ipcRenderer.invoke('window:maximize'),
+    close: async () => await ipcRenderer.invoke('window:close'),
+  },
 });

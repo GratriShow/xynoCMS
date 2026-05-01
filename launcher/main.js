@@ -545,8 +545,12 @@ function createPublisher(win) {
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 540,
-    height: 460,
+    width: 1400,
+    height: 900,
+    minWidth: 800,
+    minHeight: 600,
+    frame: false,
+    titleBarStyle: 'hidden',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -651,7 +655,8 @@ app.whenReady().then(async () => {
     }
   }
 
-  const win = createWindow();
+  let mainWin = createWindow();
+  const win = mainWin;
   const pub = createPublisher(win);
 
   let apiClient = null;
@@ -798,6 +803,23 @@ app.whenReady().then(async () => {
       // ignore
     }
   }
+
+  // Window control handlers (for custom title bar)
+  ipcMain.handle('window:minimize', () => {
+    mainWin?.minimize();
+  });
+
+  ipcMain.handle('window:maximize', () => {
+    if (mainWin?.isMaximized()) {
+      mainWin.unmaximize();
+    } else {
+      mainWin?.maximize();
+    }
+  });
+
+  ipcMain.handle('window:close', () => {
+    mainWin?.close();
+  });
 
   ipcMain.handle('auth:getSession', async () => {
     const paths = getLauncherPaths(app);
