@@ -84,10 +84,16 @@ async function writeSession(paths, session) {
 }
 
 async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
-	if (typeof debugLog === 'function') debugLog('[auth] loginMicrosoft() starting');
+	if (typeof debugLog === 'function') debugLog('═════════════════════════════════════════');
+	if (typeof debugLog === 'function') debugLog('[auth] 🚀 loginMicrosoft() STARTING');
+	if (typeof debugLog === 'function') debugLog(`[auth] onMsaCode callback present: ${typeof onMsaCode === 'function' ? '✅ YES' : '❌ NO'}`);
+	if (typeof debugLog === 'function') debugLog(`[auth] debugLog function present: ${typeof debugLog === 'function' ? '✅ YES' : '❌ NO'}`);
+	if (typeof debugLog === 'function') debugLog('═════════════════════════════════════════');
 
 	const cacheDir = getAuthCacheDir(paths);
+	if (typeof debugLog === 'function') debugLog(`[auth] Cache directory: ${cacheDir}`);
 	await fsp.mkdir(cacheDir, { recursive: true });
+	if (typeof debugLog === 'function') debugLog('[auth] ✅ Cache directory ready');
 
 	// Identifier used only for local caching.
 	const userIdentifier = 'default';
@@ -99,35 +105,53 @@ async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 	}
 
 	async function getTokenWith(options) {
-		const flow = new Authflow(userIdentifier, cacheDir, options);
+		if (typeof debugLog === 'function') debugLog(`[auth] 🔧 Creating Authflow with options: flow=${options.flow}, authTitle=${options.authTitle}, deviceType=${options.deviceType}`);
 
-		// Add explicit timeout (30 seconds) to prevent hanging
-		const timeoutMs = 30000;
+		const flow = new Authflow(userIdentifier, cacheDir, options);
+		if (typeof debugLog === 'function') debugLog('[auth] ✅ Authflow created successfully');
+
+		// Add explicit timeout (60 seconds) to prevent hanging - increased from 30s
+		const timeoutMs = 60000;
 		const timeoutPromise = new Promise((_, reject) =>
 			setTimeout(() => reject(new Error(`Authentication timeout after ${timeoutMs/1000}s. Check your internet connection and firewall settings.`)), timeoutMs)
 		);
 
-		if (typeof debugLog === 'function') debugLog(`[auth] Starting token fetch with ${timeoutMs/1000}s timeout...`);
+		if (typeof debugLog === 'function') debugLog(`[auth] ⏳ Starting token fetch with ${timeoutMs/1000}s timeout...`);
 
 		try {
+			if (typeof debugLog === 'function') debugLog('[auth] 🌐 Calling getMinecraftJavaToken({ fetchProfile: true })...');
 			const tokenPromise = flow.getMinecraftJavaToken({ fetchProfile: true });
+
+			if (typeof debugLog === 'function') debugLog('[auth] ⏳ Waiting for token promise or timeout...');
 			const result = await Promise.race([tokenPromise, timeoutPromise]);
-			if (typeof debugLog === 'function') debugLog('[auth] Token fetch completed successfully');
+
+			if (typeof debugLog === 'function') debugLog('[auth] ✅ Token fetch completed successfully');
 			return result;
 		} catch (err) {
 			const isTimeout = err && err.message && err.message.includes('timeout');
+			const errorMsg = err && err.message ? String(err.message) : String(err);
+
 			if (isTimeout) {
-				if (typeof debugLog === 'function') debugLog(`[auth] ⏱️ TIMEOUT: ${err.message}`);
+				if (typeof debugLog === 'function') debugLog(`[auth] ⏱️ TIMEOUT after ${timeoutMs/1000}s: ${errorMsg}`);
+				if (typeof debugLog === 'function') debugLog('[auth] ℹ️ Possible causes: No internet, DNS issues, firewall blocking, or Microsoft servers unreachable');
 			} else {
-				if (typeof debugLog === 'function') debugLog(`[auth] Token fetch error: ${err && err.message ? err.message : String(err)}`);
+				if (typeof debugLog === 'function') debugLog(`[auth] ❌ Token fetch error: ${errorMsg}`);
+				if (typeof debugLog === 'function') debugLog(`[auth] Error type: ${err && err.constructor && err.constructor.name ? err.constructor.name : 'Unknown'}`);
+				if (err && err.code) debugLog(`[auth] Error code: ${err.code}`);
 			}
 			throw err;
 		}
 	}
 
 	const codeCb = typeof onMsaCode === 'function' ? (data) => {
-		if (typeof debugLog === 'function') debugLog(`[auth] onMsaCode callback triggered: ${JSON.stringify(data)}`);
-		onMsaCode(data);
+		if (typeof debugLog === 'function') debugLog(`[auth] 📱 onMsaCode callback triggered with data: ${JSON.stringify(data)}`);
+		try {
+			onMsaCode(data);
+			if (typeof debugLog === 'function') debugLog('[auth] ✅ onMsaCode callback executed successfully');
+		} catch (err) {
+			if (typeof debugLog === 'function') debugLog(`[auth] ❌ onMsaCode callback error: ${err && err.message ? err.message : err}`);
+			throw err;
+		}
 	} : undefined;
 
 	let result;
