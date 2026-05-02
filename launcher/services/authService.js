@@ -93,24 +93,57 @@ async function clearAuthCache(cacheDir, debugLog) {
 	}
 }
 
-function runWithTimeout(promise, timeoutMs, label) {
-	let timer;
-	const timeoutPromise = new Promise((_, reject) => {
-		timer = setTimeout(() => reject(new Error(`${label} timeout after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs);
-	});
-	return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
-}
+async function tryFlow(userIdentifier, cacheDir, baseOptions, label, debugLog) {
+	if (typeof debugLog === 'function') debugLog(`[auth] 🔵 Trying ${label} (flow=${baseOptions.flow}, title=${baseOptions.authTitle})`);
 
-async function tryFlow(userIdentifier, cacheDir, options, timeoutMs, label, debugLog) {
-	if (typeof debugLog === 'function') debugLog(`[auth] 🔵 Trying ${label} (flow=${options.flow}, title=${options.authTitle})`);
-	const flow = new Authflow(userIdentifier, cacheDir, options);
-	const result = await runWithTimeout(
-		flow.getMinecraftJavaToken({ fetchProfile: true }),
-		timeoutMs,
-		label,
-	);
-	if (typeof debugLog === 'function') debugLog(`[auth] ✅ ${label} succeeded`);
-	return result;
+	// Two-phase timeout:
+	//   - PRE_CODE: 30s to obtain a device code (onMsaCode fires). If we don't
+	//     hear back from Microsoft this fast, the endpoint is unreachable for
+	//     this strategy and we should bail to the next one.
+	//   - POST_CODE: once the user has the code, give them 5 minutes to enter it.
+	const PRE_CODE_TIMEOUT_MS = 30 * 1000;
+	const POST_CODE_TIMEOUT_MS = 5 * 60 * 1000;
+
+	let codeReceived = false;
+	let timer;
+	let rejectTimeout;
+
+	const timeoutPromise = new Promise((_, reject) => {
+		rejectTimeout = reject;
+		timer = setTimeout(() => {
+			reject(new Error(`${label} timeout (no device code in ${PRE_CODE_TIMEOUT_MS / 1000}s — Microsoft endpoint unreachable?)`));
+		}, PRE_CODE_TIMEOUT_MS);
+	});
+
+	const wrappedOnMsaCode = (data) => {
+		if (!codeReceived) {
+			codeReceived = true;
+			if (typeof debugLog === 'function') debugLog(`[auth] ✅ Device code received for ${label}, extending timeout to ${POST_CODE_TIMEOUT_MS / 1000}s`);
+			clearTimeout(timer);
+			timer = setTimeout(() => {
+				rejectTimeout(new Error(`${label} timeout (user didn't enter code within ${POST_CODE_TIMEOUT_MS / 1000}s)`));
+			}, POST_CODE_TIMEOUT_MS);
+		}
+		if (typeof baseOptions.onMsaCode === 'function') {
+			try { baseOptions.onMsaCode(data); } catch { /* ignore */ }
+		}
+	};
+
+	const flow = new Authflow(userIdentifier, cacheDir, {
+		...baseOptions,
+		onMsaCode: wrappedOnMsaCode,
+	});
+
+	try {
+		const result = await Promise.race([
+			flow.getMinecraftJavaToken({ fetchProfile: true }),
+			timeoutPromise,
+		]);
+		if (typeof debugLog === 'function') debugLog(`[auth] ✅ ${label} succeeded`);
+		return result;
+	} finally {
+		clearTimeout(timer);
+	}
 }
 
 async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
@@ -131,9 +164,10 @@ async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 		}
 	} : undefined;
 
-	// 2-minute timeout per attempt: long enough for the user to enter the code,
-	// short enough to fall back quickly if Microsoft hangs.
-	const PER_ATTEMPT_TIMEOUT_MS = 2 * 60 * 1000;
+	// loginMicrosoft is always interactive — purge any cached state from a
+	// previous broken attempt so prismarine-auth starts a fresh device-code flow
+	// instead of silently retrying a poisoned token.
+	await clearAuthCache(cacheDir, debugLog);
 
 	// Strategy ordered by reliability for third-party launchers in 2026:
 	//   1. live + MinecraftNintendoSwitch — the de-facto standard for unofficial
@@ -168,7 +202,7 @@ async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 	for (let i = 0; i < strategies.length; i += 1) {
 		const { label, options } = strategies[i];
 		try {
-			result = await tryFlow(userIdentifier, cacheDir, options, PER_ATTEMPT_TIMEOUT_MS, label, debugLog);
+			result = await tryFlow(userIdentifier, cacheDir, options, label, debugLog);
 			break;
 		} catch (err) {
 			lastErr = err;
