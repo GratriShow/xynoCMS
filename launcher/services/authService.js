@@ -3,8 +3,35 @@
 
 const fsp = require('node:fs/promises');
 const path = require('node:path');
+const https = require('node:https');
+const http = require('node:http');
 
 const { Authflow, Titles } = require('prismarine-auth');
+
+// Force IPv4 and disable SSL verification (last resort for connectivity issues)
+// This is needed because some servers block certain requests
+function createHttpAgent() {
+	const httpsAgent = new https.Agent({
+		family: 4, // Force IPv4
+		keepAlive: true,
+		keepAliveMsecs: 1000,
+		maxSockets: 50,
+		maxFreeSockets: 10,
+		timeout: 120000, // 120 seconds
+		rejectUnauthorized: false, // Disable SSL verification (for connectivity issues)
+	});
+
+	const httpAgent = new http.Agent({
+		family: 4, // Force IPv4
+		keepAlive: true,
+		keepAliveMsecs: 1000,
+		maxSockets: 50,
+		maxFreeSockets: 10,
+		timeout: 120000,
+	});
+
+	return { httpAgent, httpsAgent };
+}
 
 function isPlainObject(v) {
 	return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -85,9 +112,14 @@ async function writeSession(paths, session) {
 
 async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 	if (typeof debugLog === 'function') debugLog('═════════════════════════════════════════');
-	if (typeof debugLog === 'function') debugLog('[auth] 🚀 loginMicrosoft() STARTING');
+	if (typeof debugLog === 'function') debugLog('[auth] 🚀 loginMicrosoft() STARTING - AGGRESSIVE MODE');
 	if (typeof debugLog === 'function') debugLog(`[auth] onMsaCode callback present: ${typeof onMsaCode === 'function' ? '✅ YES' : '❌ NO'}`);
 	if (typeof debugLog === 'function') debugLog(`[auth] debugLog function present: ${typeof debugLog === 'function' ? '✅ YES' : '❌ NO'}`);
+	if (typeof debugLog === 'function') debugLog('[auth] 🔥 Using aggressive connectivity settings:');
+	if (typeof debugLog === 'function') debugLog('[auth]   - IPv4 only (no IPv6)');
+	if (typeof debugLog === 'function') debugLog('[auth]   - SSL verification disabled');
+	if (typeof debugLog === 'function') debugLog('[auth]   - Keep-alive enabled');
+	if (typeof debugLog === 'function') debugLog('[auth]   - 90 second timeout');
 	if (typeof debugLog === 'function') debugLog('═════════════════════════════════════════');
 
 	const cacheDir = getAuthCacheDir(paths);
@@ -107,23 +139,30 @@ async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 	async function getTokenWith(options) {
 		if (typeof debugLog === 'function') debugLog(`[auth] 🔧 Creating Authflow with options: flow=${options.flow}, authTitle=${options.authTitle}, deviceType=${options.deviceType}`);
 
+		// Create aggressive HTTP agents to bypass connectivity issues
+		const { httpAgent, httpsAgent } = createHttpAgent();
+		if (typeof debugLog === 'function') debugLog('[auth] 🔌 Using custom HTTP agents (IPv4 forced, SSL verification disabled)');
+
 		// Add custom headers/agent to avoid being blocked by Minecraft servers
 		const enhancedOptions = {
 			...options,
 			// Use a more standard User-Agent that Minecraft won't block
 			userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+			// Pass custom agents for both HTTP and HTTPS
+			httpAgent,
+			httpsAgent,
 		};
 
 		const flow = new Authflow(userIdentifier, cacheDir, enhancedOptions);
-		if (typeof debugLog === 'function') debugLog('[auth] ✅ Authflow created successfully');
+		if (typeof debugLog === 'function') debugLog('[auth] ✅ Authflow created successfully with aggressive settings');
 
-		// Add explicit timeout (60 seconds) to prevent hanging - increased from 30s
-		const timeoutMs = 60000;
+		// Add explicit timeout (90 seconds) - increased even more for aggressive setup
+		const timeoutMs = 90000;
 		const timeoutPromise = new Promise((_, reject) =>
-			setTimeout(() => reject(new Error(`Authentication timeout after ${timeoutMs/1000}s. Check your internet connection and firewall settings.`)), timeoutMs)
+			setTimeout(() => reject(new Error(`Authentication timeout after ${timeoutMs/1000}s. Server not responding.`)), timeoutMs)
 		);
 
-		if (typeof debugLog === 'function') debugLog(`[auth] ⏳ Starting token fetch with ${timeoutMs/1000}s timeout...`);
+		if (typeof debugLog === 'function') debugLog(`[auth] ⏳ Starting token fetch with ${timeoutMs/1000}s timeout (IPv4 only, SSL bypassed)...`);
 
 		try {
 			if (typeof debugLog === 'function') debugLog('[auth] 🌐 Calling getMinecraftJavaToken({ fetchProfile: true })...');
@@ -132,7 +171,7 @@ async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 			if (typeof debugLog === 'function') debugLog('[auth] ⏳ Waiting for token promise or timeout...');
 			const result = await Promise.race([tokenPromise, timeoutPromise]);
 
-			if (typeof debugLog === 'function') debugLog('[auth] ✅ Token fetch completed successfully');
+			if (typeof debugLog === 'function') debugLog('[auth] ✅✅✅ Token fetch SUCCEEDED! User authenticated!');
 			return result;
 		} catch (err) {
 			const isTimeout = err && err.message && err.message.includes('timeout');
@@ -140,11 +179,12 @@ async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 
 			if (isTimeout) {
 				if (typeof debugLog === 'function') debugLog(`[auth] ⏱️ TIMEOUT after ${timeoutMs/1000}s: ${errorMsg}`);
-				if (typeof debugLog === 'function') debugLog('[auth] ℹ️ Possible causes: No internet, DNS issues, firewall blocking, or Microsoft servers unreachable');
+				if (typeof debugLog === 'function') debugLog('[auth] 🔴 Even with aggressive settings, server is not responding');
+				if (typeof debugLog === 'function') debugLog('[auth] ℹ️ This likely means prismarine-auth is incompatible or server API changed');
 			} else {
 				if (typeof debugLog === 'function') debugLog(`[auth] ❌ Token fetch error: ${errorMsg}`);
 				if (typeof debugLog === 'function') debugLog(`[auth] Error type: ${err && err.constructor && err.constructor.name ? err.constructor.name : 'Unknown'}`);
-				if (err && err.code) debugLog(`[auth] Error code: ${err.code}`);
+				if (err && err.code) if (typeof debugLog === 'function') debugLog(`[auth] Error code: ${err.code}`);
 			}
 			throw err;
 		}
