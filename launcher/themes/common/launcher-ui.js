@@ -145,6 +145,47 @@
       if (launcherNameEl) launcherNameEl.textContent = safe || 'Launcher';
     }
 
+    // --- Custom per-launcher background ---------------------------------
+    // The tenant uploads an image in the dashboard. The manifest endpoint
+    // returns a same-origin URL under /uploads/launchers/<id>/. We slap it on
+    // <body> as a cover-sized background-image. Empty/invalid URL clears the
+    // override so the theme's own CSS can take back over.
+    let customBackgroundApplied = false;
+    function applyCustomBackground(url) {
+      const safe = typeof url === 'string' ? url.trim() : '';
+      const body = document.body;
+      if (!body) return;
+
+      if (!safe) {
+        if (customBackgroundApplied) {
+          body.style.backgroundImage = '';
+          body.style.backgroundSize = '';
+          body.style.backgroundPosition = '';
+          body.style.backgroundRepeat = '';
+          body.style.backgroundAttachment = '';
+          customBackgroundApplied = false;
+        }
+        return;
+      }
+
+      // Only accept http(s) or same-origin paths. Anything else (data:, file:,
+      // javascript:, …) is silently dropped to keep this hardened against a
+      // compromised manifest.
+      if (!/^https?:\/\//i.test(safe) && !safe.startsWith('/')) return;
+
+      // CSS-escape the URL — quotes inside the URL would otherwise break out
+      // of the string. URL() will percent-encode them when needed.
+      let safeUrl;
+      try { safeUrl = new URL(safe, window.location.href).toString(); } catch { return; }
+
+      body.style.backgroundImage = `url("${safeUrl.replace(/"/g, '%22')}")`;
+      body.style.backgroundSize = 'cover';
+      body.style.backgroundPosition = 'center center';
+      body.style.backgroundRepeat = 'no-repeat';
+      body.style.backgroundAttachment = 'fixed';
+      customBackgroundApplied = true;
+    }
+
     // --- Branding (logo + primary color + copyright footer) -------------
     const SAFE_HEX = /^#[0-9a-fA-F]{3,8}$/;
 
@@ -1063,6 +1104,13 @@
         if (info.extensions) setExtensions(info.extensions);
         if (info.auth) applyAuth(info.auth);
         if (info.marketplace) applyMarketplace(info.marketplace);
+        // Per-launcher custom background — when the manifest provides a
+        // backgroundUrl, paint it on <body> with `cover` sizing. Empty string
+        // means "remove override", which lets the active theme's own CSS take
+        // over again (e.g. cosmic's gradient).
+        if (typeof info.backgroundUrl === 'string') {
+          applyCustomBackground(info.backgroundUrl);
+        }
       },
       onUx: (payload) => {
         if (!payload) return;

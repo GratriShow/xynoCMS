@@ -74,12 +74,28 @@ try {
 
     $pdo = db();
 
+    // Per-launcher background image, optional. The dashboard upload writes the
+    // file under /uploads/launchers/<id>/background.<ext> and stores the
+    // filename in launchers.background_path. We return a public URL so the
+    // launcher can fetch the image at runtime without knowing the layout.
+    $backgroundUrl = '';
+    $bgPath = trim((string)($launcher['background_path'] ?? ''));
+    if ($bgPath !== '' && preg_match('/^background\.(png|jpg|webp)$/', $bgPath)) {
+        $bgFsPath = __DIR__ . '/../../uploads/launchers/' . $launcherId . '/' . $bgPath;
+        if (is_file($bgFsPath)) {
+            // Cache-busting query string so the launcher refreshes when the
+            // tenant uploads a new image without us having to bump a version.
+            $backgroundUrl = api_public_url('/uploads/launchers/' . $launcherId . '/' . $bgPath . '?v=' . filemtime($bgFsPath));
+        }
+    }
+
     $manifest = [
         'launcher' => [
             'name' => (string)($launcher['name'] ?? ''),
             'version' => (string)($launcher['version'] ?? ''),
             'loader' => strtolower((string)($launcher['loader'] ?? '')),
             'theme' => v2_manifest_theme_slug((string)($launcher['theme'] ?? '')),
+            'background_url' => $backgroundUrl,
         ],
         'file_count' => 0,
         'total_size' => 0,

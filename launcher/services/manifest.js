@@ -35,6 +35,24 @@ function parseManifest(raw, { apiBaseUrl }) {
   const loader = typeof launcher.loader === 'string' ? launcher.loader : '';
   const theme = typeof launcher.theme === 'string' ? launcher.theme : '';
 
+  // Per-launcher background URL — optional, may be empty if the tenant hasn't
+  // uploaded one in the dashboard. We validate it's a same-origin URL pointing
+  // at /uploads/ to refuse arbitrary external URLs (which would otherwise let
+  // a compromised CMS feed any image into the launcher window).
+  let backgroundUrl = '';
+  const rawBg = typeof launcher.background_url === 'string' ? launcher.background_url.trim() : '';
+  if (rawBg) {
+    try {
+      const parsedBg = new URL(rawBg);
+      const expectedOrigin = new URL(apiBaseUrl).origin;
+      if (parsedBg.origin === expectedOrigin && parsedBg.pathname.startsWith('/uploads/launchers/')) {
+        backgroundUrl = parsedBg.toString();
+      }
+    } catch {
+      // Invalid URL — fall back to no background.
+    }
+  }
+
   const filesRaw = Array.isArray(raw.files) ? raw.files : null;
   if (!filesRaw) {
     throw new Error('Invalid manifest (missing files[])');
@@ -87,7 +105,13 @@ function parseManifest(raw, { apiBaseUrl }) {
   const totalSize = Number.isFinite(raw.total_size) ? raw.total_size : Number(raw.total_size || 0);
 
   return {
-    launcher: { name, version, loader, theme: String(theme || '').trim() || 'default' },
+    launcher: {
+      name,
+      version,
+      loader,
+      theme: String(theme || '').trim() || 'default',
+      backgroundUrl,
+    },
     fileCount: files.length,
     totalSize: Number.isFinite(totalSize) ? totalSize : 0,
     files,

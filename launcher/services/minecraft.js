@@ -383,16 +383,64 @@ function buildAuthorization(session) {
   };
 }
 
-async function launchMinecraft({ paths, session, manifest, settings, javaPath, onStatus, onLog, onClose } = {}) {
-  const version = await resolveLaunchVersion({ paths, manifest, onStatus, javaPath });
-  if (typeof onStatus === 'function') onStatus('Lancement de Minecraft…');
+// Translate a minecraft-launcher-core `progress` event type to a French
+// human-readable label. MCLC emits one of: 'assets', 'classes', 'natives'.
+function describeMclcProgressType(type) {
+  const t = String(type || '').toLowerCase();
+  if (t === 'assets') return 'des assets Minecraft';
+  if (t === 'classes' || t === 'libraries') return 'des bibliothèques';
+  if (t === 'natives') return 'des fichiers natifs';
+  return t ? `de ${t}` : '';
+}
 
-  const launcher = new Client();
+async function launchMinecraft({ paths, session, manifest, settings, javaPath, onStatus, onProgress, onLog, onClose, debugLog } = {}) {
   const log = typeof onLog === 'function' ? onLog : () => {};
+  const status = typeof onStatus === 'function' ? onStatus : () => {};
+  const progress = typeof onProgress === 'function' ? onProgress : () => {};
+  const dlog = typeof debugLog === 'function' ? debugLog : () => {};
+
+  // Step A: figure out which version we need to launch (vanilla / Forge / NeoForge).
+  // For Forge & NeoForge, this triggers the installer download/run if needed.
+  status('Préparation de la version Minecraft…');
+  dlog('[mc] resolveLaunchVersion: starting');
+  const version = await resolveLaunchVersion({ paths, manifest, onStatus, javaPath });
+  dlog(`[mc] resolveLaunchVersion: ok, name=${version.custom || version.number}`);
+
+  status('Préparation du moteur de lancement…');
+  const launcher = new Client();
 
   launcher.on('debug', (l) => log(String(l || '')));
   launcher.on('data', (d) => log(String(d || '')));
-  launcher.on('close', (code) => log(`Minecraft fermé (code=${code})`));
+
+  // MCLC emits 'progress' for every batch of files it downloads (assets,
+  // libraries, natives). Without this, the UI just sits at "Lancement…" while
+  // 700 MB silently downloads. We translate the type into a friendly status
+  // line and forward the raw {type, task, total} so the UI can show a bar.
+  let lastProgressType = '';
+  launcher.on('progress', (p) => {
+    if (!p) return;
+    const type = p.type ? String(p.type) : '';
+    if (type && type !== lastProgressType) {
+      lastProgressType = type;
+      const label = describeMclcProgressType(type);
+      if (label) status(`Téléchargement ${label}…`);
+      dlog(`[mc] progress phase changed: ${type}`);
+    }
+    progress({ type, task: p.task || 0, total: p.total || 0 });
+  });
+
+  // 'arguments' fires once MCLC has built the full JVM command line, right
+  // before spawning the process. This is the signal that all downloads are
+  // done and the JVM is about to start.
+  launcher.on('arguments', () => {
+    status('Démarrage de la JVM Java…');
+    dlog('[mc] arguments built, JVM about to start');
+  });
+
+  launcher.on('close', (code) => {
+    log(`Minecraft fermé (code=${code})`);
+    dlog(`[mc] close event, code=${code}`);
+  });
 
   const ramMinMb = settings && Number.isFinite(Number(settings.ram_min)) ? Math.trunc(Number(settings.ram_min)) : 2048;
   const ramMaxMb = settings && Number.isFinite(Number(settings.ram_max)) ? Math.trunc(Number(settings.ram_max)) : 4096;
@@ -423,7 +471,26 @@ async function launchMinecraft({ paths, session, manifest, settings, javaPath, o
     }
   }
 
+  status('Vérification des fichiers Minecraft…');
+  dlog('[mc] launcher.launch() called');
   const child = launcher.launch(launchOpts);
+
+  // Give MCLC a moment to either spawn the JVM or fail. If after 10 minutes
+  // we still don't have a pid, something is very wrong (MCLC stuck on a slow
+  // download or unable to find Java) and we want to surface that to the user
+  // rather than let them stare at the loading bar. 10 minutes is long enough
+  // for a fresh install on a 5 Mbps connection (~700 MB).
+  const LAUNCH_TIMEOUT_MS = 10 * 60 * 1000;
+  if (child && typeof child.then === 'function') {
+    // Older MCLC versions return a Promise; resolve it with a timeout.
+    await Promise.race([
+      child,
+      new Promise((_, reject) => setTimeout(
+        () => reject(new Error("Le lancement de Minecraft a dépassé 10 minutes — vérifie ta connexion et l'installation Java.")),
+        LAUNCH_TIMEOUT_MS,
+      )),
+    ]);
+  }
 
   if (child && typeof onClose === 'function' && typeof child.on === 'function') {
     try {
@@ -433,6 +500,7 @@ async function launchMinecraft({ paths, session, manifest, settings, javaPath, o
     }
   }
 
+  status('Minecraft est lancé. Bon jeu !');
   return {
     ok: true,
     pid: child && child.pid ? child.pid : null,

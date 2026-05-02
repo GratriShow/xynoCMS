@@ -98,7 +98,7 @@ function api_get_launcher_by_uuid(string $uuid): ?array
     $pdo = db();
 
     try {
-        $stmt = $pdo->prepare('SELECT id, user_id, uuid, api_key, client_integrity_sha256, name, description, version, loader, theme, modules, last_ping FROM launchers WHERE uuid = ? LIMIT 1');
+        $stmt = $pdo->prepare('SELECT id, user_id, uuid, api_key, client_integrity_sha256, name, description, version, loader, theme, background_path, modules, last_ping FROM launchers WHERE uuid = ? LIMIT 1');
         $stmt->execute([$uuid]);
         $row = $stmt->fetch();
         if ($row) {
@@ -108,11 +108,15 @@ function api_get_launcher_by_uuid(string $uuid): ?array
             if (!isset($row['client_integrity_sha256']) || $row['client_integrity_sha256'] === null) {
                 $row['client_integrity_sha256'] = '';
             }
+            if (!isset($row['background_path']) || $row['background_path'] === null) {
+                $row['background_path'] = '';
+            }
             return $row;
         }
         return null;
     } catch (PDOException $e) {
-        // Backward compatibility (older schema without `modules`)
+        // Backward compatibility (older schema without `modules` /
+        // `client_integrity_sha256` / `background_path`).
         $raw = $e->getMessage();
         if (stripos($raw, 'unknown column') === false) {
             throw $e;
@@ -120,7 +124,8 @@ function api_get_launcher_by_uuid(string $uuid): ?array
 
         $missingModules = stripos($raw, 'modules') !== false;
         $missingIntegrity = stripos($raw, 'client_integrity_sha256') !== false;
-        if (!$missingModules && !$missingIntegrity) {
+        $missingBackground = stripos($raw, 'background_path') !== false;
+        if (!$missingModules && !$missingIntegrity && !$missingBackground) {
             throw $e;
         }
 
@@ -132,6 +137,7 @@ function api_get_launcher_by_uuid(string $uuid): ?array
         }
         $row['modules'] = '';
         $row['client_integrity_sha256'] = '';
+        $row['background_path'] = '';
         return $row;
     }
 }

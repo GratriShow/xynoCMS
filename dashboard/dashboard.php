@@ -22,7 +22,7 @@ try {
     $isAdmin = false;
 }
 
-$stmt = $pdo->prepare('SELECT uuid, name, description, version, loader, theme, created_at FROM launchers WHERE user_id = ? ORDER BY created_at DESC');
+$stmt = $pdo->prepare('SELECT uuid, name, description, version, loader, theme, background_path, created_at FROM launchers WHERE user_id = ? ORDER BY created_at DESC');
 $stmt->execute([$user['id']]);
 $launchers = $stmt->fetchAll();
 
@@ -909,6 +909,35 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
                 <div>
                   <strong style="color:#fff;font-size:14px">Logo actuel</strong><br>
                   <span class="small"><?php echo $hasLogo ? 'Personnalisé' : 'Logo Xyno par défaut'; ?></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="sub-card-head" style="margin-top:4px"><div><h3>Background du launcher</h3><p>Image affichée derrière l'interface du launcher. PNG / JPG / WEBP, max 5 Mo. Idéalement 1920×1080 ou plus.</p></div></div>
+            <?php
+              $bgPath = trim((string)($selected['background_path'] ?? ''));
+              $hasBg = ($bgPath !== '') && is_file(__DIR__ . '/../uploads/launchers/' . (int)$selectedId . '/' . $bgPath);
+              $bgUrl = $hasBg ? ('uploads/launchers/' . (int)$selectedId . '/' . $bgPath) : '';
+            ?>
+            <div class="two-col" style="align-items:end">
+              <label class="label"><span>Fichier image (PNG / JPG / WEBP)</span>
+                <input class="input" type="file" name="background" accept="image/png,image/jpeg,image/webp" />
+                <span class="help">Affiché en plein cadre. Privilégie une image qui passe bien en fond (peu de détails au centre).</span></label>
+              <div style="padding:12px;background:rgba(0,0,0,.25);border-radius:12px;display:flex;align-items:center;gap:12px">
+                <div style="width:120px;height:68px;border-radius:8px;border:1px solid var(--border-2);background:
+                  <?php if ($hasBg): ?>
+                    url('<?php echo e('/' . $bgUrl . '?v=' . filemtime(__DIR__ . '/../' . $bgUrl)); ?>') center/cover no-repeat, var(--grad-soft);
+                  <?php else: ?>
+                    var(--grad-soft);
+                  <?php endif; ?>"></div>
+                <div>
+                  <strong style="color:#fff;font-size:14px">Background actuel</strong><br>
+                  <span class="small"><?php echo $hasBg ? 'Personnalisé' : 'Background du thème par défaut'; ?></span>
+                  <?php if ($hasBg): ?>
+                    <br><label class="small" style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;cursor:pointer">
+                      <input type="checkbox" name="remove_background" value="1" /> Supprimer le background
+                    </label>
+                  <?php endif; ?>
                 </div>
               </div>
             </div>

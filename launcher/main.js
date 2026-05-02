@@ -333,6 +333,7 @@ async function runSync(apiClient, pub) {
     name: manifest.launcher.name,
     version: manifest.launcher.version,
     loader: manifest.launcher.loader,
+    backgroundUrl: manifest.launcher.backgroundUrl || '',
   });
 
   console.log(`[sync] manifest ok: ${manifest.files.length} fichiers, total ${manifest.totalSize} bytes`);
@@ -983,31 +984,59 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('launcher:play', async () => {
+    debugLog('[play] === PLAY HANDLER START ===');
+
+    // Wrap an awaitable in a hard timeout so a misbehaving network call (e.g.
+    // a stalled API endpoint) can't keep the user staring at the loading bar
+    // forever. Throws a labelled error on timeout that ends up in the UI.
+    const withTimeout = (promise, ms, label) => {
+      let timer;
+      const t = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timeout après ${Math.round(ms / 1000)}s`)), ms);
+      });
+      return Promise.race([promise, t]).finally(() => clearTimeout(timer));
+    };
+
     try {
-      await bootstrapApiClient();
+      pub.ux({ state: 'INIT' });
+      pub.status('Préparation du lancement…');
+      pub.progress({ done: 0, total: 0, percent: 0, currentFile: '' });
+
+      pub.status("Connexion à l'API Xyno…");
+      debugLog('[play] step 1: bootstrapApiClient');
+      await withTimeout(bootstrapApiClient(), 15_000, "Connexion à l'API");
 
       // Enforce subscription on every play.
-      const lic = await checkLicense(apiClient, { pub });
+      pub.status("Vérification de l'abonnement…");
+      debugLog('[play] step 2: checkLicense');
+      const lic = await withTimeout(checkLicense(apiClient, { pub }), 15_000, 'Vérification abonnement');
       licenseState = { active: lic.active, status: lic.status, checkedAt: Date.now() };
       if (!lic.active) {
+        debugLog('[play] license inactive, aborting');
         throw new Error('Votre abonnement a expiré');
       }
 
       // Short-lived token request right before launching the game.
-      const tokenRes = await apiClient.mintPlayToken();
+      pub.status('Demande du jeton de session…');
+      debugLog('[play] step 3: mintPlayToken');
+      const tokenRes = await withTimeout(apiClient.mintPlayToken(), 15_000, 'Jeton de session');
       if (!tokenRes || tokenRes.status !== 'active' || !tokenRes.token) {
         throw new Error("Impossible de valider l'abonnement (token).");
       }
 
+      pub.status('Chargement de votre session Microsoft…');
+      debugLog('[play] step 4: getSession');
       const paths = getLauncherPaths(app);
       const session = await getSession(paths);
       if (!session) throw new Error('Non connecté.');
+      debugLog(`[play] session ok, user=${session.username}`);
 
       if (!lastManifest) {
         throw new Error('Manifest indisponible. Relance une synchronisation.');
       }
 
-      pub.ux({ state: 'INIT' });
+      pub.status('Lecture des paramètres du launcher…');
+      debugLog('[play] step 5: loadSettings');
       const settings = await loadSettings(paths);
 
       // Anti-cheat (classique) — refuse to launch if injection vectors are
@@ -1016,12 +1045,18 @@ app.whenReady().then(async () => {
       // returned by /api/launcher_ext.php?ext=anticheat includes a process
       // blacklist and integrity requirements.
       if (isExtEnabled(extensionsMap, 'anticheat')) {
+        pub.status('Vérification anti-cheat…');
+        debugLog('[play] step 6: anti-cheat');
         let advanced = null;
         try {
           const uuidForExt = requireEnv('LAUNCHER_UUID');
           const apiKeyForExt = requireEnv('LAUNCHER_KEY');
           const apiBaseUrlForExt = requireEnv('API_BASE_URL');
-          const payload = await fetchExtensionData(apiBaseUrlForExt, uuidForExt, apiKeyForExt, 'anticheat');
+          const payload = await withTimeout(
+            fetchExtensionData(apiBaseUrlForExt, uuidForExt, apiKeyForExt, 'anticheat'),
+            10_000,
+            'Anti-cheat',
+          );
           const data = payload && payload.data ? payload.data : null;
           if (data && data.mode === 'advanced') {
             advanced = {
@@ -1029,20 +1064,47 @@ app.whenReady().then(async () => {
               process_blacklist: Array.isArray(data.process_blacklist) ? data.process_blacklist : [],
             };
           }
-        } catch {
+        } catch (extErr) {
           // If we can't reach the server, fall back to classic mode.
+          debugLog(`[play] anti-cheat advanced fetch failed (using classic mode): ${extErr && extErr.message}`);
         }
         runAntiCheatGuard(settings, advanced);
       }
 
+      pub.status('Recherche de Java…');
+      debugLog('[play] step 7: resolveJavaPath');
       const javaPath = resolveJavaPath(settings);
+      debugLog(`[play] java=${javaPath || '(auto)'}`);
+
+      // launchMinecraft now reports detailed progress through onStatus/onProgress.
+      // - onStatus receives free-form French strings for the loading text.
+      // - onProgress receives MCLC progress events ({ type, task, total }) and
+      //   we translate them into a percent for the UI bar.
       const res = await launchMinecraft({
         paths,
         session,
         manifest: lastManifest,
         settings,
         javaPath,
-        onStatus: (s) => pub.status(s),
+        debugLog,
+        onStatus: (s) => {
+          if (s) {
+            debugLog(`[play] status: ${s}`);
+            pub.status(s);
+          }
+        },
+        onProgress: (p) => {
+          if (!p) return;
+          const total = Number(p.total) || 0;
+          const task = Number(p.task) || 0;
+          const percent = total > 0 ? Math.min(100, Math.round((task / total) * 100)) : 0;
+          pub.progress({
+            done: task,
+            total,
+            percent,
+            currentFile: p.type ? `${p.type}` : '',
+          });
+        },
         onLog: (line) => {
           if (line) console.log('[mc]', line);
         },
@@ -1060,6 +1122,8 @@ app.whenReady().then(async () => {
           }
         },
       });
+      debugLog(`[play] launchMinecraft returned: pid=${res && res.pid}, version=${res && res.version}`);
+      pub.progress({ done: 0, total: 0, percent: 0, currentFile: '' });
 
       currentGamePid = res && res.pid ? res.pid : null;
 

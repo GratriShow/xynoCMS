@@ -56,6 +56,73 @@ $upd->execute([
     $user['id'],
 ]);
 
+// ---- Upload background (optionnel) ----
+// The tenant can upload a custom background image (PNG/JPG/WEBP) per launcher.
+// We store it as background.<ext> under /uploads/launchers/<launcherId>/ and
+// remember the filename in launchers.background_path. The manifest endpoint
+// turns that into a public URL the launcher can fetch at runtime.
+$bgNotice = '';
+if (!empty($_FILES['background']['tmp_name']) && is_uploaded_file($_FILES['background']['tmp_name'])) {
+    $bgErr  = (int)($_FILES['background']['error'] ?? UPLOAD_ERR_NO_FILE);
+    $bgSize = (int)($_FILES['background']['size'] ?? 0);
+    $bgMax  = 5 * 1024 * 1024; // 5 Mo — backgrounds peuvent être plus lourds qu'un logo
+
+    if ($bgErr !== UPLOAD_ERR_OK) {
+        $bgNotice = ' (background non uploadé : erreur ' . $bgErr . ')';
+    } elseif ($bgSize > $bgMax) {
+        $bgNotice = ' (background trop lourd, max 5 Mo)';
+    } else {
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $bgMime = (string)$finfo->file($_FILES['background']['tmp_name']);
+        $bgAllowed = [
+            'image/png'  => 'png',
+            'image/jpeg' => 'jpg',
+            'image/webp' => 'webp',
+        ];
+        if (!isset($bgAllowed[$bgMime])) {
+            $bgNotice = ' (format de background non supporté : ' . $bgMime . ')';
+        } else {
+            $bgExt = $bgAllowed[$bgMime];
+            $bgDir = __DIR__ . '/../uploads/launchers/' . $launcherId;
+            if (!is_dir($bgDir)) {
+                @mkdir($bgDir, 0755, true);
+            }
+            // Remove any previous background file with a different extension so
+            // we never end up with two stale background.* files lying around.
+            foreach (['png', 'jpg', 'webp'] as $oldExt) {
+                $stale = $bgDir . '/background.' . $oldExt;
+                if ($oldExt !== $bgExt && is_file($stale)) {
+                    @unlink($stale);
+                }
+            }
+            $bgTarget = $bgDir . '/background.' . $bgExt;
+            if (@move_uploaded_file($_FILES['background']['tmp_name'], $bgTarget)) {
+                @chmod($bgTarget, 0644);
+                $upBg = $pdo->prepare('UPDATE launchers SET background_path = ? WHERE uuid = ? AND user_id = ?');
+                $upBg->execute(['background.' . $bgExt, $launcherUuid, $user['id']]);
+            } else {
+                $bgNotice = ' (background non enregistré)';
+            }
+        }
+    }
+}
+
+// ---- Suppression background (optionnel) ----
+// If the tenant ticks "Remove current background", clear the DB column AND
+// delete the file on disk so the launcher reverts to the theme's default.
+if (!empty($_POST['remove_background'])) {
+    $bgDir = __DIR__ . '/../uploads/launchers/' . $launcherId;
+    foreach (['png', 'jpg', 'webp'] as $oldExt) {
+        $stale = $bgDir . '/background.' . $oldExt;
+        if (is_file($stale)) {
+            @unlink($stale);
+        }
+    }
+    $clearBg = $pdo->prepare('UPDATE launchers SET background_path = NULL WHERE uuid = ? AND user_id = ?');
+    $clearBg->execute([$launcherUuid, $user['id']]);
+    $bgNotice = ' (background supprimé)';
+}
+
 // ---- Upload logo (optionnel) ----
 $logoNotice = '';
 if (!empty($_FILES['logo']['tmp_name']) && is_uploaded_file($_FILES['logo']['tmp_name'])) {
@@ -108,5 +175,5 @@ if (!empty($_FILES['logo']['tmp_name']) && is_uploaded_file($_FILES['logo']['tmp
     }
 }
 
-flash_set('success', 'Launcher mis à jour.' . $logoNotice);
+flash_set('success', 'Launcher mis à jour.' . $logoNotice . $bgNotice);
 redirect('/dashboard.php?launcher=' . urlencode($launcherUuid));
