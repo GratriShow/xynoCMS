@@ -147,43 +147,63 @@
 
     // --- Custom per-launcher background ---------------------------------
     // The tenant uploads an image in the dashboard. The manifest endpoint
-    // returns a same-origin URL under /uploads/launchers/<id>/. We slap it on
-    // <body> as a cover-sized background-image. Empty/invalid URL clears the
-    // override so the theme's own CSS can take back over.
-    let customBackgroundApplied = false;
+    // returns a same-origin URL under /uploads/launchers/<id>/. Most themes
+    // wrap the whole UI in a `.launcher-container` div with its own
+    // background, so just setting body.style.backgroundImage isn't visible.
+    //
+    // We work around this by injecting a stylesheet with `!important` rules
+    // that target body PLUS the common wrappers used across themes
+    // (.launcher-container, .app, .app-container, #app, [data-launcher-root]).
+    // Whichever selector matches the active theme, the rule applies and the
+    // image overrides the theme's own background.
     function applyCustomBackground(url) {
       const safe = typeof url === 'string' ? url.trim() : '';
-      const body = document.body;
-      if (!body) return;
+      let styleEl = document.getElementById('xyno-custom-bg-style');
 
       if (!safe) {
-        if (customBackgroundApplied) {
-          body.style.backgroundImage = '';
-          body.style.backgroundSize = '';
-          body.style.backgroundPosition = '';
-          body.style.backgroundRepeat = '';
-          body.style.backgroundAttachment = '';
-          customBackgroundApplied = false;
-        }
+        if (styleEl) styleEl.textContent = '';
+        console.log('[launcher-ui] applyCustomBackground: cleared (no url)');
         return;
       }
 
-      // Only accept http(s) or same-origin paths. Anything else (data:, file:,
-      // javascript:, …) is silently dropped to keep this hardened against a
-      // compromised manifest.
-      if (!/^https?:\/\//i.test(safe) && !safe.startsWith('/')) return;
+      // Only accept http(s) or same-origin paths. Anything else (data:,
+      // file:, javascript:, …) is silently dropped — defense in depth on top
+      // of the origin validation already done in services/manifest.js.
+      if (!/^https?:\/\//i.test(safe) && !safe.startsWith('/')) {
+        console.warn('[launcher-ui] applyCustomBackground: rejecting non-http URL', safe);
+        return;
+      }
 
-      // CSS-escape the URL — quotes inside the URL would otherwise break out
-      // of the string. URL() will percent-encode them when needed.
       let safeUrl;
-      try { safeUrl = new URL(safe, window.location.href).toString(); } catch { return; }
+      try { safeUrl = new URL(safe, window.location.href).toString(); } catch {
+        console.warn('[launcher-ui] applyCustomBackground: invalid URL', safe);
+        return;
+      }
+      // Escape double-quotes that would otherwise break out of the CSS string.
+      const cssUrl = safeUrl.replace(/"/g, '%22');
 
-      body.style.backgroundImage = `url("${safeUrl.replace(/"/g, '%22')}")`;
-      body.style.backgroundSize = 'cover';
-      body.style.backgroundPosition = 'center center';
-      body.style.backgroundRepeat = 'no-repeat';
-      body.style.backgroundAttachment = 'fixed';
-      customBackgroundApplied = true;
+      if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'xyno-custom-bg-style';
+        document.head.appendChild(styleEl);
+      }
+
+      styleEl.textContent = `
+        body,
+        .launcher-container,
+        .app,
+        .app-container,
+        #app,
+        [data-launcher-root] {
+          background-image: url("${cssUrl}") !important;
+          background-size: cover !important;
+          background-position: center center !important;
+          background-repeat: no-repeat !important;
+          background-attachment: fixed !important;
+          background-color: transparent !important;
+        }
+      `;
+      console.log('[launcher-ui] applyCustomBackground: applied', safeUrl);
     }
 
     // --- Branding (logo + primary color + copyright footer) -------------
