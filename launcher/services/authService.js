@@ -4,7 +4,7 @@
 const fsp = require('node:fs/promises');
 const path = require('node:path');
 
-const { Authflow, Titles } = require('prismarine-auth');
+const { loginInteractive } = require('./msaInteractive');
 
 function isPlainObject(v) {
 	return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -83,162 +83,48 @@ async function writeSession(paths, session) {
 	return authPath;
 }
 
-async function clearAuthCache(cacheDir, debugLog) {
-	try {
-		await fsp.rm(cacheDir, { recursive: true, force: true });
-		await fsp.mkdir(cacheDir, { recursive: true });
-		if (typeof debugLog === 'function') debugLog('[auth] 🧹 Auth cache cleared');
-	} catch (err) {
-		if (typeof debugLog === 'function') debugLog(`[auth] ⚠️ Could not clear cache: ${err && err.message ? err.message : err}`);
-	}
-}
+// Interactive Microsoft login: opens an Electron BrowserWindow on the official
+// Microsoft sign-in page (no device code), captures the OAuth redirect, then
+// runs the Xbox Live → XSTS → Minecraft Services chain manually. See
+// `services/msaInteractive.js` for the full implementation.
+//
+// `parentWindow` (optional) ties the popup to the launcher window so it stays
+// in focus on top of it. `onMsaCode` is accepted but ignored — kept in the
+// signature for backward compatibility with callers that haven't been updated
+// yet (the device-code IPC event is no longer emitted).
+async function loginMicrosoft(paths, { debugLog, parentWindow } = {}) {
+	if (typeof debugLog === 'function') debugLog('[auth] 🚀 Interactive Microsoft login starting...');
 
-async function tryFlow(userIdentifier, cacheDir, baseOptions, codeCb, label, debugLog) {
-	if (typeof debugLog === 'function') debugLog(`[auth] 🔵 Trying ${label} (flow=${baseOptions.flow}, title=${baseOptions.authTitle})`);
-
-	// Two-phase timeout:
-	//   - PRE_CODE: 30s to obtain a device code (codeCb fires). If we don't
-	//     hear back from Microsoft this fast, the endpoint is unreachable for
-	//     this strategy and we should bail to the next one.
-	//   - POST_CODE: once the user has the code, give them 5 minutes to enter it.
-	const PRE_CODE_TIMEOUT_MS = 30 * 1000;
-	const POST_CODE_TIMEOUT_MS = 5 * 60 * 1000;
-
-	let codeReceived = false;
-	let timer;
-	let rejectTimeout;
-
-	const timeoutPromise = new Promise((_, reject) => {
-		rejectTimeout = reject;
-		timer = setTimeout(() => {
-			reject(new Error(`${label} timeout (no device code in ${PRE_CODE_TIMEOUT_MS / 1000}s — Microsoft endpoint unreachable?)`));
-		}, PRE_CODE_TIMEOUT_MS);
-	});
-
-	const wrappedCodeCb = (data) => {
-		if (!codeReceived) {
-			codeReceived = true;
-			if (typeof debugLog === 'function') debugLog(`[auth] ✅ Device code received for ${label}, extending timeout to ${POST_CODE_TIMEOUT_MS / 1000}s`);
-			clearTimeout(timer);
-			timer = setTimeout(() => {
-				rejectTimeout(new Error(`${label} timeout (user didn't enter code within ${POST_CODE_TIMEOUT_MS / 1000}s)`));
-			}, POST_CODE_TIMEOUT_MS);
-		}
-		if (typeof codeCb === 'function') {
-			try { codeCb(data); } catch { /* ignore */ }
-		}
-	};
-
-	// IMPORTANT: in prismarine-auth 3.x the device-code callback is the FOURTH
-	// constructor argument, not an option. Passing it as `options.onMsaCode`
-	// silently does nothing — prismarine-auth falls back to its built-in
-	// console.log, the launcher never sees the code, and the user is stuck.
-	const flow = new Authflow(userIdentifier, cacheDir, baseOptions, wrappedCodeCb);
-
-	try {
-		const result = await Promise.race([
-			flow.getMinecraftJavaToken({ fetchProfile: true }),
-			timeoutPromise,
-		]);
-		if (typeof debugLog === 'function') debugLog(`[auth] ✅ ${label} succeeded`);
-		return result;
-	} finally {
-		clearTimeout(timer);
-	}
-}
-
-async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
-	if (typeof debugLog === 'function') debugLog('[auth] 🚀 Microsoft login starting...');
-
+	// We no longer use prismarine-auth's on-disk cache, but logout() still
+	// clears the directory so users that ran an older version don't keep stale
+	// state around. Make sure it exists so logout() doesn't fail.
 	const cacheDir = getAuthCacheDir(paths);
 	await fsp.mkdir(cacheDir, { recursive: true });
 
-	// Identifier used only for local caching.
-	const userIdentifier = 'default';
+	const session = await loginInteractive({ debugLog, parentWindow });
 
-	const codeCb = typeof onMsaCode === 'function' ? (data) => {
-		if (typeof debugLog === 'function') debugLog(`[auth] 📱 Device code received: ${JSON.stringify(data)}`);
-		try {
-			onMsaCode(data);
-		} catch (err) {
-			if (typeof debugLog === 'function') debugLog(`[auth] ❌ Error in onMsaCode callback: ${err && err.message ? err.message : err}`);
-		}
-	} : undefined;
-
-	// loginMicrosoft is always interactive — purge any cached state from a
-	// previous broken attempt so prismarine-auth starts a fresh device-code flow
-	// instead of silently retrying a poisoned token.
-	await clearAuthCache(cacheDir, debugLog);
-
-	// Strategy ordered by reliability for third-party launchers in 2026:
-	//   1. live + MinecraftNintendoSwitch — the de-facto standard for unofficial
-	//      launchers (Prism, ATLauncher, MultiMC, CMCL). Microsoft has not
-	//      restricted this client ID and it always emits a device code via
-	//      `onMsaCode`, which is what the renderer expects.
-	//   2. sisu + MinecraftJava — official Java client. Increasingly restricted
-	//      by Microsoft for third-party use, kept as a fallback only.
-	const strategies = [
-		{
-			label: 'live+MinecraftNintendoSwitch',
-			options: {
-				flow: 'live',
-				authTitle: Titles.MinecraftNintendoSwitch,
-				deviceType: 'Nintendo',
-			},
-		},
-		{
-			label: 'sisu+MinecraftJava',
-			options: {
-				flow: 'sisu',
-				authTitle: Titles.MinecraftJava,
-				deviceType: 'Win32',
-			},
-		},
-	];
-
-	let result;
-	let lastErr;
-	for (let i = 0; i < strategies.length; i += 1) {
-		const { label, options } = strategies[i];
-		try {
-			result = await tryFlow(userIdentifier, cacheDir, options, codeCb, label, debugLog);
-			break;
-		} catch (err) {
-			lastErr = err;
-			const msg = err && err.message ? String(err.message) : String(err);
-			if (typeof debugLog === 'function') debugLog(`[auth] ❌ ${label} failed: ${msg}`);
-
-			// Always purge the cache between attempts: a half-finished flow can
-			// leave stale tokens that cause the next strategy to short-circuit
-			// onto the same broken code path without ever calling onMsaCode.
-			await clearAuthCache(cacheDir, debugLog);
-		}
-	}
-
-	if (!result) {
-		const msg = lastErr && lastErr.message ? lastErr.message : 'unknown error';
-		throw new Error(`Microsoft authentication failed after all strategies: ${msg}`);
-	}
-
-	const token = result && typeof result.token === 'string' ? result.token.trim() : '';
-	const profile = result && result.profile ? result.profile : null;
-
-	const id = profile && typeof profile.id === 'string' ? profile.id.trim() : '';
-	const name = profile && typeof profile.name === 'string' ? profile.name.trim() : '';
+	const token = session && typeof session.access_token === 'string' ? session.access_token.trim() : '';
+	const id = session && typeof session.uuid === 'string' ? session.uuid.trim() : '';
+	const name = session && typeof session.username === 'string' ? session.username.trim() : '';
 
 	if (!token) throw new Error('Microsoft authentication failed: no access token');
 	if (!id || !name) throw new Error('Microsoft authentication failed: incomplete profile');
 
-	const session = {
+	// Persist only the validated public-shape session. We deliberately drop the
+	// refresh_token from disk for now: storing it would let us silently refresh
+	// the Minecraft token, but it's also a credential worth protecting. If we
+	// later want "stay signed in" UX, we'll wire the refresh_token through with
+	// proper at-rest encryption.
+	const persisted = {
 		type: 'microsoft',
 		username: name,
 		uuid: id,
 		access_token: token,
 	};
 
-	await writeSession(paths, session);
+	await writeSession(paths, persisted);
 	if (typeof debugLog === 'function') debugLog(`[auth] ✅✅ SUCCESS! Logged in as: ${name}`);
-	return session;
+	return persisted;
 }
 
 async function logout(paths) {

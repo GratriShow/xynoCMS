@@ -868,38 +868,13 @@ app.whenReady().then(async () => {
     debugLog('[ipc] auth:loginMicrosoft handler invoked');
     const paths = getLauncherPaths(app);
 
+    // Tie the OAuth popup to the launcher window that initiated the request so
+    // it stays in front of the launcher and the user can't accidentally focus
+    // a different launcher window while signing in.
+    const parentWindow = BrowserWindow.fromWebContents(event.sender) || null;
+
     try {
-      const session = await loginMicrosoft(paths, {
-        debugLog,
-        onMsaCode: (data) => {
-          debugLog(`[ipc] onMsaCode callback received in IPC handler: ${JSON.stringify(data)}`);
-          const payload = isPlainObject(data)
-            ? {
-                user_code: typeof data.user_code === 'string' ? data.user_code : '',
-                verification_uri: typeof data.verification_uri === 'string' ? data.verification_uri : '',
-                message: typeof data.message === 'string' ? data.message : '',
-              }
-            : { user_code: '', verification_uri: '', message: '' };
-
-          debugLog(`[ipc] Sending auth:msaCode to renderer with payload: user_code=${payload.user_code}, uri=${payload.verification_uri}`);
-
-          if (payload.verification_uri) {
-            try {
-              debugLog(`[ipc] Opening external URI: ${payload.verification_uri}`);
-              shell.openExternal(payload.verification_uri);
-            } catch (err) {
-              debugLog(`[ipc] Failed to open external URI: ${err && err.message ? err.message : err}`);
-            }
-          }
-          try {
-            event.sender.send('auth:msaCode', payload);
-            debugLog('[ipc] auth:msaCode sent to renderer');
-          } catch (err) {
-            debugLog(`[ipc] Failed to send auth:msaCode: ${err && err.message ? err.message : err}`);
-          }
-        },
-      });
-
+      const session = await loginMicrosoft(paths, { debugLog, parentWindow });
       debugLog(`[ipc] auth:loginMicrosoft succeeded, returning session for: ${session && session.username}`);
       return { ok: true, session };
     } catch (err) {
