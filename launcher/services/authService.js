@@ -83,6 +83,36 @@ async function writeSession(paths, session) {
 	return authPath;
 }
 
+async function clearAuthCache(cacheDir, debugLog) {
+	try {
+		await fsp.rm(cacheDir, { recursive: true, force: true });
+		await fsp.mkdir(cacheDir, { recursive: true });
+		if (typeof debugLog === 'function') debugLog('[auth] 🧹 Auth cache cleared');
+	} catch (err) {
+		if (typeof debugLog === 'function') debugLog(`[auth] ⚠️ Could not clear cache: ${err && err.message ? err.message : err}`);
+	}
+}
+
+function runWithTimeout(promise, timeoutMs, label) {
+	let timer;
+	const timeoutPromise = new Promise((_, reject) => {
+		timer = setTimeout(() => reject(new Error(`${label} timeout after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs);
+	});
+	return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
+}
+
+async function tryFlow(userIdentifier, cacheDir, options, timeoutMs, label, debugLog) {
+	if (typeof debugLog === 'function') debugLog(`[auth] 🔵 Trying ${label} (flow=${options.flow}, title=${options.authTitle})`);
+	const flow = new Authflow(userIdentifier, cacheDir, options);
+	const result = await runWithTimeout(
+		flow.getMinecraftJavaToken({ fetchProfile: true }),
+		timeoutMs,
+		label,
+	);
+	if (typeof debugLog === 'function') debugLog(`[auth] ✅ ${label} succeeded`);
+	return result;
+}
+
 async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 	if (typeof debugLog === 'function') debugLog('[auth] 🚀 Microsoft login starting...');
 
@@ -101,71 +131,60 @@ async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 		}
 	} : undefined;
 
+	// 2-minute timeout per attempt: long enough for the user to enter the code,
+	// short enough to fall back quickly if Microsoft hangs.
+	const PER_ATTEMPT_TIMEOUT_MS = 2 * 60 * 1000;
+
+	// Strategy ordered by reliability for third-party launchers in 2026:
+	//   1. live + MinecraftNintendoSwitch — the de-facto standard for unofficial
+	//      launchers (Prism, ATLauncher, MultiMC, CMCL). Microsoft has not
+	//      restricted this client ID and it always emits a device code via
+	//      `onMsaCode`, which is what the renderer expects.
+	//   2. sisu + MinecraftJava — official Java client. Increasingly restricted
+	//      by Microsoft for third-party use, kept as a fallback only.
+	const strategies = [
+		{
+			label: 'live+MinecraftNintendoSwitch',
+			options: {
+				flow: 'live',
+				authTitle: Titles.MinecraftNintendoSwitch,
+				deviceType: 'Nintendo',
+				onMsaCode: codeCb,
+			},
+		},
+		{
+			label: 'sisu+MinecraftJava',
+			options: {
+				flow: 'sisu',
+				authTitle: Titles.MinecraftJava,
+				deviceType: 'Win32',
+				onMsaCode: codeCb,
+			},
+		},
+	];
+
 	let result;
-	try {
-		if (typeof debugLog === 'function') debugLog('[auth] 🔵 Attempting MinecraftJava authentication flow...');
-		if (typeof debugLog === 'function') debugLog('[auth] ⏰ TIMEOUT SET TO 5 MINUTES - You have plenty of time to authenticate!');
+	let lastErr;
+	for (let i = 0; i < strategies.length; i += 1) {
+		const { label, options } = strategies[i];
+		try {
+			result = await tryFlow(userIdentifier, cacheDir, options, PER_ATTEMPT_TIMEOUT_MS, label, debugLog);
+			break;
+		} catch (err) {
+			lastErr = err;
+			const msg = err && err.message ? String(err.message) : String(err);
+			if (typeof debugLog === 'function') debugLog(`[auth] ❌ ${label} failed: ${msg}`);
 
-		// Create authflow with MinecraftJava title (most reliable for Minecraft Java Edition)
-		const flow = new Authflow(userIdentifier, cacheDir, {
-			flow: 'sisu',
-			authTitle: Titles.MinecraftJava,
-			deviceType: 'Win32',
-			onMsaCode: codeCb,
-		});
-
-		if (typeof debugLog === 'function') debugLog('[auth] ⏳ Calling getMinecraftJavaToken()... (waiting up to 5 minutes)');
-
-		// Create a timeout promise of 5 minutes (300 seconds)
-		const timeoutMs = 5 * 60 * 1000; // 5 minutes
-		const timeoutPromise = new Promise((_, reject) => {
-			setTimeout(() => reject(new Error('Microsoft authentication timeout (5 minutes). Please check your internet or firewall.')), timeoutMs);
-		});
-
-		// Race between the actual auth and the timeout
-		result = await Promise.race([
-			flow.getMinecraftJavaToken({ fetchProfile: true }),
-			timeoutPromise
-		]);
-
-		if (typeof debugLog === 'function') debugLog('[auth] ✅ Token retrieved successfully');
-	} catch (err) {
-		if (typeof debugLog === 'function') debugLog(`[auth] ❌ MinecraftJava flow failed: ${err && err.message ? err.message : err}`);
-
-		// Try fallback on 403 error
-		const code = err && (err.statusCode || err.status) ? String(err.statusCode || err.status) : '';
-		const msg = err && err.message ? String(err.message) : '';
-
-		if (code === '403' || msg.includes('403')) {
-			if (typeof debugLog === 'function') debugLog('[auth] 🔄 Got 403, trying Nintendo Switch fallback...');
-
-			try {
-				const fallbackFlow = new Authflow(userIdentifier, cacheDir, {
-					flow: 'live',
-					authTitle: Titles.MinecraftNintendoSwitch,
-					deviceType: 'Nintendo',
-					onMsaCode: codeCb,
-				});
-
-				// Same 5-minute timeout for fallback
-				const timeoutMs = 5 * 60 * 1000;
-				const timeoutPromise = new Promise((_, reject) => {
-					setTimeout(() => reject(new Error('Fallback authentication timeout (5 minutes).')), timeoutMs);
-				});
-
-				result = await Promise.race([
-					fallbackFlow.getMinecraftJavaToken({ fetchProfile: true }),
-					timeoutPromise
-				]);
-
-				if (typeof debugLog === 'function') debugLog('[auth] ✅ Fallback successful');
-			} catch (fallbackErr) {
-				if (typeof debugLog === 'function') debugLog(`[auth] ❌ Fallback also failed: ${fallbackErr && fallbackErr.message ? fallbackErr.message : fallbackErr}`);
-				throw fallbackErr;
-			}
-		} else {
-			throw err;
+			// Always purge the cache between attempts: a half-finished flow can
+			// leave stale tokens that cause the next strategy to short-circuit
+			// onto the same broken code path without ever calling onMsaCode.
+			await clearAuthCache(cacheDir, debugLog);
 		}
+	}
+
+	if (!result) {
+		const msg = lastErr && lastErr.message ? lastErr.message : 'unknown error';
+		throw new Error(`Microsoft authentication failed after all strategies: ${msg}`);
 	}
 
 	const token = result && typeof result.token === 'string' ? result.token.trim() : '';
