@@ -865,34 +865,47 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('auth:loginMicrosoft', async (event) => {
+    debugLog('[ipc] auth:loginMicrosoft handler invoked');
     const paths = getLauncherPaths(app);
 
-    const session = await loginMicrosoft(paths, {
-      onMsaCode: (data) => {
-        const payload = isPlainObject(data)
-          ? {
-              user_code: typeof data.user_code === 'string' ? data.user_code : '',
-              verification_uri: typeof data.verification_uri === 'string' ? data.verification_uri : '',
-              message: typeof data.message === 'string' ? data.message : '',
+    try {
+      const session = await loginMicrosoft(paths, {
+        debugLog,
+        onMsaCode: (data) => {
+          debugLog(`[ipc] onMsaCode callback received in IPC handler: ${JSON.stringify(data)}`);
+          const payload = isPlainObject(data)
+            ? {
+                user_code: typeof data.user_code === 'string' ? data.user_code : '',
+                verification_uri: typeof data.verification_uri === 'string' ? data.verification_uri : '',
+                message: typeof data.message === 'string' ? data.message : '',
+              }
+            : { user_code: '', verification_uri: '', message: '' };
+
+          debugLog(`[ipc] Sending auth:msaCode to renderer with payload: user_code=${payload.user_code}, uri=${payload.verification_uri}`);
+
+          if (payload.verification_uri) {
+            try {
+              debugLog(`[ipc] Opening external URI: ${payload.verification_uri}`);
+              shell.openExternal(payload.verification_uri);
+            } catch (err) {
+              debugLog(`[ipc] Failed to open external URI: ${err && err.message ? err.message : err}`);
             }
-          : { user_code: '', verification_uri: '', message: '' };
-
-        if (payload.verification_uri) {
-          try {
-            shell.openExternal(payload.verification_uri);
-          } catch {
-            // ignore
           }
-        }
-        try {
-          event.sender.send('auth:msaCode', payload);
-        } catch {
-          // ignore
-        }
-      },
-    });
+          try {
+            event.sender.send('auth:msaCode', payload);
+            debugLog('[ipc] auth:msaCode sent to renderer');
+          } catch (err) {
+            debugLog(`[ipc] Failed to send auth:msaCode: ${err && err.message ? err.message : err}`);
+          }
+        },
+      });
 
-    return { ok: true, session };
+      debugLog(`[ipc] auth:loginMicrosoft succeeded, returning session for: ${session && session.username}`);
+      return { ok: true, session };
+    } catch (err) {
+      debugLog(`[ipc] auth:loginMicrosoft failed: ${err && err.message ? err.message : err}`);
+      throw err;
+    }
   });
 
   ipcMain.handle('launcher:openExternal', async (_event, url) => {
@@ -1140,6 +1153,26 @@ app.whenReady().then(async () => {
             status: 'maintenance',
           });
           return;
+        }
+
+        // Auto-update check: done early so we can restart with the latest version
+        // before syncing the manifest. Best-effort: if update fails, we continue anyway.
+        debugLog('[sync] Checking for launcher updates...');
+        try {
+          const appVersion = app.getVersion();
+          const updateResult = await runAutoUpdate(mainWin || win, pub, {
+            apiBaseUrl: apiBaseUrlForExt,
+            uuid: uuidForExt,
+            currentVersion: appVersion,
+            debugLog,
+          });
+          debugLog(`[sync] Auto-update check complete: ok=${updateResult.ok}, updated=${updateResult.updated}, required=${updateResult.required}`);
+          // Note: if updateResult.updated is true, runAutoUpdate will have called app.exit()
+          // and we won't reach this line. The launcher will restart with the new version.
+        } catch (updateErr) {
+          // Auto-update is best-effort; log but don't fail the sync
+          const errMsg = updateErr && updateErr.message ? updateErr.message : String(updateErr);
+          debugLog(`[sync] Auto-update check failed (non-critical, continuing): ${errMsg}`);
         }
 
         // Fire-and-forget Discord Rich Presence (never blocks the sync).

@@ -374,24 +374,40 @@ async function checkForUpdate({ apiBaseUrl, uuid, timeoutMs = 10_000 } = {}) {
   throw new Error(`Update API error: HTTP ${(lastRes && lastRes.statusCode) || 0}`);
 }
 
-async function runAutoUpdate(app, pub, { apiBaseUrl, uuid, currentVersion } = {}) {
+async function runAutoUpdate(app, pub, { apiBaseUrl, uuid, currentVersion, debugLog } = {}) {
+  if (typeof debugLog === 'function') debugLog('[autoUpdate] runAutoUpdate starting');
+
   const localVersion = String(currentVersion || '').trim() || '0.0.0';
+  if (typeof debugLog === 'function') debugLog(`[autoUpdate] Local version: ${localVersion}`);
 
   pub.ux({ state: 'UPDATE', step: 'Vérification des mises à jour' });
   pub.status('Vérification des mises à jour');
 
-  const update = await checkForUpdate({ apiBaseUrl, uuid });
+  let update;
+  try {
+    update = await checkForUpdate({ apiBaseUrl, uuid });
+    if (typeof debugLog === 'function') debugLog(`[autoUpdate] Update check response: ${JSON.stringify(update)}`);
+  } catch (err) {
+    if (typeof debugLog === 'function') debugLog(`[autoUpdate] Update check failed: ${err && err.message ? err.message : err}`);
+    throw err;
+  }
 
   if (!update.version) {
     // No release configured.
+    if (typeof debugLog === 'function') debugLog('[autoUpdate] No update configured on server');
     return { ok: true, updated: false, required: false };
   }
 
   const needsUpdate = compareSemver(update.version, localVersion) > 0;
+  if (typeof debugLog === 'function') debugLog(`[autoUpdate] Version comparison: remote=${update.version} vs local=${localVersion}, needsUpdate=${needsUpdate}`);
+
   if (!needsUpdate) {
     // Still enforce server-provided required flag only when version is actually newer.
+    if (typeof debugLog === 'function') debugLog('[autoUpdate] Launcher is already up-to-date');
     return { ok: true, updated: false, required: false };
   }
+
+  if (typeof debugLog === 'function') debugLog(`[autoUpdate] Update available: version=${update.version}, required=${update.required}`);
 
   pub.ux({ state: 'UPDATE', step: update.required ? 'Mise à jour obligatoire' : 'Mise à jour disponible' });
 
@@ -400,10 +416,14 @@ async function runAutoUpdate(app, pub, { apiBaseUrl, uuid, currentVersion } = {}
   const zipPath = path.join(stageDir, 'update.zip');
   const extractDir = path.join(stageDir, 'extract');
 
+  if (typeof debugLog === 'function') debugLog(`[autoUpdate] Staging directory: ${stageDir}`);
+
   await ensureEmptyDir(stageDir);
 
   pub.ux({ state: 'UPDATE', step: 'Téléchargement de la mise à jour' });
   pub.status('Mise à jour en cours');
+
+  if (typeof debugLog === 'function') debugLog(`[autoUpdate] Downloading from: ${update.url}`);
 
   const dl = await downloadFileWithSha256(new URL(update.url), zipPath, {
     timeoutMs: 120_000,
@@ -422,7 +442,10 @@ async function runAutoUpdate(app, pub, { apiBaseUrl, uuid, currentVersion } = {}
 
   const got = String(dl.sha256 || '').trim().toLowerCase();
   const expected = String(update.signature || '').trim().toLowerCase();
+  if (typeof debugLog === 'function') debugLog(`[autoUpdate] Signature verification: got=${got.substring(0, 8)}... expected=${expected.substring(0, 8)}...`);
+
   if (!got || !expected || got !== expected) {
+    if (typeof debugLog === 'function') debugLog('[autoUpdate] SIGNATURE MISMATCH - Update package tampered or corrupted');
     try {
       await fs.rm(stageDir, { recursive: true, force: true });
     } catch {
@@ -431,6 +454,8 @@ async function runAutoUpdate(app, pub, { apiBaseUrl, uuid, currentVersion } = {}
     throw new Error('update_signature_mismatch');
   }
 
+  if (typeof debugLog === 'function') debugLog('[autoUpdate] Signature verified successfully');
+
   pub.ux({ state: 'UPDATE', step: 'Extraction de la mise à jour' });
   pub.status('Extraction de la mise à jour');
 
@@ -438,14 +463,20 @@ async function runAutoUpdate(app, pub, { apiBaseUrl, uuid, currentVersion } = {}
   await extractZipSafe(zipPath, extractDir, {
     onProgress: ({ percent, currentFile }) => {
       const p = Number.isFinite(percent) ? percent : 0;
+      if (typeof debugLog === 'function' && currentFile) debugLog(`[autoUpdate] Extracting: ${currentFile}`);
       pub.progress({ phase: 'UPDATE', done: p, total: 100, percent: p, currentFile: currentFile || '' });
     },
   });
 
+  if (typeof debugLog === 'function') debugLog('[autoUpdate] Extraction complete');
+
   const srcAsar = resolveAsarFromExtract(extractDir);
   if (!srcAsar) {
+    if (typeof debugLog === 'function') debugLog('[autoUpdate] ERROR: app.asar not found in update package');
     throw new Error('update_payload_missing_app_asar');
   }
+
+  if (typeof debugLog === 'function') debugLog(`[autoUpdate] Found app.asar at: ${srcAsar}`);
 
   pub.ux({ state: 'UPDATE', step: 'Installation de la mise à jour' });
   pub.status('Installation de la mise à jour');
@@ -455,6 +486,9 @@ async function runAutoUpdate(app, pub, { apiBaseUrl, uuid, currentVersion } = {}
   const helper = path.join(__dirname, '..', 'tools', 'applyUpdate.js');
   const resourcesPath = process.resourcesPath;
   const userDataPath = app.getPath('userData');
+
+  if (typeof debugLog === 'function') debugLog(`[autoUpdate] Spawning update helper: ${helper}`);
+  if (typeof debugLog === 'function') debugLog(`[autoUpdate] Resources: ${resourcesPath}, userData: ${userDataPath}`);
 
   const child = require('node:child_process').spawn(
     process.execPath,
@@ -471,6 +505,8 @@ async function runAutoUpdate(app, pub, { apiBaseUrl, uuid, currentVersion } = {}
 
   child.unref();
 
+  if (typeof debugLog === 'function') debugLog('[autoUpdate] Helper spawned, app will exit and restart');
+
   pub.ux({ state: 'UPDATE', step: 'Redémarrage…' });
   pub.status('Redémarrage…');
 
@@ -478,6 +514,7 @@ async function runAutoUpdate(app, pub, { apiBaseUrl, uuid, currentVersion } = {}
   await sleep(500);
 
   // Exit: helper will apply + relaunch.
+  if (typeof debugLog === 'function') debugLog('[autoUpdate] Exiting app for update...');
   app.exit(0);
 
   return { ok: true, updated: true, required: !!update.required };

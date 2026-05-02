@@ -83,7 +83,9 @@ async function writeSession(paths, session) {
 	return authPath;
 }
 
-async function loginMicrosoft(paths, { onMsaCode } = {}) {
+async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
+	if (typeof debugLog === 'function') debugLog('[auth] loginMicrosoft() starting');
+
 	const cacheDir = getAuthCacheDir(paths);
 	await fsp.mkdir(cacheDir, { recursive: true });
 
@@ -101,26 +103,42 @@ async function loginMicrosoft(paths, { onMsaCode } = {}) {
 		return await flow.getMinecraftJavaToken({ fetchProfile: true });
 	}
 
-	const codeCb = typeof onMsaCode === 'function' ? onMsaCode : undefined;
+	const codeCb = typeof onMsaCode === 'function' ? (data) => {
+		if (typeof debugLog === 'function') debugLog(`[auth] onMsaCode callback triggered: ${JSON.stringify(data)}`);
+		onMsaCode(data);
+	} : undefined;
 
 	let result;
+	let lastError = null;
 	try {
 		// Recommended for MinecraftJava authTitle (avoids some Forbidden issues).
+		if (typeof debugLog === 'function') debugLog('[auth] Trying MinecraftJava flow (sisu)');
 		result = await getTokenWith({
 			flow: 'sisu',
 			authTitle: Titles.MinecraftJava,
 			deviceType: 'Win32',
 			onMsaCode: codeCb,
 		});
+		if (typeof debugLog === 'function') debugLog('[auth] MinecraftJava flow succeeded');
 	} catch (err) {
+		lastError = err;
 		// Fallback: known working title for device+title auth.
+		if (typeof debugLog === 'function') debugLog(`[auth] MinecraftJava flow failed: ${err && err.message ? err.message : err}`);
 		if (!isForbidden(err)) throw err;
-		result = await getTokenWith({
-			flow: 'live',
-			authTitle: Titles.MinecraftNintendoSwitch,
-			deviceType: 'Nintendo',
-			onMsaCode: codeCb,
-		});
+
+		if (typeof debugLog === 'function') debugLog('[auth] Got 403, trying MinecraftNintendoSwitch fallback (live)');
+		try {
+			result = await getTokenWith({
+				flow: 'live',
+				authTitle: Titles.MinecraftNintendoSwitch,
+				deviceType: 'Nintendo',
+				onMsaCode: codeCb,
+			});
+			if (typeof debugLog === 'function') debugLog('[auth] MinecraftNintendoSwitch flow succeeded');
+		} catch (fallbackErr) {
+			if (typeof debugLog === 'function') debugLog(`[auth] Fallback flow also failed: ${fallbackErr && fallbackErr.message ? fallbackErr.message : fallbackErr}`);
+			throw fallbackErr;
+		}
 	}
 	const token = result && typeof result.token === 'string' ? result.token.trim() : '';
 	const profile = result && result.profile ? result.profile : null;
@@ -139,6 +157,7 @@ async function loginMicrosoft(paths, { onMsaCode } = {}) {
 	};
 
 	await writeSession(paths, session);
+	if (typeof debugLog === 'function') debugLog(`[auth] loginMicrosoft() completed successfully, session saved for user: ${name}`);
 	return session;
 }
 
