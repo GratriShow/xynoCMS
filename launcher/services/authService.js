@@ -100,7 +100,29 @@ async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 
 	async function getTokenWith(options) {
 		const flow = new Authflow(userIdentifier, cacheDir, options);
-		return await flow.getMinecraftJavaToken({ fetchProfile: true });
+
+		// Add explicit timeout (30 seconds) to prevent hanging
+		const timeoutMs = 30000;
+		const timeoutPromise = new Promise((_, reject) =>
+			setTimeout(() => reject(new Error(`Authentication timeout after ${timeoutMs/1000}s. Check your internet connection and firewall settings.`)), timeoutMs)
+		);
+
+		if (typeof debugLog === 'function') debugLog(`[auth] Starting token fetch with ${timeoutMs/1000}s timeout...`);
+
+		try {
+			const tokenPromise = flow.getMinecraftJavaToken({ fetchProfile: true });
+			const result = await Promise.race([tokenPromise, timeoutPromise]);
+			if (typeof debugLog === 'function') debugLog('[auth] Token fetch completed successfully');
+			return result;
+		} catch (err) {
+			const isTimeout = err && err.message && err.message.includes('timeout');
+			if (isTimeout) {
+				if (typeof debugLog === 'function') debugLog(`[auth] ⏱️ TIMEOUT: ${err.message}`);
+			} else {
+				if (typeof debugLog === 'function') debugLog(`[auth] Token fetch error: ${err && err.message ? err.message : String(err)}`);
+			}
+			throw err;
+		}
 	}
 
 	const codeCb = typeof onMsaCode === 'function' ? (data) => {
@@ -112,21 +134,33 @@ async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 	let lastError = null;
 	try {
 		// Recommended for MinecraftJava authTitle (avoids some Forbidden issues).
-		if (typeof debugLog === 'function') debugLog('[auth] Trying MinecraftJava flow (sisu)');
+		if (typeof debugLog === 'function') debugLog('[auth] 🔵 Trying MinecraftJava flow (sisu) with Microsoft servers...');
 		result = await getTokenWith({
 			flow: 'sisu',
 			authTitle: Titles.MinecraftJava,
 			deviceType: 'Win32',
 			onMsaCode: codeCb,
 		});
-		if (typeof debugLog === 'function') debugLog('[auth] MinecraftJava flow succeeded');
+		if (typeof debugLog === 'function') debugLog('[auth] ✅ MinecraftJava flow succeeded');
 	} catch (err) {
 		lastError = err;
-		// Fallback: known working title for device+title auth.
-		if (typeof debugLog === 'function') debugLog(`[auth] MinecraftJava flow failed: ${err && err.message ? err.message : err}`);
-		if (!isForbidden(err)) throw err;
+		const isTimeout = err && err.message && err.message.includes('timeout');
+		const errorMsg = err && err.message ? String(err.message) : String(err);
 
-		if (typeof debugLog === 'function') debugLog('[auth] Got 403, trying MinecraftNintendoSwitch fallback (live)');
+		if (isTimeout) {
+			if (typeof debugLog === 'function') debugLog(`[auth] ⏱️ MinecraftJava flow TIMEOUT: ${errorMsg}`);
+			if (typeof debugLog === 'function') debugLog('[auth] ℹ️ This usually means: firewall blocking, internet down, or Microsoft servers unreachable');
+		} else {
+			if (typeof debugLog === 'function') debugLog(`[auth] ❌ MinecraftJava flow failed: ${errorMsg}`);
+		}
+
+		// Only fallback on 403, not on timeout or network errors
+		if (!isForbidden(err)) {
+			if (typeof debugLog === 'function') debugLog('[auth] ❌ Fatal error, not attempting fallback');
+			throw err;
+		}
+
+		if (typeof debugLog === 'function') debugLog('[auth] 🔄 Got 403 Forbidden, trying MinecraftNintendoSwitch fallback (live)...');
 		try {
 			result = await getTokenWith({
 				flow: 'live',
@@ -134,9 +168,18 @@ async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 				deviceType: 'Nintendo',
 				onMsaCode: codeCb,
 			});
-			if (typeof debugLog === 'function') debugLog('[auth] MinecraftNintendoSwitch flow succeeded');
+			if (typeof debugLog === 'function') debugLog('[auth] ✅ MinecraftNintendoSwitch fallback succeeded');
 		} catch (fallbackErr) {
-			if (typeof debugLog === 'function') debugLog(`[auth] Fallback flow also failed: ${fallbackErr && fallbackErr.message ? fallbackErr.message : fallbackErr}`);
+			const fallbackIsTimeout = fallbackErr && fallbackErr.message && fallbackErr.message.includes('timeout');
+			const fallbackErrorMsg = fallbackErr && fallbackErr.message ? String(fallbackErr.message) : String(fallbackErr);
+
+			if (fallbackIsTimeout) {
+				if (typeof debugLog === 'function') debugLog(`[auth] ⏱️ Fallback flow TIMEOUT: ${fallbackErrorMsg}`);
+				if (typeof debugLog === 'function') debugLog('[auth] ℹ️ Network connectivity issue - please check internet and firewall');
+			} else {
+				if (typeof debugLog === 'function') debugLog(`[auth] ❌ Fallback flow also failed: ${fallbackErrorMsg}`);
+			}
+
 			throw fallbackErr;
 		}
 	}
@@ -146,8 +189,16 @@ async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 	const id = profile && typeof profile.id === 'string' ? profile.id.trim() : '';
 	const name = profile && typeof profile.name === 'string' ? profile.name.trim() : '';
 
-	if (!token) throw new Error('Microsoft login failed (missing token)');
-	if (!id || !name) throw new Error('Microsoft login failed (missing profile)');
+	if (typeof debugLog === 'function') debugLog(`[auth] Validating token and profile... token=${token ? '✅' : '❌'} profile=${profile ? '✅' : '❌'}`);
+
+	if (!token) {
+		if (typeof debugLog === 'function') debugLog('[auth] ❌ ERROR: Missing access token from Microsoft');
+		throw new Error('Microsoft login failed: no access token received. Try again or check your internet.');
+	}
+	if (!id || !name) {
+		if (typeof debugLog === 'function') debugLog(`[auth] ❌ ERROR: Missing profile data. id=${id ? '✅' : '❌'} name=${name ? '✅' : '❌'}`);
+		throw new Error('Microsoft login failed: missing profile data. Try again.');
+	}
 
 	const session = {
 		type: 'microsoft',
@@ -157,7 +208,8 @@ async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 	};
 
 	await writeSession(paths, session);
-	if (typeof debugLog === 'function') debugLog(`[auth] loginMicrosoft() completed successfully, session saved for user: ${name}`);
+	if (typeof debugLog === 'function') debugLog(`[auth] ✅ SUCCESS! Session saved for user: ${name}`);
+	if (typeof debugLog === 'function') debugLog(`[auth] 🎮 Ready to play! User can now launch the game.`);
 	return session;
 }
 
