@@ -93,11 +93,11 @@ async function clearAuthCache(cacheDir, debugLog) {
 	}
 }
 
-async function tryFlow(userIdentifier, cacheDir, baseOptions, label, debugLog) {
+async function tryFlow(userIdentifier, cacheDir, baseOptions, codeCb, label, debugLog) {
 	if (typeof debugLog === 'function') debugLog(`[auth] 🔵 Trying ${label} (flow=${baseOptions.flow}, title=${baseOptions.authTitle})`);
 
 	// Two-phase timeout:
-	//   - PRE_CODE: 30s to obtain a device code (onMsaCode fires). If we don't
+	//   - PRE_CODE: 30s to obtain a device code (codeCb fires). If we don't
 	//     hear back from Microsoft this fast, the endpoint is unreachable for
 	//     this strategy and we should bail to the next one.
 	//   - POST_CODE: once the user has the code, give them 5 minutes to enter it.
@@ -115,7 +115,7 @@ async function tryFlow(userIdentifier, cacheDir, baseOptions, label, debugLog) {
 		}, PRE_CODE_TIMEOUT_MS);
 	});
 
-	const wrappedOnMsaCode = (data) => {
+	const wrappedCodeCb = (data) => {
 		if (!codeReceived) {
 			codeReceived = true;
 			if (typeof debugLog === 'function') debugLog(`[auth] ✅ Device code received for ${label}, extending timeout to ${POST_CODE_TIMEOUT_MS / 1000}s`);
@@ -124,15 +124,16 @@ async function tryFlow(userIdentifier, cacheDir, baseOptions, label, debugLog) {
 				rejectTimeout(new Error(`${label} timeout (user didn't enter code within ${POST_CODE_TIMEOUT_MS / 1000}s)`));
 			}, POST_CODE_TIMEOUT_MS);
 		}
-		if (typeof baseOptions.onMsaCode === 'function') {
-			try { baseOptions.onMsaCode(data); } catch { /* ignore */ }
+		if (typeof codeCb === 'function') {
+			try { codeCb(data); } catch { /* ignore */ }
 		}
 	};
 
-	const flow = new Authflow(userIdentifier, cacheDir, {
-		...baseOptions,
-		onMsaCode: wrappedOnMsaCode,
-	});
+	// IMPORTANT: in prismarine-auth 3.x the device-code callback is the FOURTH
+	// constructor argument, not an option. Passing it as `options.onMsaCode`
+	// silently does nothing — prismarine-auth falls back to its built-in
+	// console.log, the launcher never sees the code, and the user is stuck.
+	const flow = new Authflow(userIdentifier, cacheDir, baseOptions, wrappedCodeCb);
 
 	try {
 		const result = await Promise.race([
@@ -183,7 +184,6 @@ async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 				flow: 'live',
 				authTitle: Titles.MinecraftNintendoSwitch,
 				deviceType: 'Nintendo',
-				onMsaCode: codeCb,
 			},
 		},
 		{
@@ -192,7 +192,6 @@ async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 				flow: 'sisu',
 				authTitle: Titles.MinecraftJava,
 				deviceType: 'Win32',
-				onMsaCode: codeCb,
 			},
 		},
 	];
@@ -202,7 +201,7 @@ async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 	for (let i = 0; i < strategies.length; i += 1) {
 		const { label, options } = strategies[i];
 		try {
-			result = await tryFlow(userIdentifier, cacheDir, options, label, debugLog);
+			result = await tryFlow(userIdentifier, cacheDir, options, codeCb, label, debugLog);
 			break;
 		} catch (err) {
 			lastErr = err;
