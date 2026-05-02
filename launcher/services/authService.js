@@ -104,6 +104,7 @@ async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 	let result;
 	try {
 		if (typeof debugLog === 'function') debugLog('[auth] 🔵 Attempting MinecraftJava authentication flow...');
+		if (typeof debugLog === 'function') debugLog('[auth] ⏰ TIMEOUT SET TO 5 MINUTES - You have plenty of time to authenticate!');
 
 		// Create authflow with MinecraftJava title (most reliable for Minecraft Java Edition)
 		const flow = new Authflow(userIdentifier, cacheDir, {
@@ -113,8 +114,19 @@ async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 			onMsaCode: codeCb,
 		});
 
-		if (typeof debugLog === 'function') debugLog('[auth] ⏳ Calling getMinecraftJavaToken()...');
-		result = await flow.getMinecraftJavaToken({ fetchProfile: true });
+		if (typeof debugLog === 'function') debugLog('[auth] ⏳ Calling getMinecraftJavaToken()... (waiting up to 5 minutes)');
+
+		// Create a timeout promise of 5 minutes (300 seconds)
+		const timeoutMs = 5 * 60 * 1000; // 5 minutes
+		const timeoutPromise = new Promise((_, reject) => {
+			setTimeout(() => reject(new Error('Microsoft authentication timeout (5 minutes). Please check your internet or firewall.')), timeoutMs);
+		});
+
+		// Race between the actual auth and the timeout
+		result = await Promise.race([
+			flow.getMinecraftJavaToken({ fetchProfile: true }),
+			timeoutPromise
+		]);
 
 		if (typeof debugLog === 'function') debugLog('[auth] ✅ Token retrieved successfully');
 	} catch (err) {
@@ -135,7 +147,17 @@ async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 					onMsaCode: codeCb,
 				});
 
-				result = await fallbackFlow.getMinecraftJavaToken({ fetchProfile: true });
+				// Same 5-minute timeout for fallback
+				const timeoutMs = 5 * 60 * 1000;
+				const timeoutPromise = new Promise((_, reject) => {
+					setTimeout(() => reject(new Error('Fallback authentication timeout (5 minutes).')), timeoutMs);
+				});
+
+				result = await Promise.race([
+					fallbackFlow.getMinecraftJavaToken({ fetchProfile: true }),
+					timeoutPromise
+				]);
+
 				if (typeof debugLog === 'function') debugLog('[auth] ✅ Fallback successful');
 			} catch (fallbackErr) {
 				if (typeof debugLog === 'function') debugLog(`[auth] ❌ Fallback also failed: ${fallbackErr && fallbackErr.message ? fallbackErr.message : fallbackErr}`);
