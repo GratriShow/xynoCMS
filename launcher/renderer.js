@@ -201,27 +201,38 @@
   }
 
   async function refreshSession() {
+    console.log('[renderer] refreshSession called');
     let res;
     try {
       res = await auth.getSession();
-    } catch {
+      console.log('[renderer] getSession response:', res);
+    } catch (e) {
+      console.error('[renderer] getSession error:', e);
       res = null;
     }
     session = res && res.session ? res.session : null;
+    console.log('[renderer] Session after refresh:', session);
     setContinueLabel();
   }
 
   auth.onMsaCode((payload) => {
-    if (!payload) return;
+    console.log('[renderer] onMsaCode received:', payload);
+    if (!payload) {
+      console.warn('[renderer] onMsaCode: payload is null/undefined');
+      return;
+    }
     const msg = payload.message ? String(payload.message) : '';
     const code = payload.user_code ? String(payload.user_code) : '';
     const url = payload.verification_uri ? String(payload.verification_uri) : '';
+    console.log('[renderer] onMsaCode parsed:', { msg, code, url });
     if (msg) {
+      console.log('[renderer] onMsaCode: showing message screen');
       setActiveScreen('INIT');
       setInitHint(msg);
       return;
     }
     if (code && url) {
+      console.log('[renderer] onMsaCode: showing device code screen');
       setActiveScreen('INIT');
       setInitHint(`Ouvre ${url} et saisis le code ${code}.`);
     }
@@ -235,11 +246,15 @@
 
         try {
           if (!session) {
+            console.log('[renderer] Starting Microsoft login...');
             setActiveScreen('INIT');
             setInitHint('Connexion Microsoft…');
             const res = await auth.loginMicrosoft();
+            console.log('[renderer] loginMicrosoft response:', res);
             session = res && res.session ? res.session : null;
+            console.log('[renderer] Session after login:', session);
             if (!session) throw new Error('Connexion échouée.');
+            console.log('[renderer] Session established, showing READY screen');
             setActiveScreen('READY');
             setContinueLabel();
             return;
@@ -302,7 +317,43 @@
   }
 
   api.onInfo((info) => {
-    if (info && info.name) setLauncherName(info.name);
+    if (!info) return;
+
+    // Set launcher/server name from config
+    if (info.name) {
+      const serverName = String(info.name).trim();
+      setLauncherName(serverName);
+
+      // Update HTML elements with server name from config
+      const titleBarName = document.getElementById('titleBarName');
+      const launcherName = document.getElementById('launcherName');
+      if (titleBarName) titleBarName.textContent = `${serverName} Launcher`;
+      if (launcherName) launcherName.textContent = `${serverName} Launcher`;
+    }
+
+    // Set logo from config.assets.logo
+    if (info.config && typeof info.config === 'object') {
+      const assets = info.config.assets;
+      if (assets && typeof assets === 'object' && typeof assets.logo === 'string') {
+        const logoUrl = assets.logo.trim();
+        if (logoUrl) {
+          const titleBarLogo = document.getElementById('titleBarLogo');
+          const sidebarLogo = document.getElementById('sidebarLogo');
+          if (titleBarLogo) {
+            titleBarLogo.src = logoUrl;
+            titleBarLogo.onerror = () => {
+              console.warn('[renderer] Failed to load title bar logo:', logoUrl);
+            };
+          }
+          if (sidebarLogo) {
+            sidebarLogo.src = logoUrl;
+            sidebarLogo.onerror = () => {
+              console.warn('[renderer] Failed to load sidebar logo:', logoUrl);
+            };
+          }
+        }
+      }
+    }
   });
 
   api.onUx((payload) => {
