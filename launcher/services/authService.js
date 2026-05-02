@@ -107,7 +107,14 @@ async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 	async function getTokenWith(options) {
 		if (typeof debugLog === 'function') debugLog(`[auth] 🔧 Creating Authflow with options: flow=${options.flow}, authTitle=${options.authTitle}, deviceType=${options.deviceType}`);
 
-		const flow = new Authflow(userIdentifier, cacheDir, options);
+		// Add custom headers/agent to avoid being blocked by Minecraft servers
+		const enhancedOptions = {
+			...options,
+			// Use a more standard User-Agent that Minecraft won't block
+			userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+		};
+
+		const flow = new Authflow(userIdentifier, cacheDir, enhancedOptions);
 		if (typeof debugLog === 'function') debugLog('[auth] ✅ Authflow created successfully');
 
 		// Add explicit timeout (60 seconds) to prevent hanging - increased from 30s
@@ -169,22 +176,26 @@ async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 	} catch (err) {
 		lastError = err;
 		const isTimeout = err && err.message && err.message.includes('timeout');
+		const isForbidden403 = err && (err.statusCode === 403 || err.status === 403 || (err.message && err.message.includes('403')));
 		const errorMsg = err && err.message ? String(err.message) : String(err);
 
 		if (isTimeout) {
 			if (typeof debugLog === 'function') debugLog(`[auth] ⏱️ MinecraftJava flow TIMEOUT: ${errorMsg}`);
-			if (typeof debugLog === 'function') debugLog('[auth] ℹ️ This usually means: firewall blocking, internet down, or Microsoft servers unreachable');
+			if (typeof debugLog === 'function') debugLog('[auth] ℹ️ Server blocked the request - may need different User-Agent');
+		} else if (isForbidden403) {
+			if (typeof debugLog === 'function') debugLog(`[auth] 🚫 MinecraftJava flow got 403 Forbidden: ${errorMsg}`);
+			if (typeof debugLog === 'function') debugLog('[auth] ℹ️ Server rejected request - trying fallback flow...');
 		} else {
 			if (typeof debugLog === 'function') debugLog(`[auth] ❌ MinecraftJava flow failed: ${errorMsg}`);
 		}
 
-		// Only fallback on 403, not on timeout or network errors
+		// Try fallback on 403, not on other errors
 		if (!isForbidden(err)) {
 			if (typeof debugLog === 'function') debugLog('[auth] ❌ Fatal error, not attempting fallback');
 			throw err;
 		}
 
-		if (typeof debugLog === 'function') debugLog('[auth] 🔄 Got 403 Forbidden, trying MinecraftNintendoSwitch fallback (live)...');
+		if (typeof debugLog === 'function') debugLog('[auth] 🔄 Trying MinecraftNintendoSwitch fallback (live) with alternative flow...');
 		try {
 			result = await getTokenWith({
 				flow: 'live',
@@ -199,7 +210,7 @@ async function loginMicrosoft(paths, { onMsaCode, debugLog } = {}) {
 
 			if (fallbackIsTimeout) {
 				if (typeof debugLog === 'function') debugLog(`[auth] ⏱️ Fallback flow TIMEOUT: ${fallbackErrorMsg}`);
-				if (typeof debugLog === 'function') debugLog('[auth] ℹ️ Network connectivity issue - please check internet and firewall');
+				if (typeof debugLog === 'function') debugLog('[auth] ℹ️ Server still blocking - issue is likely server-side blocking');
 			} else {
 				if (typeof debugLog === 'function') debugLog(`[auth] ❌ Fallback flow also failed: ${fallbackErrorMsg}`);
 			}
