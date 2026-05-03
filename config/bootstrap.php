@@ -104,11 +104,19 @@ function base_path(): string
         return '';
     }
 
-    // App root can be a parent of known subfolders (api/dashboard/auth/launcher).
+    // App root can be a parent of known subfolders. We walk up through nested
+    // app dirs (e.g. `/api/v2/manifest.php` → strip `v2`, then `api`, leaving
+    // empty = app served at site root). Without this, base_path() returned
+    // `/api/v2` and api_public_url() built `…/api/v2/uploads/…` which 404'd.
+    $known = ['api', 'dashboard', 'auth', 'launcher', 'v2'];
     $segments = explode('/', trim($dir, '/'));
-    $last = strtolower((string)end($segments));
-    if (in_array($last, ['api', 'dashboard', 'auth', 'launcher'], true)) {
-        array_pop($segments);
+    while (!empty($segments)) {
+        $last = strtolower((string)end($segments));
+        if (in_array($last, $known, true)) {
+            array_pop($segments);
+        } else {
+            break;
+        }
     }
 
     $base = implode('/', array_filter($segments, fn ($s) => $s !== ''));
