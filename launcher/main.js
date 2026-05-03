@@ -327,6 +327,12 @@ async function runSync(apiClient, pub) {
   pub.status('Récupération du manifest');
 
   const raw = await apiClient.getManifest();
+
+  // Diagnostic: log the RAW server response for the launcher block so we can
+  // see whether `background_url` is even present before parseManifest runs.
+  debugLog(`[bg] raw.launcher = ${JSON.stringify(raw && raw.launcher ? raw.launcher : null)}`);
+  debugLog(`[bg] apiBaseUrl = ${JSON.stringify(apiBaseUrl)}`);
+
   const manifest = parseManifest(raw, { apiBaseUrl });
 
   // Log the resolved background URL into the main-process log file so we can
