@@ -273,8 +273,9 @@ async function extractArchive(archivePath, destDir) {
 	throw new Error(`Format d'archive Java non géré : ${archivePath}`);
 }
 
-async function fetchAdoptiumRelease(javaMajor) {
-	const { os: osTag, arch } = getPlatformInfo();
+// Single Adoptium API call. Returns null on 404 / empty result so the caller
+// can decide whether to retry with a different architecture.
+async function tryFetchAdoptiumRelease(javaMajor, osTag, arch) {
 	const url = new URL(`${ADOPTIUM_API}/${javaMajor}/ga`);
 	url.searchParams.set('architecture', arch);
 	url.searchParams.set('heap_size', 'normal');
@@ -289,24 +290,50 @@ async function fetchAdoptiumRelease(javaMajor) {
 	url.searchParams.set('vendor', 'eclipse');
 
 	const res = await httpGetJson(url);
-	if (res.statusCode !== 200) {
-		throw new Error(`Adoptium API HTTP ${res.statusCode}`);
-	}
+	// 404 = no build for this combination (e.g. Java 8 doesn't exist for
+	// macOS aarch64 — Java 8 predates Apple Silicon by 6 years). Treat as
+	// "not available" so the caller can fall back to a different arch.
+	if (res.statusCode === 404) return null;
+	if (res.statusCode !== 200) throw new Error(`Adoptium API HTTP ${res.statusCode}`);
+
 	const list = Array.isArray(res.json) ? res.json : [];
-	if (list.length === 0) {
-		throw new Error(`Aucune JRE Adoptium pour Java ${javaMajor} sur ${osTag}/${arch}`);
-	}
+	if (list.length === 0) return null;
 	const release = list[0];
 	const binary = Array.isArray(release.binaries) ? release.binaries[0] : null;
-	if (!binary || !binary.package || !binary.package.link) {
-		throw new Error('Réponse Adoptium invalide (pas de binary.package.link)');
-	}
+	if (!binary || !binary.package || !binary.package.link) return null;
 	return {
 		releaseVersion: (release.version_data && release.version_data.openjdk_version) || '',
 		url: String(binary.package.link),
 		sha256: String(binary.package.checksum || '').toLowerCase(),
 		name: String(binary.package.name || `java-${javaMajor}.archive`),
+		arch,
 	};
+}
+
+async function fetchAdoptiumRelease(javaMajor, debugLog) {
+	const dlog = typeof debugLog === 'function' ? debugLog : () => {};
+	const { os: osTag, arch } = getPlatformInfo();
+
+	// Build the architecture preference list. We always try the native arch
+	// first, and on macOS we transparently fall back to x64 (which runs via
+	// Rosetta 2 on Apple Silicon — preinstalled on macOS 11+, no UX impact).
+	// This is the only practical way to get Java 8 on M1/M2/M3 Macs since
+	// Adoptium never shipped an aarch64 Java 8 build for macOS.
+	const archCandidates = [arch];
+	if (osTag === 'mac' && arch === 'aarch64') archCandidates.push('x64');
+
+	for (const tryArch of archCandidates) {
+		dlog(`[java] querying Adoptium: java=${javaMajor} os=${osTag} arch=${tryArch}`);
+		const release = await tryFetchAdoptiumRelease(javaMajor, osTag, tryArch);
+		if (release) {
+			if (tryArch !== arch) {
+				dlog(`[java] no native ${arch} build; using ${tryArch} (will run via Rosetta 2 on Apple Silicon)`);
+			}
+			return release;
+		}
+	}
+
+	throw new Error(`Aucune JRE Adoptium pour Java ${javaMajor} sur ${osTag} (architectures essayées : ${archCandidates.join(', ')})`);
 }
 
 // Public entry point. Returns the absolute path to the `java` binary that
@@ -328,8 +355,8 @@ async function ensureJavaForMinecraft(launcherRootDir, mcVersion, { onStatus, on
 	}
 
 	if (typeof onStatus === 'function') onStatus(`Recherche de Java ${javaMajor} sur Adoptium…`);
-	const release = await fetchAdoptiumRelease(javaMajor);
-	dlog(`[java] Adoptium release: ${release.releaseVersion}, ${release.url}`);
+	const release = await fetchAdoptiumRelease(javaMajor, debugLog);
+	dlog(`[java] Adoptium release: ${release.releaseVersion}, arch=${release.arch}, ${release.url}`);
 
 	await fsp.mkdir(installDir, { recursive: true });
 	const archivePath = path.join(installDir, release.name);
