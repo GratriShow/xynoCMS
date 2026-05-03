@@ -161,11 +161,39 @@ function api_parse_modules(?string $modulesCsv): array
 
 function api_public_base_url(): string
 {
-    $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-        || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443);
+    // Detect HTTPS reliably even when PHP runs behind a reverse proxy that
+    // terminates TLS (nginx, Cloudflare, Traefik, …). The proxy strips the
+    // HTTPS env var but adds X-Forwarded-Proto: https, which we honour here.
+    // Order:
+    //   1. $_SERVER['HTTPS'] = 'on' (direct HTTPS)
+    //   2. $_SERVER['HTTP_X_FORWARDED_PROTO'] = 'https' (proxy)
+    //   3. $_SERVER['SERVER_PORT'] = 443 (port hint, fallback)
+    $isHttps = (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off');
+    if (!$isHttps) {
+        $fwdProto = strtolower(trim((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')));
+        // X-Forwarded-Proto can contain a comma-separated list when chained
+        // through multiple proxies (e.g. "https,http"). The first hop is the
+        // one closest to the client, which is what we want.
+        if ($fwdProto !== '') {
+            $fwdProto = trim(explode(',', $fwdProto)[0]);
+        }
+        if ($fwdProto === 'https') {
+            $isHttps = true;
+        } elseif ($fwdProto === '' && isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443) {
+            $isHttps = true;
+        }
+    }
 
     $scheme = $isHttps ? 'https' : 'http';
-    $host = (string)($_SERVER['HTTP_HOST'] ?? '');
+
+    // Same idea for the host: behind a proxy, HTTP_HOST is the proxy's
+    // internal hostname. X-Forwarded-Host carries the public hostname the
+    // client used.
+    $fwdHost = trim((string)($_SERVER['HTTP_X_FORWARDED_HOST'] ?? ''));
+    if ($fwdHost !== '') {
+        $fwdHost = trim(explode(',', $fwdHost)[0]);
+    }
+    $host = $fwdHost !== '' ? $fwdHost : (string)($_SERVER['HTTP_HOST'] ?? '');
     if ($host === '') {
         $host = (string)($_SERVER['SERVER_NAME'] ?? 'localhost');
     }
