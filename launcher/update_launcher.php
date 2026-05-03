@@ -124,6 +124,10 @@ if (!empty($_POST['remove_background'])) {
 }
 
 // ---- Upload logo (optionnel) ----
+// Same pattern as the background block: validate the uploaded file, write it
+// under /uploads/launchers/<id>/logo.<ext>, and remove any stale logo files
+// of other extensions so the launcher's file-detection picks the freshest
+// one. Accepts PNG / ICO / JPG / WEBP.
 $logoNotice = '';
 if (!empty($_FILES['logo']['tmp_name']) && is_uploaded_file($_FILES['logo']['tmp_name'])) {
     $uploadErr = (int)($_FILES['logo']['error'] ?? UPLOAD_ERR_NO_FILE);
@@ -152,27 +156,35 @@ if (!empty($_FILES['logo']['tmp_name']) && is_uploaded_file($_FILES['logo']['tmp
             if (!is_dir($dir)) {
                 @mkdir($dir, 0755, true);
             }
-            // Ecrit toujours en logo.png (extension canonique) pour simplifier l'affichage.
-            // Si l'upload est en .ico / .jpg / .webp, on garde l'extension d'origine aussi.
-            $canonical = $dir . '/logo.png';
-            if ($ext === 'png') {
-                if (@move_uploaded_file($_FILES['logo']['tmp_name'], $canonical)) {
-                    @chmod($canonical, 0644);
-                } else {
-                    $logoNotice = ' (logo non enregistré)';
+            // Wipe stale logos of every other extension so the file-detection
+            // in api_get_launcher_branding() / manifest.php picks the correct
+            // one without manual cleanup. The new file will be written below.
+            foreach (['png', 'ico', 'jpg', 'webp'] as $oldExt) {
+                $stale = $dir . '/logo.' . $oldExt;
+                if ($oldExt !== $ext && is_file($stale)) {
+                    @unlink($stale);
                 }
+            }
+            $target = $dir . '/logo.' . $ext;
+            if (@move_uploaded_file($_FILES['logo']['tmp_name'], $target)) {
+                @chmod($target, 0644);
             } else {
-                $target = $dir . '/logo.' . $ext;
-                if (@move_uploaded_file($_FILES['logo']['tmp_name'], $target)) {
-                    @chmod($target, 0644);
-                    // Pas de conversion PNG côté PHP : le build pipeline s'en chargera,
-                    // ou le dashboard affichera le fichier natif.
-                } else {
-                    $logoNotice = ' (logo non enregistré)';
-                }
+                $logoNotice = ' (logo non enregistré)';
             }
         }
     }
+}
+
+// ---- Suppression logo (optionnel) ----
+if (!empty($_POST['remove_logo'])) {
+    $dir = __DIR__ . '/../uploads/launchers/' . $launcherId;
+    foreach (['png', 'ico', 'jpg', 'webp'] as $oldExt) {
+        $stale = $dir . '/logo.' . $oldExt;
+        if (is_file($stale)) {
+            @unlink($stale);
+        }
+    }
+    $logoNotice = ' (logo supprimé)';
 }
 
 flash_set('success', 'Launcher mis à jour.' . $logoNotice . $bgNotice);

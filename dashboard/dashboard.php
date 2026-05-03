@@ -893,22 +893,41 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
                 </select></label>
             </div>
 
-            <div class="sub-card-head" style="margin-top:4px"><div><h3>Logo de l'app Electron</h3><p>PNG 512×512 recommandé. Utilisé comme icône de l'exécutable et dans la fenêtre.</p></div></div>
+            <div class="sub-card-head" style="margin-top:4px"><div><h3>Logo du launcher</h3><p>Affiché dans la fenêtre du launcher (en haut à gauche). Carré 512×512 recommandé, transparence acceptée.</p></div></div>
+            <?php
+              // Detect any of the four supported logo extensions on disk; the
+              // launcher's manifest endpoint does the same scan in this exact
+              // order, so picking the first match here matches what the user
+              // sees in the launcher.
+              $logoExt = '';
+              foreach (['png', 'ico', 'jpg', 'webp'] as $ext) {
+                  if (is_file(__DIR__ . '/../uploads/launchers/' . (int)$selectedId . '/logo.' . $ext)) {
+                      $logoExt = $ext;
+                      break;
+                  }
+              }
+              $hasLogo = $logoExt !== '';
+              $logoRel = $hasLogo ? ('uploads/launchers/' . (int)$selectedId . '/logo.' . $logoExt) : '';
+            ?>
             <div class="two-col" style="align-items:end">
-              <label class="label"><span>Fichier logo (PNG / ICO)</span>
-                <input class="input" type="file" name="logo" accept="image/png,image/x-icon,image/jpeg,image/webp" />
-                <span class="help">Max 2 Mo · carré recommandé · transparence acceptée.</span></label>
+              <label class="label"><span>Fichier logo (PNG / ICO / JPG / WEBP)</span>
+                <input class="input" type="file" name="logo" accept="image/png,image/x-icon,image/vnd.microsoft.icon,image/jpeg,image/webp" />
+                <span class="help">Max 2 Mo · carré recommandé · transparence acceptée pour PNG/WEBP.</span></label>
               <div style="padding:12px;background:rgba(0,0,0,.25);border-radius:12px;display:flex;align-items:center;gap:12px">
-                <?php $logoUrl = 'uploads/launchers/' . (int)$selectedId . '/logo.png'; $hasLogo = is_file(__DIR__ . '/../' . $logoUrl); ?>
                 <div style="width:64px;height:64px;border-radius:14px;border:1px solid var(--border-2);background:
                   <?php if ($hasLogo): ?>
-                    url('<?php echo e('/' . $logoUrl . '?v=' . filemtime(__DIR__ . '/../' . $logoUrl)); ?>') center/cover no-repeat, var(--grad-soft);
+                    url('<?php echo e('/' . $logoRel . '?v=' . filemtime(__DIR__ . '/../' . $logoRel)); ?>') center/contain no-repeat, var(--grad-soft);
                   <?php else: ?>
                     var(--grad-soft);
                   <?php endif; ?>"></div>
                 <div>
                   <strong style="color:#fff;font-size:14px">Logo actuel</strong><br>
-                  <span class="small"><?php echo $hasLogo ? 'Personnalisé' : 'Logo Xyno par défaut'; ?></span>
+                  <span class="small"><?php echo $hasLogo ? 'Personnalisé (' . strtoupper($logoExt) . ')' : 'Logo Xyno par défaut'; ?></span>
+                  <?php if ($hasLogo): ?>
+                    <br><label class="small" style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;cursor:pointer">
+                      <input type="checkbox" name="remove_logo" value="1" /> Supprimer le logo
+                    </label>
+                  <?php endif; ?>
                 </div>
               </div>
             </div>

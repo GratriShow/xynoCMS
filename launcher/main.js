@@ -346,6 +346,7 @@ async function runSync(apiClient, pub) {
     version: manifest.launcher.version,
     loader: manifest.launcher.loader,
     backgroundUrl: manifest.launcher.backgroundUrl || '',
+    logoUrl: manifest.launcher.logoUrl || '',
   });
 
   console.log(`[sync] manifest ok: ${manifest.files.length} fichiers, total ${manifest.totalSize} bytes`);

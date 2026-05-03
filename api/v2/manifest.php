@@ -89,6 +89,19 @@ try {
         }
     }
 
+    // Per-launcher logo, optional. We don't track an explicit DB column for
+    // the logo (legacy: detection scans /uploads/launchers/<id>/ for any of
+    // logo.png/ico/jpg/webp). First match wins; PNG is preferred because the
+    // upload endpoint writes a canonical logo.png even for non-PNG sources.
+    $logoUrl = '';
+    foreach (['png', 'ico', 'jpg', 'webp'] as $logoExt) {
+        $logoFs = __DIR__ . '/../../uploads/launchers/' . $launcherId . '/logo.' . $logoExt;
+        if (is_file($logoFs)) {
+            $logoUrl = api_public_url('/uploads/launchers/' . $launcherId . '/logo.' . $logoExt . '?v=' . filemtime($logoFs));
+            break;
+        }
+    }
+
     $manifest = [
         'launcher' => [
             'name' => (string)($launcher['name'] ?? ''),
@@ -96,6 +109,7 @@ try {
             'loader' => strtolower((string)($launcher['loader'] ?? '')),
             'theme' => v2_manifest_theme_slug((string)($launcher['theme'] ?? '')),
             'background_url' => $backgroundUrl,
+            'logo_url' => $logoUrl,
         ],
         'file_count' => 0,
         'total_size' => 0,

@@ -213,6 +213,39 @@
       console.log('[launcher-ui] applyCustomBackground: applied', safeUrl);
     }
 
+    // --- Custom per-launcher logo ----------------------------------------
+    // Applied to every `<img id="launcherLogo">` element across the active
+    // theme. When the URL is empty we hide the image instead of leaving a
+    // broken alt-text placeholder.
+    function applyCustomLogo(url) {
+      const safe = typeof url === 'string' ? url.trim() : '';
+      const logoEls = document.querySelectorAll('#launcherLogo, .brand-logo, [data-launcher-logo]');
+
+      if (!safe) {
+        logoEls.forEach((el) => {
+          el.removeAttribute('src');
+          el.style.display = 'none';
+        });
+        console.log('[launcher-ui] applyCustomLogo: cleared (no url)');
+        return;
+      }
+      if (!/^https?:\/\//i.test(safe) && !safe.startsWith('/')) {
+        console.warn('[launcher-ui] applyCustomLogo: rejecting non-http URL', safe);
+        return;
+      }
+      let safeUrl;
+      try { safeUrl = new URL(safe, window.location.href).toString(); } catch {
+        console.warn('[launcher-ui] applyCustomLogo: invalid URL', safe);
+        return;
+      }
+      logoEls.forEach((el) => {
+        el.src = safeUrl;
+        el.alt = launcherNameEl ? launcherNameEl.textContent : 'Logo';
+        el.style.display = 'block';
+      });
+      console.log('[launcher-ui] applyCustomLogo: applied', safeUrl);
+    }
+
     // --- Branding (logo + primary color + copyright footer) -------------
     const SAFE_HEX = /^#[0-9a-fA-F]{3,8}$/;
 
@@ -1137,6 +1170,12 @@
         // over again (e.g. cosmic's gradient).
         if (typeof info.backgroundUrl === 'string') {
           applyCustomBackground(info.backgroundUrl);
+        }
+        // Per-launcher custom logo — same pipeline, but applied to the logo
+        // <img>. Goes through the manifest (not branding) so the rehydrate
+        // after a theme switch keeps it. Empty string clears the logo.
+        if (typeof info.logoUrl === 'string') {
+          applyCustomLogo(info.logoUrl);
         }
       },
       onUx: (payload) => {
