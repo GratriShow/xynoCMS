@@ -329,6 +329,12 @@ async function runSync(apiClient, pub) {
   const raw = await apiClient.getManifest();
   const manifest = parseManifest(raw, { apiBaseUrl });
 
+  // Log the resolved background URL into the main-process log file so we can
+  // diagnose "background not showing" without needing DevTools. Empty string
+  // means the manifest endpoint didn't include one (column missing, file not
+  // on disk, or origin validation rejected it in parseManifest).
+  debugLog(`[bg] manifest.launcher.backgroundUrl = ${JSON.stringify(manifest.launcher.backgroundUrl || '')}`);
+
   pub.info({
     name: manifest.launcher.name,
     version: manifest.launcher.version,

@@ -284,6 +284,54 @@ jobs:
             -F "active=1" \
             -F "file=@$FILEPATH"
 
+      # ----------------------------------------------------------------------
+      # Build & publish the auto-update zip — Linux job only.
+      # The app.asar produced by electron-builder is identical across all
+      # three platforms (it's just our JS), so we only need to produce one
+      # update zip per build. We do it from the Linux runner because it's the
+      # fastest and most reliable.
+      # The launcher polls /api/launcher_update.php on every startup and, when
+      # a new active release is found, downloads this zip, verifies its
+      # SHA-256, and swaps it into resources/app.asar in place. Users get the
+      # update on next launch — no reinstall needed.
+      # ----------------------------------------------------------------------
+      - name: Build update zip (Linux only)
+        if: ${{ matrix.target == 'linux' }}
+        shell: bash
+        working-directory: launcher
+        run: |
+          set -euo pipefail
+          # electron-builder emits the asar at release/linux-unpacked/resources/app.asar
+          ASAR_PATH="release/linux-unpacked/resources/app.asar"
+          if [[ ! -f "$ASAR_PATH" ]]; then
+            echo "app.asar not found at $ASAR_PATH" >&2
+            ls -la release/ release/linux-unpacked/ release/linux-unpacked/resources/ 2>/dev/null || true
+            exit 1
+          fi
+          mkdir -p release/update
+          node tools/makeUpdateZip.js \
+            --asar "$ASAR_PATH" \
+            --out  "release/update/update.zip"
+          ls -la release/update/
+
+      - name: Upload update zip to CMS (Linux only)
+        if: ${{ matrix.target == 'linux' }}
+        shell: bash
+        env:
+          CMS: ${{ needs.prepare.outputs.cms_base_url }}
+          UUID: ${{ needs.prepare.outputs.uuid }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TOKEN: ${{ secrets.RELEASE_UPLOAD_TOKEN }}
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST "$CMS/api/release_upload.php" \
+            -H "X-Upload-Token: $TOKEN" \
+            -F "uuid=$UUID" \
+            -F "type=update" \
+            -F "version=$VERSION" \
+            -F "active=1" \
+            -F "file=@launcher/release/update/update.zip"
+
       - name: Notify CMS (build status)
         if: always()
         shell: bash

@@ -147,21 +147,25 @@
 
     // --- Custom per-launcher background ---------------------------------
     // The tenant uploads an image in the dashboard. The manifest endpoint
-    // returns a same-origin URL under /uploads/launchers/<id>/. Most themes
-    // wrap the whole UI in a `.launcher-container` div with its own
-    // background, so just setting body.style.backgroundImage isn't visible.
+    // returns a same-origin URL under /uploads/launchers/<id>/.
     //
-    // We work around this by injecting a stylesheet with `!important` rules
-    // that target body PLUS the common wrappers used across themes
-    // (.launcher-container, .app, .app-container, #app, [data-launcher-root]).
-    // Whichever selector matches the active theme, the rule applies and the
-    // image overrides the theme's own background.
+    // Themes typically wrap the whole UI in `.launcher-container` (or similar)
+    // with its own opaque background, so painting on body/wrapper alone is
+    // covered. To be reliable across every theme we paint the image on the
+    // `<html>` element (the root, drawn behind everything) AND force every
+    // common wrapper to be transparent so the image shows through.
     function applyCustomBackground(url) {
       const safe = typeof url === 'string' ? url.trim() : '';
+
       let styleEl = document.getElementById('xyno-custom-bg-style');
+      if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'xyno-custom-bg-style';
+        document.head.appendChild(styleEl);
+      }
 
       if (!safe) {
-        if (styleEl) styleEl.textContent = '';
+        styleEl.textContent = '';
         console.log('[launcher-ui] applyCustomBackground: cleared (no url)');
         return;
       }
@@ -179,28 +183,31 @@
         console.warn('[launcher-ui] applyCustomBackground: invalid URL', safe);
         return;
       }
-      // Escape double-quotes that would otherwise break out of the CSS string.
       const cssUrl = safeUrl.replace(/"/g, '%22');
 
-      if (!styleEl) {
-        styleEl = document.createElement('style');
-        styleEl.id = 'xyno-custom-bg-style';
-        document.head.appendChild(styleEl);
-      }
-
+      // 1) Paint the image on <html> (always rendered behind everything).
+      // 2) Make every wrapper that themes commonly use transparent so the
+      //    image shows through.
+      // Each rule uses !important so theme stylesheets can't override it.
       styleEl.textContent = `
-        body,
-        .launcher-container,
-        .app,
-        .app-container,
-        #app,
-        [data-launcher-root] {
+        html {
           background-image: url("${cssUrl}") !important;
           background-size: cover !important;
           background-position: center center !important;
           background-repeat: no-repeat !important;
           background-attachment: fixed !important;
+          background-color: #0b1020 !important;
+        }
+        body,
+        .launcher-container,
+        .app,
+        .app-container,
+        #app,
+        [data-launcher-root],
+        main,
+        .main-content {
           background-color: transparent !important;
+          background-image: none !important;
         }
       `;
       console.log('[launcher-ui] applyCustomBackground: applied', safeUrl);
