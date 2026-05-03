@@ -996,7 +996,7 @@ function api_get_launcher_by_id(int $launcherId): ?array
     }
     $pdo = db();
     try {
-        $stmt = $pdo->prepare('SELECT id, user_id, uuid, api_key, client_integrity_sha256, name, description, version, loader, theme, modules, last_ping FROM launchers WHERE id = ? LIMIT 1');
+        $stmt = $pdo->prepare('SELECT id, user_id, uuid, api_key, client_integrity_sha256, name, description, version, loader, theme, background_path, modules, last_ping FROM launchers WHERE id = ? LIMIT 1');
         $stmt->execute([$launcherId]);
         $row = $stmt->fetch();
         if (!$row) {
@@ -1007,6 +1007,9 @@ function api_get_launcher_by_id(int $launcherId): ?array
         }
         if (!isset($row['client_integrity_sha256']) || $row['client_integrity_sha256'] === null) {
             $row['client_integrity_sha256'] = '';
+        }
+        if (!isset($row['background_path']) || $row['background_path'] === null) {
+            $row['background_path'] = '';
         }
         return $row;
     } catch (PDOException $e) {
@@ -1022,6 +1025,7 @@ function api_get_launcher_by_id(int $launcherId): ?array
         }
         $row['modules'] = '';
         $row['client_integrity_sha256'] = '';
+        $row['background_path'] = '';
         return $row;
     }
 }
