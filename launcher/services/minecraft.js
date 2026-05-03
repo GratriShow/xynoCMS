@@ -409,8 +409,29 @@ async function launchMinecraft({ paths, session, manifest, settings, javaPath, o
   status('Préparation du moteur de lancement…');
   const launcher = new Client();
 
-  launcher.on('debug', (l) => log(String(l || '')));
-  launcher.on('data', (d) => log(String(d || '')));
+  // Capture the JVM's last stderr output so we can surface a meaningful error
+  // when it crashes (instead of just "exit code 1"). Keep a rolling buffer.
+  const stderrTail = [];
+  const pushStderr = (line) => {
+    const s = String(line || '').trim();
+    if (!s) return;
+    stderrTail.push(s);
+    if (stderrTail.length > 80) stderrTail.shift();
+  };
+
+  launcher.on('debug', (l) => {
+    const s = String(l || '');
+    log(s);
+    if (s) dlog(`[mc:debug] ${s.replace(/\s+$/, '')}`);
+  });
+  launcher.on('data', (d) => {
+    const s = String(d || '');
+    log(s);
+    if (s) {
+      dlog(`[mc:data] ${s.replace(/\s+$/, '')}`);
+      pushStderr(s);
+    }
+  });
 
   // MCLC emits 'progress' for every batch of files it downloads (assets,
   // libraries, natives). Without this, the UI just sits at "Lancement…" while
@@ -437,7 +458,18 @@ async function launchMinecraft({ paths, session, manifest, settings, javaPath, o
     dlog('[mc] arguments built, JVM about to start');
   });
 
+  // Track the close event so the IPC handler can wait synchronously for an
+  // immediate JVM crash and surface it as an error to the user. Crucially,
+  // we want to differentiate "JVM closed because the player quit the game"
+  // (code 0, normal exit) from "JVM crashed within seconds of launch"
+  // (code != 0, immediate failure). MCLC's `close` event is the only signal.
+  let exitCode = null;
+  let exitTime = 0;
+  let closeFired = false;
   launcher.on('close', (code) => {
+    exitCode = typeof code === 'number' ? code : null;
+    exitTime = Date.now();
+    closeFired = true;
     log(`Minecraft fermé (code=${code})`);
     dlog(`[mc] close event, code=${code}`);
   });
@@ -490,6 +522,42 @@ async function launchMinecraft({ paths, session, manifest, settings, javaPath, o
         LAUNCH_TIMEOUT_MS,
       )),
     ]);
+  }
+
+  // Wait briefly to detect an immediate JVM crash. Without this we'd return
+  // "ok=true, pid=null" while the JVM has already died with a stack trace —
+  // and the user would just see "Bon jeu" while nothing actually launched.
+  // A healthy launch reaches this point in <50ms after `launcher.launch()`
+  // returned; we wait up to 1500ms to give a crash a chance to fire `close`.
+  const startedAt = Date.now();
+  while (!closeFired && (Date.now() - startedAt) < 1500) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
+
+  if (closeFired) {
+    // The JVM died before we could even confirm it started. Build an error
+    // message that's actionable: include the exit code and the last stderr
+    // lines (truncated) so the user can see *why* it crashed. The most
+    // common cause is a Java version mismatch — Forge 1.13.2 needs Java 8,
+    // newer Forge needs Java 17, etc. We hint at that in the message.
+    const tail = stderrTail.slice(-30).join('\n').slice(-2000);
+    const looksLikeJavaVersion = /UnsupportedClassVersionError|class file version|Unrecognized option|version compiled by a more recent|requires (Java|JRE)|module java\.base|JNI Error has occurred/i.test(tail);
+    const versionTag = String(version.custom || version.number || '');
+
+    let hint = '';
+    if (looksLikeJavaVersion) {
+      hint = `\n\n💡 Cela ressemble à une mauvaise version de Java. Vérifie dans les paramètres du launcher que tu utilises la bonne :\n  - Minecraft 1.7 – 1.16 + Forge → Java 8\n  - Minecraft 1.17 → Java 16\n  - Minecraft 1.18 – 1.20.4 → Java 17\n  - Minecraft 1.20.5+ → Java 21\nVersion actuellement chargée : ${versionTag}.`;
+    }
+
+    const err = new Error(
+      `Minecraft a planté immédiatement (code=${exitCode === null ? '?' : exitCode}).` +
+      (tail ? `\n\nDernière sortie de la JVM :\n${tail}` : '') +
+      hint,
+    );
+    err.code = 'MC_LAUNCH_CRASHED';
+    err.exitCode = exitCode;
+    if (typeof onClose === 'function') { try { onClose(); } catch { /* ignore */ } }
+    throw err;
   }
 
   if (child && typeof onClose === 'function' && typeof child.on === 'function') {

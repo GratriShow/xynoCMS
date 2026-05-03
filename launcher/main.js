@@ -36,6 +36,7 @@ const { getLauncherPaths } = require('./utils/paths');
 const { getSession, loginMicrosoft, logout } = require('./services/authService');
 const { launchMinecraft } = require('./services/minecraft');
 const { loadSettings, updateSettings, resolveJavaPath } = require('./services/settings');
+const { ensureJavaForMinecraft, getRequiredJavaVersion } = require('./services/javaInstaller');
 const { readLocalVersion, writeLocalVersion } = require('./services/versionStore');
 const { runAutoUpdate } = require('./services/autoUpdate');
 const { createRpc } = require('./services/discord');
@@ -702,6 +703,10 @@ app.whenReady().then(async () => {
   let lastManifest = null;
   let licenseState = { active: null, status: 'unknown', checkedAt: 0 };
   let currentGamePid = null;
+  // Auth mode reported by the status endpoint ('microsoft' | 'custom' | 'offline').
+  let lastAuthMode = 'microsoft';
+  // In-memory custom session built after a successful auth:loginCustom call.
+  let lastCustomSession = null;
 
   // Extensions / Discord RPC / maintenance state (populated on every sync).
   let extensionsMap = new Map();
@@ -966,7 +971,20 @@ app.whenReady().then(async () => {
       const email = payload && typeof payload.email === 'string' ? payload.email.trim() : '';
       const password = payload && typeof payload.password === 'string' ? payload.password : '';
       if (!email || !password) return { ok: false, error: 'missing_credentials' };
-      return await callAuthProxy({ action: 'login', email, password });
+      const result = await callAuthProxy({ action: 'login', email, password });
+      // Persist the custom session in main-process memory so the play handler
+      // can build a valid authorization even though no auth.json is on disk.
+      if (result && result.ok && result.data) {
+        const upstream = (result.data && result.data.data) ? result.data.data : (result.data || {});
+        const username = typeof upstream.username === 'string' ? upstream.username.trim() : email;
+        const uuid = typeof upstream.uuid === 'string' ? upstream.uuid.trim() : '';
+        const access_token = typeof upstream.token === 'string' ? upstream.token.trim() : '';
+        if (username && uuid && access_token) {
+          lastCustomSession = { type: 'custom', username, uuid, access_token };
+          debugLog(`[auth] custom session stored in memory for: ${username}`);
+        }
+      }
+      return result;
     } catch (err) {
       return { ok: false, error: err && err.message ? String(err.message) : 'network_error' };
     }
@@ -1024,6 +1042,12 @@ app.whenReady().then(async () => {
       debugLog('[play] step 2: checkLicense');
       const lic = await withTimeout(checkLicense(apiClient, { pub }), 15_000, 'Vérification abonnement');
       licenseState = { active: lic.active, status: lic.status, checkedAt: Date.now() };
+      // Refresh auth mode from the latest status response.
+      if (lic.res && lic.res.auth && typeof lic.res.auth.mode === 'string') {
+        const m = lic.res.auth.mode.toLowerCase();
+        if (m === 'offline' || m === 'custom' || m === 'microsoft') lastAuthMode = m;
+        debugLog(`[play] auth mode refreshed: ${lastAuthMode}`);
+      }
       if (!lic.active) {
         debugLog('[play] license inactive, aborting');
         throw new Error('Votre abonnement a expiré');
@@ -1037,12 +1061,33 @@ app.whenReady().then(async () => {
         throw new Error("Impossible de valider l'abonnement (token).");
       }
 
-      pub.status('Chargement de votre session Microsoft…');
-      debugLog('[play] step 4: getSession');
+      pub.status('Chargement de la session…');
+      debugLog(`[play] step 4: getSession (authMode=${lastAuthMode})`);
       const paths = getLauncherPaths(app);
-      const session = await getSession(paths);
-      if (!session) throw new Error('Non connecté.');
-      debugLog(`[play] session ok, user=${session.username}`);
+      let session = null;
+
+      if (lastAuthMode === 'offline') {
+        // Offline mode: synthesize a local session — no Microsoft account needed.
+        // Minecraft will launch in offline/cracked mode; online-mode servers will
+        // refuse the connection but that is expected behaviour for offline auth.
+        session = {
+          type: 'offline',
+          username: 'Player',
+          uuid: crypto.randomUUID().replace(/-/g, ''),
+          access_token: crypto.randomUUID().replace(/-/g, ''),
+        };
+        debugLog('[play] offline session created');
+      } else if (lastAuthMode === 'custom') {
+        // Custom Bearer auth: session was stored in memory by auth:loginCustom.
+        session = lastCustomSession;
+        if (!session) throw new Error("Non connecté. Connecte-toi d'abord avec tes identifiants.");
+        debugLog(`[play] custom session ok, user=${session.username}`);
+      } else {
+        // Default: Microsoft OAuth session persisted on disk.
+        session = await getSession(paths);
+        if (!session) throw new Error('Non connecté.');
+        debugLog(`[play] microsoft session ok, user=${session.username}`);
+      }
 
       if (!lastManifest) {
         throw new Error('Manifest indisponible. Relance une synchronisation.');
@@ -1084,10 +1129,45 @@ app.whenReady().then(async () => {
         runAntiCheatGuard(settings, advanced);
       }
 
-      pub.status('Recherche de Java…');
-      debugLog('[play] step 7: resolveJavaPath');
-      const javaPath = resolveJavaPath(settings);
-      debugLog(`[play] java=${javaPath || '(auto)'}`);
+      // Java path resolution. Order:
+      //   1. If the user explicitly set a java_path in settings, respect it.
+      //   2. Otherwise, download/reuse the right Adoptium Temurin JRE for the
+      //      Minecraft version of this launcher. This avoids the "I have
+      //      Java 25, why does Forge 1.13.2 crash?" class of bugs entirely.
+      let javaPath = '';
+      const manualJava = settings && typeof settings.java_path === 'string' ? settings.java_path.trim() : '';
+      if (manualJava) {
+        debugLog('[play] step 7: resolveJavaPath (user-configured)');
+        javaPath = resolveJavaPath(settings);
+        debugLog(`[play] java=${javaPath} (manual)`);
+      } else {
+        const mcVersion = lastManifest && lastManifest.launcher ? lastManifest.launcher.version : '';
+        const requiredMajor = getRequiredJavaVersion(mcVersion);
+        pub.status(`Préparation de Java ${requiredMajor}…`);
+        debugLog(`[play] step 7: ensureJavaForMinecraft (mc=${mcVersion}, want=Java ${requiredMajor})`);
+        try {
+          javaPath = await ensureJavaForMinecraft(paths.rootDir, mcVersion, {
+            debugLog,
+            onStatus: (s) => { if (s) pub.status(s); },
+            onProgress: (p) => {
+              if (!p) return;
+              const total = Number(p.total) || 0;
+              const task = Number(p.task) || 0;
+              const percent = total > 0 ? Math.min(100, Math.round((task / total) * 100)) : 0;
+              pub.progress({ done: task, total, percent, currentFile: 'Java' });
+            },
+          });
+          debugLog(`[play] java=${javaPath} (auto-installed)`);
+          pub.progress({ done: 0, total: 0, percent: 0, currentFile: '' });
+        } catch (err) {
+          debugLog(`[play] auto-install Java failed: ${err && err.message ? err.message : err}`);
+          // Fall back to system detection if the auto-install fails (e.g. no
+          // network). Better to try the user's system Java than to refuse
+          // launch entirely.
+          javaPath = resolveJavaPath(settings);
+          debugLog(`[play] falling back to system Java: ${javaPath || '(none)'}`);
+        }
+      }
 
       // launchMinecraft now reports detailed progress through onStatus/onProgress.
       // - onStatus receives free-form French strings for the loading text.
@@ -1173,6 +1253,12 @@ app.whenReady().then(async () => {
         const lic = await checkLicense(apiClient, { pub });
         debugLog(`[sync] License check complete: active=${lic.active}, status=${lic.status}`);
         licenseState = { active: lic.active, status: lic.status, checkedAt: Date.now() };
+        // Keep the auth mode in sync so the play handler knows which session to use.
+        if (lic.res && lic.res.auth && typeof lic.res.auth.mode === 'string') {
+          const m = lic.res.auth.mode.toLowerCase();
+          if (m === 'offline' || m === 'custom' || m === 'microsoft') lastAuthMode = m;
+          debugLog(`[sync] auth mode: ${lastAuthMode}`);
+        }
 
         if (!lic.active) {
           debugLog('[sync] License is not active, aborting sync');
