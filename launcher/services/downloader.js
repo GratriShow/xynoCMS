@@ -237,13 +237,39 @@ async function planSync({
   }
 
   let obsolete = [];
+  const seenObsolete = new Set();
+  const pushObsolete = (absPath, relPath) => {
+    if (seenObsolete.has(relPath)) return;
+    seenObsolete.add(relPath);
+    obsolete.push({ absPath, relPath });
+  };
+
   if (fast) {
+    // 1) State diff — catches files that the launcher itself installed in a
+    //    previous sync and are no longer in the manifest (mod removed from
+    //    the CMS, etc.). This was the only path before; it has a blind spot
+    //    for files added to disk outside the launcher (manual drag-and-drop
+    //    into mods/, leftover from a previous install with a wiped state, …).
     for (const relPath of Object.keys(stateFiles)) {
       if (!wanted.has(relPath)) {
-        obsolete.push({
-          absPath: path.join(paths.rootDir, relPath),
-          relPath,
-        });
+        pushObsolete(path.join(paths.rootDir, relPath), relPath);
+      }
+    }
+
+    // 2) Filesystem scan — even in fast mode, we walk mods/ and config/ to
+    //    pick up files the state diff missed. These two directories are tiny
+    //    in practice (a few dozen entries), so the extra IO is negligible.
+    //    We deliberately skip assets/ here because it can contain thousands
+    //    of files; the state diff is sufficient for assets/ since they only
+    //    arrive through the manifest pipeline.
+    const scanRoots = [paths.modsDir, paths.configDir];
+    for (const r of scanRoots) {
+      const files = await listFilesRecursive(r);
+      for (const abs of files) {
+        const rel = path.relative(paths.rootDir, abs).split(path.sep).join('/');
+        if (!wanted.has(rel)) {
+          pushObsolete(abs, rel);
+        }
       }
     }
   } else {
@@ -256,7 +282,7 @@ async function planSync({
     for (const abs of localFiles) {
       const rel = path.relative(paths.rootDir, abs).split(path.sep).join('/');
       if (!wanted.has(rel)) {
-        obsolete.push({ absPath: abs, relPath: rel });
+        pushObsolete(abs, rel);
       }
     }
   }
