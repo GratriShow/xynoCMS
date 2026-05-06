@@ -304,7 +304,7 @@ function runAntiCheatGuard(settings, advanced = null) {
   }
 }
 
-async function runSync(apiClient, pub) {
+async function runSync(apiClient, pub, { licRes } = {}) {
   if (!pub) {
     throw new Error('Missing publisher');
   }
@@ -342,12 +342,31 @@ async function runSync(apiClient, pub) {
   // on disk, or origin validation rejected it in parseManifest).
   debugLog(`[bg] manifest.launcher.backgroundUrl = ${JSON.stringify(manifest.launcher.backgroundUrl || '')}`);
 
+  // Merge branding / marketplace / auth from the license-check response so that
+  // this pub.info() — the one that becomes the rehydration baseline after a
+  // theme switch — always carries the full picture. Without this, a non-default
+  // theme triggers a second win.loadFile() whose did-finish-load rehydrates
+  // only from this call, losing hide_copyright, popup_promo, etc.
+  const _licRes = licRes && typeof licRes === 'object' ? licRes : {};
+  const _branding = _licRes.branding && typeof _licRes.branding === 'object' ? _licRes.branding : null;
+  const _mpRaw = _licRes.marketplace && typeof _licRes.marketplace === 'object' ? _licRes.marketplace : null;
+  const _marketplace = _mpRaw
+    ? {
+        owned: Array.isArray(_mpRaw.owned) ? _mpRaw.owned.filter((k) => typeof k === 'string') : [],
+        settings: _mpRaw.settings && typeof _mpRaw.settings === 'object' ? _mpRaw.settings : {},
+      }
+    : null;
+  const _auth = _licRes.auth && typeof _licRes.auth === 'object' ? _licRes.auth : null;
+
   pub.info({
     name: manifest.launcher.name,
     version: manifest.launcher.version,
     loader: manifest.launcher.loader,
     backgroundUrl: manifest.launcher.backgroundUrl || '',
     logoUrl: manifest.launcher.logoUrl || '',
+    branding: _branding,
+    marketplace: _marketplace,
+    auth: _auth,
   });
 
   console.log(`[sync] manifest ok: ${manifest.files.length} fichiers, total ${manifest.totalSize} bytes`);
@@ -1318,7 +1337,7 @@ app.whenReady().then(async () => {
         ensureDiscordRpc(apiBaseUrlForExt, uuidForExt, apiKeyForExt).catch(() => {});
 
         debugLog('[sync] Running sync...');
-        lastManifest = await runSync(apiClient, pub);
+        lastManifest = await runSync(apiClient, pub, { licRes: lic.res });
         debugLog(`[sync] Sync complete, manifest exists: ${!!lastManifest}`);
 
         // Switch theme dynamically based on manifest.launcher.theme.
