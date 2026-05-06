@@ -1276,12 +1276,7 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
                   </label>
                 <?php else: ?>
                   <div class="lock-hint"><span>🔒 Débloque pour masquer la mention Xyno.</span>
-                    <form method="post" action="api/marketplace_checkout.php" style="margin:0">
-                      <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
-                      <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
-                      <input type="hidden" name="item_key" value="remove_copyright" />
-                      <button class="btn btn-primary" type="submit" <?php echo $stripeConfigured ? '' : 'disabled'; ?>>Débloquer</button>
-                    </form>
+                    <button class="btn btn-primary" type="button" <?php echo $stripeConfigured ? '' : 'disabled'; ?> onclick="_xyCheckout('remove_copyright')">Débloquer</button>
                   </div>
                 <?php endif; ?>
               </div>
@@ -1305,12 +1300,7 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
                   </div>
                 <?php else: ?>
                   <div class="lock-hint"><span>🔒 Débloque pour reskiner le launcher.</span>
-                    <form method="post" action="api/marketplace_checkout.php" style="margin:0">
-                      <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
-                      <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
-                      <input type="hidden" name="item_key" value="colors_custom" />
-                      <button class="btn btn-primary" type="submit" <?php echo $stripeConfigured ? '' : 'disabled'; ?>>Débloquer</button>
-                    </form>
+                    <button class="btn btn-primary" type="button" <?php echo $stripeConfigured ? '' : 'disabled'; ?> onclick="_xyCheckout('colors_custom')">Débloquer</button>
                   </div>
                 <?php endif; ?>
               </div>
@@ -1336,12 +1326,7 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
                   </div>
                 <?php else: ?>
                   <div class="lock-hint"><span>🔒 Débloque pour jouer une piste d'ambiance.</span>
-                    <form method="post" action="api/marketplace_checkout.php" style="margin:0">
-                      <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
-                      <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
-                      <input type="hidden" name="item_key" value="music" />
-                      <button class="btn btn-primary" type="submit" <?php echo $stripeConfigured ? '' : 'disabled'; ?>>Débloquer</button>
-                    </form>
+                    <button class="btn btn-primary" type="button" <?php echo $stripeConfigured ? '' : 'disabled'; ?> onclick="_xyCheckout('music')">Débloquer</button>
                   </div>
                 <?php endif; ?>
               </div>
@@ -1361,12 +1346,7 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
                     <input class="input" type="text" name="popup_promo[until]" value="<?php echo e((string)($pp['until'] ?? '')); ?>" placeholder="2026-06-01T00:00:00Z" /></label>
                 <?php else: ?>
                   <div class="lock-hint"><span>🔒 Débloque pour pousser des annonces modales.</span>
-                    <form method="post" action="api/marketplace_checkout.php" style="margin:0">
-                      <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
-                      <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
-                      <input type="hidden" name="item_key" value="popup_promo" />
-                      <button class="btn btn-primary" type="submit" <?php echo $stripeConfigured ? '' : 'disabled'; ?>>Débloquer</button>
-                    </form>
+                    <button class="btn btn-primary" type="button" <?php echo $stripeConfigured ? '' : 'disabled'; ?> onclick="_xyCheckout('popup_promo')">Débloquer</button>
                   </div>
                 <?php endif; ?>
               </div>
@@ -1388,12 +1368,7 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
                   </div>
                 <?php else: ?>
                   <div class="lock-hint"><span>🔒 Débloque pour afficher un countdown sur la page Play.</span>
-                    <form method="post" action="api/marketplace_checkout.php" style="margin:0">
-                      <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
-                      <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
-                      <input type="hidden" name="item_key" value="countdown" />
-                      <button class="btn btn-primary" type="submit" <?php echo $stripeConfigured ? '' : 'disabled'; ?>>Débloquer</button>
-                    </form>
+                    <button class="btn btn-primary" type="button" <?php echo $stripeConfigured ? '' : 'disabled'; ?> onclick="_xyCheckout('countdown')">Débloquer</button>
                   </div>
                 <?php endif; ?>
               </div>
@@ -1405,7 +1380,6 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
               <?php endif; ?>
             </form>
           <?php endif; ?>
-        </section>
         </section>
 
         <!-- ============ TAB: Auth ============ -->
@@ -1883,6 +1857,22 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
 
   <script>
     document.getElementById('year').textContent = String(new Date().getFullYear());
+
+    // ---------- Marketplace checkout (évite les formulaires imbriqués) ----------
+    var _xyCsrf = '<?php echo addslashes(e($csrf)); ?>';
+    var _xyLauncherUuid = '<?php echo addslashes(e((string)($selected['uuid'] ?? ''))); ?>';
+    function _xyCheckout(itemKey) {
+      var f = document.createElement('form');
+      f.method = 'POST';
+      f.action = 'api/marketplace_checkout.php';
+      [['csrf_token', _xyCsrf], ['launcher_uuid', _xyLauncherUuid], ['item_key', itemKey]].forEach(function(pair) {
+        var i = document.createElement('input');
+        i.type = 'hidden'; i.name = pair[0]; i.value = pair[1];
+        f.appendChild(i);
+      });
+      document.body.appendChild(f);
+      f.submit();
+    }
 
     // ---------- Tab switching (hash + query-string sync) ----------
     (function () {
