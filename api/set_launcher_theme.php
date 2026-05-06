@@ -60,7 +60,19 @@ try {
     $updateStmt->execute([$themeId, $launcherId]);
 
     flash_set('success', 'Thème mis à jour! Le nouveau thème sera appliqué au prochain lancement du launcher.');
+
+    // JSON response for AJAX calls (customizer live preview)
+    if (!empty($_POST['_ajax'])) {
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => true]);
+        exit;
+    }
 } catch (Throwable $e) {
+    if (!empty($_POST['_ajax'])) {
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        exit;
+    }
     flash_set('error', 'Erreur: ' . $e->getMessage());
 }
 

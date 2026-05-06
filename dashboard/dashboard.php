@@ -1180,230 +1180,439 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
         <!-- ============ TAB: Apparence ============ -->
         <section id="tab-apparence" class="tab-panel panel <?php echo $paywallLocked ? 'paywall-overlay' : ''; ?>" data-tab-panel="apparence" <?php if ($activeTab !== 'apparence') echo 'hidden'; ?>>
           <div class="panel-intro">
-            <h2 class="panel-title">🎨 Apparence &amp; contenu dynamique</h2>
-            <p class="panel-desc">Couleurs du launcher, musique d'ambiance, popup, compte à rebours, mention « Powered by Xyno ». Tout est géré par la Marketplace — chaque bloc se débloque indépendamment.</p>
+            <h2 class="panel-title">🎨 Personnalisation du Launcher</h2>
+            <p class="panel-desc">Modifiez le thème et les couleurs — l'aperçu se met à jour en direct.</p>
           </div>
 
-          <!-- ============ THEME SELECTOR ============ -->
-          <div class="sub-card">
-            <div class="sub-card-head">
-              <div><h3>🎨 Thème du Launcher</h3><p>Sélectionnez l'apparence visuelle de votre launcher. Cliquez pour prévisualiser.</p></div>
+          <?php
+            // Gather themes list
+            $custThemesDir = __DIR__ . '/../launcher/themes';
+            $custThemes = [];
+            if (is_dir($custThemesDir)) {
+              foreach (scandir($custThemesDir) as $entry) {
+                if ($entry[0] === '.') continue;
+                $tp = $custThemesDir . '/' . $entry;
+                if (!is_dir($tp) || !file_exists($tp . '/index.html')) continue;
+                $thGradMap = [
+                  'cosmic'            => ['#1a1a2e','#16213e','#0f3460'],
+                  'neon-frontier'     => ['#0a0e27','#1a1f3a','#2a2f5a'],
+                  'dark-tactical'     => ['#07070a','#16161d','#1a0606'],
+                  'mystic-purple'     => ['#1a0f2e','#2d1b4e','#3d2b6e'],
+                  'minecraft-forest'  => ['#0a1a0a','#1a3a1a','#0d2a0d'],
+                  'default'           => ['#0c0c14','#1a1a2e','#2a2a3e'],
+                ];
+                $thGrad = $thGradMap[$entry] ?? ['#1a1a1a','#2a2a2a','#3a3a3a'];
+                $thEmoji = '🎮';
+                if (stripos($entry,'cosmic')   !== false) $thEmoji = '🌌';
+                if (stripos($entry,'neon')     !== false) $thEmoji = '⚡';
+                if (stripos($entry,'tactical') !== false) $thEmoji = '🎯';
+                if (stripos($entry,'mystic')   !== false) $thEmoji = '🔮';
+                if (stripos($entry,'minecraft')!== false) $thEmoji = '🌲';
+                if (stripos($entry,'default')  !== false) $thEmoji = '📦';
+                $custThemes[] = [
+                  'id'     => $entry,
+                  'name'   => ucwords(str_replace('-',' ',$entry)),
+                  'emoji'  => $thEmoji,
+                  'colors' => $thGrad,
+                ];
+              }
+              usort($custThemes, fn($a,$b) => strcmp($a['id'],$b['id']));
+            }
+
+            // Resolve current theme to a folder name
+            $custCurrentRaw = (string)($selected['theme'] ?? 'default');
+            $custFolderMap = [
+              'Dark Tactical'    => 'dark-tactical',
+              'Mystic Purple'    => 'mystic-purple',
+              'Neon Frontier'    => 'neon-frontier',
+              'Cosmic'           => 'cosmic',
+              'Minecraft Forest' => 'minecraft-forest',
+              'Violet Neon'      => 'default',
+              'Glacier'          => 'default',
+            ];
+            $custCurrentFolder = $custFolderMap[$custCurrentRaw] ?? $custCurrentRaw;
+            if (!is_dir($custThemesDir . '/' . $custCurrentFolder)) {
+              $custCurrentFolder = 'default';
+            }
+
+            // Current primary color from marketplace settings
+            $custColors = is_array($marketplaceSettings['colors'] ?? null) ? $marketplaceSettings['colors'] : [];
+            $custPrimary = trim((string)($custColors['primary'] ?? ''));
+            $custAccent  = trim((string)($custColors['accent']  ?? ''));
+            $custBg      = trim((string)($custColors['bg']      ?? ''));
+            $custSurface = trim((string)($custColors['surface'] ?? ''));
+            $custHasColors = $owns('colors_custom');
+          ?>
+
+          <!-- ===== CUSTOMIZER LAYOUT ===== -->
+          <div style="display:grid;grid-template-columns:1fr 280px;gap:16px;align-items:start">
+
+            <!-- LEFT : iframe preview -->
+            <div style="position:sticky;top:16px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <span style="font-size:12px;color:var(--muted)">Aperçu en direct</span>
+                <span id="customizerStatus" style="font-size:11px;color:var(--muted);transition:color .3s"></span>
+              </div>
+              <iframe
+                id="customizerIframe"
+                src="/launcher/themes/<?php echo e($custCurrentFolder); ?>/index.html"
+                style="width:100%;height:420px;border:1px solid var(--border-1);border-radius:10px;background:#0c0c14;display:block"
+                sandbox="allow-scripts allow-same-origin">
+              </iframe>
             </div>
-            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;">
-              <?php
-                // Get available themes
-                $themesDir = __DIR__ . '/../launcher/themes';
-                $themes = [];
-                if (is_dir($themesDir)) {
-                  foreach (scandir($themesDir) as $entry) {
-                    if ($entry[0] === '.') continue;
-                    $themePath = $themesDir . '/' . $entry;
-                    if (!is_dir($themePath) || !file_exists($themePath . '/index.html')) continue;
 
-                    // Theme colors for preview
-                    $colors = [
-                      'cosmic' => ['#1a1a2e', '#16213e', '#0f3460'],
-                      'neon-frontier' => ['#0a0e27', '#1a1f3a', '#2a2f5a'],
-                      'dark-tactical' => ['#1a1a1a', '#2d2d2d', '#404040'],
-                      'mystic-purple' => ['#1a0f2e', '#2d1b4e', '#3d2b6e'],
-                      'minecraft-forest' => ['#0a0e27', '#1a3a3a', '#0d1f2d'],
-                      'default' => ['#0c0c14', '#1a1a2e', '#2a2a3e'],
-                    ];
+            <!-- RIGHT : controls panel -->
+            <div style="display:flex;flex-direction:column;gap:12px">
 
-                    $themeColors = $colors[$entry] ?? ['#1a1a1a', '#2a2a2a', '#3a3a3a'];
-
-                    $emoji = '🎮';
-                    if (stripos($entry, 'cosmic') !== false) $emoji = '🌌';
-                    if (stripos($entry, 'neon') !== false) $emoji = '⚡';
-                    if (stripos($entry, 'tactical') !== false) $emoji = '🎯';
-                    if (stripos($entry, 'mystic') !== false) $emoji = '🔮';
-                    if (stripos($entry, 'minecraft') !== false) $emoji = '🌲';
-                    if (stripos($entry, 'default') !== false) $emoji = '📦';
-
-                    $themes[] = ['id' => $entry, 'name' => ucwords(str_replace('-', ' ', $entry)), 'emoji' => $emoji, 'colors' => $themeColors];
-                  }
-                  usort($themes, fn($a, $b) => strcmp($a['id'], $b['id']));
-                }
-                $currentTheme = (string)($selected['theme'] ?? 'default');
-              ?>
-              <?php foreach ($themes as $theme): ?>
-                <form method="post" action="api/set_launcher_theme.php" style="margin: 0;" title="<?php echo e($theme['name']); ?>">
-                  <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
-                  <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
-                  <input type="hidden" name="theme_id" value="<?php echo e($theme['id']); ?>" />
-                  <button type="submit" style="width: 100%; height: 160px; padding: 0; background: linear-gradient(135deg, <?php echo $theme['colors'][0]; ?> 0%, <?php echo $theme['colors'][1]; ?> 50%, <?php echo $theme['colors'][2]; ?> 100%); border: 3px solid <?php echo $theme['id'] === $currentTheme ? '#4caf50' : 'rgba(255, 255, 255, 0.1)'; ?>; border-radius: 8px; cursor: pointer; color: white; text-align: center; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;" onmouseover="this.style.borderColor='rgba(76, 175, 80, 0.8)'; this.style.transform='translateY(-4px)'; this.style.boxShadow='0 8px 20px rgba(76, 175, 80, 0.3)'" onmouseout="this.style.borderColor='<?php echo $theme['id'] === $currentTheme ? '#4caf50' : 'rgba(255, 255, 255, 0.1)'; ?>'; this.style.transform='translateY(0)'; this.style.boxShadow='none'">
-                    <div style="font-size: 40px;"><?php echo $theme['emoji']; ?></div>
-                    <div style="font-weight: 600; font-size: 13px;"><?php echo e($theme['name']); ?></div>
-                    <?php if ($theme['id'] === $currentTheme): ?>
-                      <div style="font-size: 11px; color: #4caf50; margin-top: 4px; padding: 2px 6px; background: rgba(76, 175, 80, 0.2); border-radius: 3px;">✓ Actif</div>
-                    <?php endif; ?>
-                  </button>
-                </form>
-              <?php endforeach; ?>
-            </div>
-
-            <!-- Preview Section -->
-            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
-              <h4 style="margin-bottom: 12px; color: #fff;">Aperçu complet du thème actuel</h4>
-              <iframe src="<?php echo e('/' . (empty($currentTheme) || $currentTheme === 'default' ? 'launcher/themes/default' : 'launcher/themes/' . $currentTheme) . '/index.html'); ?>" style="width: 100%; height: 400px; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; background: #0c0c14;"></iframe>
-            </div>
-          </div>
-
-          <?php if (!$marketplaceAvailable): ?>
-            <div class="sub-card"><p class="small" style="margin:0">Les tables marketplace n'existent pas encore. Importe <code>migrations_v3.sql</code>.</p></div>
-          <?php else: ?>
-            <form class="form" method="post" action="update_marketplace_settings.php" aria-label="Paramètres apparence">
-              <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
-              <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
-              <input type="hidden" name="return_tab" value="apparence" />
-              <input type="hidden" name="sections[]" value="copyright" />
-              <input type="hidden" name="sections[]" value="colors" />
-              <input type="hidden" name="sections[]" value="music" />
-              <input type="hidden" name="sections[]" value="popup_promo" />
-              <input type="hidden" name="sections[]" value="countdown" />
-
-              <?php /* Copyright */ ?>
-              <div class="sub-card <?php echo $owns('remove_copyright') ? '' : 'is-locked'; ?>">
-                <div class="sub-card-head">
-                  <div><h3>🧼 Retirer « Powered by XynoWeb »</h3><p>Cache le footer Xyno du launcher.</p></div>
-                  <?php if ($owns('remove_copyright')): ?><span class="chip violet">Acquis</span><?php else: ?><span class="chip plain"><?php echo e($priceFor('remove_copyright')); ?></span><?php endif; ?>
+              <!-- Thème -->
+              <div class="sub-card" style="padding:14px">
+                <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Thème</div>
+                <div style="display:flex;flex-direction:column;gap:6px" id="themeChipList">
+                  <?php foreach ($custThemes as $ct): ?>
+                    <button
+                      type="button"
+                      class="cust-theme-btn<?php echo $ct['id'] === $custCurrentFolder ? ' cust-theme-active' : ''; ?>"
+                      data-theme="<?php echo e($ct['id']); ?>"
+                      style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;border:2px solid <?php echo $ct['id'] === $custCurrentFolder ? 'var(--accent,#7c3aed)' : 'var(--border-1)'; ?>;background:linear-gradient(135deg,<?php echo $ct['colors'][0]; ?>,<?php echo $ct['colors'][2]; ?>);cursor:pointer;text-align:left;transition:border-color .2s,transform .15s;width:100%">
+                      <span style="font-size:20px;flex-shrink:0"><?php echo $ct['emoji']; ?></span>
+                      <span style="font-size:12px;font-weight:600;color:#fff"><?php echo e($ct['name']); ?></span>
+                      <?php if ($ct['id'] === $custCurrentFolder): ?>
+                        <span style="margin-left:auto;font-size:10px;color:#4ade80;flex-shrink:0">✓</span>
+                      <?php endif; ?>
+                    </button>
+                  <?php endforeach; ?>
                 </div>
-                <?php if ($owns('remove_copyright')): ?>
-                  <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
-                    <input type="checkbox" name="hide_copyright" value="1" <?php echo !empty($marketplaceSettings['hide_copyright']) ? 'checked' : ''; ?> />
-                    <span>Cacher le footer Xyno.</span>
-                  </label>
-                <?php else: ?>
-                  <div class="lock-hint"><span>🔒 Débloque pour masquer la mention Xyno.</span>
-                    <form method="post" action="api/marketplace_checkout.php" style="margin:0">
-                      <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
-                      <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
-                      <input type="hidden" name="item_key" value="remove_copyright" />
-                      <button class="btn btn-primary" type="submit" <?php echo $stripeConfigured ? '' : 'disabled'; ?>>Débloquer</button>
-                    </form>
+              </div>
+
+              <!-- Couleur principale -->
+              <div class="sub-card" style="padding:14px">
+                <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">
+                  Couleur principale
+                  <?php if (!$custHasColors): ?><span class="chip plain" style="font-size:10px;margin-left:6px">🔒 Marketplace</span><?php endif; ?>
+                </div>
+                <?php if ($custHasColors): ?>
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <input type="color" id="custColorPrimary"
+                      value="<?php echo e($custPrimary !== '' ? $custPrimary : '#8b5cf6'); ?>"
+                      style="width:44px;height:44px;border:none;border-radius:8px;cursor:pointer;padding:2px;background:transparent" />
+                    <code id="custColorPrimaryHex" style="font-size:13px;color:var(--muted)"><?php echo e($custPrimary !== '' ? $custPrimary : '#8b5cf6'); ?></code>
                   </div>
+                <?php else: ?>
+                  <p class="small" style="margin:0">Débloque la palette personnalisée depuis la <a href="<?php echo e($tabUrl('marketplace')); ?>">Marketplace</a> pour modifier les couleurs.</p>
                 <?php endif; ?>
               </div>
 
-              <?php /* Colors */
-                $colors = is_array($marketplaceSettings['colors'] ?? null) ? $marketplaceSettings['colors'] : [];
-              ?>
-              <div class="sub-card <?php echo $owns('colors_custom') ? '' : 'is-locked'; ?>">
-                <div class="sub-card-head">
-                  <div><h3>🎨 Palette personnalisée</h3><p>Primaire, accent, fond et surface. Laisse vide pour garder le thème par défaut.</p></div>
-                  <?php if ($owns('colors_custom')): ?><span class="chip violet">Acquis</span><?php else: ?><span class="chip plain"><?php echo e($priceFor('colors_custom')); ?></span><?php endif; ?>
-                </div>
-                <?php if ($owns('colors_custom')): ?>
-                  <div class="two-col">
-                    <label class="label"><span>Primaire</span><input class="input" type="text" name="colors[primary]" value="<?php echo e((string)($colors['primary'] ?? '')); ?>" placeholder="#8b5cf6" /></label>
-                    <label class="label"><span>Accent</span><input class="input" type="text" name="colors[accent]" value="<?php echo e((string)($colors['accent'] ?? '')); ?>" placeholder="#22d3ee" /></label>
-                  </div>
-                  <div class="two-col">
-                    <label class="label"><span>Fond</span><input class="input" type="text" name="colors[bg]" value="<?php echo e((string)($colors['bg'] ?? '')); ?>" placeholder="#0b1020" /></label>
-                    <label class="label"><span>Surface</span><input class="input" type="text" name="colors[surface]" value="<?php echo e((string)($colors['surface'] ?? '')); ?>" placeholder="#11162a" /></label>
-                  </div>
-                <?php else: ?>
-                  <div class="lock-hint"><span>🔒 Débloque pour reskiner le launcher.</span>
-                    <form method="post" action="api/marketplace_checkout.php" style="margin:0">
-                      <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
-                      <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
-                      <input type="hidden" name="item_key" value="colors_custom" />
-                      <button class="btn btn-primary" type="submit" <?php echo $stripeConfigured ? '' : 'disabled'; ?>>Débloquer</button>
-                    </form>
-                  </div>
-                <?php endif; ?>
+              <!-- Bouton Enregistrer -->
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <button class="btn btn-primary" id="customizerSaveBtn" type="button" style="width:100%">Enregistrer</button>
+                <p id="customizerFeedback" style="margin:0;font-size:12px;text-align:center;min-height:18px"></p>
               </div>
 
-              <?php /* Music */
-                $mu = is_array($marketplaceSettings['music'] ?? null) ? $marketplaceSettings['music'] : [];
-              ?>
-              <div class="sub-card <?php echo $owns('music') ? '' : 'is-locked'; ?>">
-                <div class="sub-card-head">
-                  <div><h3>🎵 Musique d'ambiance</h3><p>Piste audio jouée en boucle à l'ouverture du launcher.</p></div>
-                  <?php if ($owns('music')): ?><span class="chip violet">Acquis</span><?php else: ?><span class="chip plain"><?php echo e($priceFor('music')); ?></span><?php endif; ?>
-                </div>
-                <?php if ($owns('music')): ?>
-                  <label class="label"><span>URL piste audio (mp3/ogg)</span>
-                    <input class="input" type="url" name="music[url]" value="<?php echo e((string)($mu['url'] ?? '')); ?>" placeholder="https://cdn.ton-serveur.com/lobby.mp3" /></label>
-                  <div class="two-col">
-                    <label style="display:flex;gap:10px;align-items:center;padding-top:24px">
-                      <input type="checkbox" name="music[loop]" value="1" <?php echo !empty($mu['loop']) ? 'checked' : ''; ?> />
-                      <span>Lecture en boucle</span>
+            </div><!-- /right panel -->
+          </div><!-- /customizer layout -->
+
+          <!-- ===== OPTIONS AVANCÉES (Marketplace) ===== -->
+          <?php if ($marketplaceAvailable): ?>
+          <details class="sub-card" style="margin-top:20px">
+            <summary style="cursor:pointer;font-weight:600;font-size:13px;padding:4px 0;user-select:none">Options avancées (Marketplace)</summary>
+            <div style="margin-top:14px">
+              <form class="form" method="post" action="update_marketplace_settings.php" aria-label="Paramètres apparence">
+                <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
+                <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
+                <input type="hidden" name="return_tab" value="apparence" />
+                <input type="hidden" name="sections[]" value="copyright" />
+                <input type="hidden" name="sections[]" value="colors" />
+                <input type="hidden" name="sections[]" value="music" />
+                <input type="hidden" name="sections[]" value="popup_promo" />
+                <input type="hidden" name="sections[]" value="countdown" />
+
+                <?php /* Copyright */ ?>
+                <div class="sub-card <?php echo $owns('remove_copyright') ? '' : 'is-locked'; ?>">
+                  <div class="sub-card-head">
+                    <div><h3>🧼 Retirer « Powered by XynoWeb »</h3><p>Cache le footer Xyno du launcher.</p></div>
+                    <?php if ($owns('remove_copyright')): ?><span class="chip violet">Acquis</span><?php else: ?><span class="chip plain"><?php echo e($priceFor('remove_copyright')); ?></span><?php endif; ?>
+                  </div>
+                  <?php if ($owns('remove_copyright')): ?>
+                    <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
+                      <input type="checkbox" name="hide_copyright" value="1" <?php echo !empty($marketplaceSettings['hide_copyright']) ? 'checked' : ''; ?> />
+                      <span>Cacher le footer Xyno.</span>
                     </label>
-                    <label class="label"><span>Volume par défaut (0.0 – 1.0)</span>
-                      <input class="input" type="number" min="0" max="1" step="0.05" name="music[volume]" value="<?php echo e((string)($mu['volume'] ?? '0.5')); ?>" /></label>
+                  <?php else: ?>
+                    <div class="lock-hint"><span>🔒 Débloque pour masquer la mention Xyno.</span>
+                      <form method="post" action="api/marketplace_checkout.php" style="margin:0">
+                        <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
+                        <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
+                        <input type="hidden" name="item_key" value="remove_copyright" />
+                        <button class="btn btn-primary" type="submit" <?php echo $stripeConfigured ? '' : 'disabled'; ?>>Débloquer</button>
+                      </form>
+                    </div>
+                  <?php endif; ?>
+                </div>
+
+                <?php /* Colors — palette avancée */
+                  $colors = is_array($marketplaceSettings['colors'] ?? null) ? $marketplaceSettings['colors'] : [];
+                ?>
+                <div class="sub-card <?php echo $owns('colors_custom') ? '' : 'is-locked'; ?>">
+                  <div class="sub-card-head">
+                    <div><h3>🎨 Palette complète</h3><p>Primaire, accent, fond et surface.</p></div>
+                    <?php if ($owns('colors_custom')): ?><span class="chip violet">Acquis</span><?php else: ?><span class="chip plain"><?php echo e($priceFor('colors_custom')); ?></span><?php endif; ?>
                   </div>
-                <?php else: ?>
-                  <div class="lock-hint"><span>🔒 Débloque pour jouer une piste d'ambiance.</span>
-                    <form method="post" action="api/marketplace_checkout.php" style="margin:0">
-                      <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
-                      <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
-                      <input type="hidden" name="item_key" value="music" />
-                      <button class="btn btn-primary" type="submit" <?php echo $stripeConfigured ? '' : 'disabled'; ?>>Débloquer</button>
-                    </form>
+                  <?php if ($owns('colors_custom')): ?>
+                    <div class="two-col">
+                      <label class="label"><span>Primaire</span><input class="input" type="text" id="advColorPrimary" name="colors[primary]" value="<?php echo e((string)($colors['primary'] ?? '')); ?>" placeholder="#8b5cf6" /></label>
+                      <label class="label"><span>Accent</span><input class="input" type="text" name="colors[accent]" value="<?php echo e((string)($colors['accent'] ?? '')); ?>" placeholder="#22d3ee" /></label>
+                    </div>
+                    <div class="two-col">
+                      <label class="label"><span>Fond</span><input class="input" type="text" name="colors[bg]" value="<?php echo e((string)($colors['bg'] ?? '')); ?>" placeholder="#0b1020" /></label>
+                      <label class="label"><span>Surface</span><input class="input" type="text" name="colors[surface]" value="<?php echo e((string)($colors['surface'] ?? '')); ?>" placeholder="#11162a" /></label>
+                    </div>
+                  <?php else: ?>
+                    <div class="lock-hint"><span>🔒 Débloque pour reskiner le launcher.</span>
+                      <form method="post" action="api/marketplace_checkout.php" style="margin:0">
+                        <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
+                        <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
+                        <input type="hidden" name="item_key" value="colors_custom" />
+                        <button class="btn btn-primary" type="submit" <?php echo $stripeConfigured ? '' : 'disabled'; ?>>Débloquer</button>
+                      </form>
+                    </div>
+                  <?php endif; ?>
+                </div>
+
+                <?php /* Music */
+                  $mu = is_array($marketplaceSettings['music'] ?? null) ? $marketplaceSettings['music'] : [];
+                ?>
+                <div class="sub-card <?php echo $owns('music') ? '' : 'is-locked'; ?>">
+                  <div class="sub-card-head">
+                    <div><h3>🎵 Musique d'ambiance</h3><p>Piste audio jouée en boucle à l'ouverture du launcher.</p></div>
+                    <?php if ($owns('music')): ?><span class="chip violet">Acquis</span><?php else: ?><span class="chip plain"><?php echo e($priceFor('music')); ?></span><?php endif; ?>
+                  </div>
+                  <?php if ($owns('music')): ?>
+                    <label class="label"><span>URL piste audio (mp3/ogg)</span>
+                      <input class="input" type="url" name="music[url]" value="<?php echo e((string)($mu['url'] ?? '')); ?>" placeholder="https://cdn.ton-serveur.com/lobby.mp3" /></label>
+                    <div class="two-col">
+                      <label style="display:flex;gap:10px;align-items:center;padding-top:24px">
+                        <input type="checkbox" name="music[loop]" value="1" <?php echo !empty($mu['loop']) ? 'checked' : ''; ?> />
+                        <span>Lecture en boucle</span>
+                      </label>
+                      <label class="label"><span>Volume (0.0 – 1.0)</span>
+                        <input class="input" type="number" min="0" max="1" step="0.05" name="music[volume]" value="<?php echo e((string)($mu['volume'] ?? '0.5')); ?>" /></label>
+                    </div>
+                  <?php else: ?>
+                    <div class="lock-hint"><span>🔒 Débloque pour jouer une piste d'ambiance.</span>
+                      <form method="post" action="api/marketplace_checkout.php" style="margin:0">
+                        <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
+                        <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
+                        <input type="hidden" name="item_key" value="music" />
+                        <button class="btn btn-primary" type="submit" <?php echo $stripeConfigured ? '' : 'disabled'; ?>>Débloquer</button>
+                      </form>
+                    </div>
+                  <?php endif; ?>
+                </div>
+
+                <?php /* Popup promo */
+                  $pp = is_array($marketplaceSettings['popup_promo'] ?? null) ? $marketplaceSettings['popup_promo'] : [];
+                ?>
+                <div class="sub-card <?php echo $owns('popup_promo') ? '' : 'is-locked'; ?>">
+                  <div class="sub-card-head">
+                    <div><h3>📣 Popup promo</h3><p>Message modal affiché à l'ouverture jusqu'à une date donnée.</p></div>
+                    <?php if ($owns('popup_promo')): ?><span class="chip violet">Acquis</span><?php else: ?><span class="chip plain"><?php echo e($priceFor('popup_promo')); ?></span><?php endif; ?>
+                  </div>
+                  <?php if ($owns('popup_promo')): ?>
+                    <label class="label"><span>HTML du popup (≤ 2000 caractères)</span>
+                      <textarea class="input" name="popup_promo[html]" rows="4" maxlength="2000" placeholder="&lt;p&gt;Event ce weekend !&lt;/p&gt;"><?php echo e((string)($pp['html'] ?? '')); ?></textarea></label>
+                    <label class="label"><span>Valable jusqu'au (ISO 8601)</span>
+                      <input class="input" type="text" name="popup_promo[until]" value="<?php echo e((string)($pp['until'] ?? '')); ?>" placeholder="2026-06-01T00:00:00Z" /></label>
+                  <?php else: ?>
+                    <div class="lock-hint"><span>🔒 Débloque pour pousser des annonces modales.</span>
+                      <form method="post" action="api/marketplace_checkout.php" style="margin:0">
+                        <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
+                        <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
+                        <input type="hidden" name="item_key" value="popup_promo" />
+                        <button class="btn btn-primary" type="submit" <?php echo $stripeConfigured ? '' : 'disabled'; ?>>Débloquer</button>
+                      </form>
+                    </div>
+                  <?php endif; ?>
+                </div>
+
+                <?php /* Countdown */
+                  $cd = is_array($marketplaceSettings['countdown'] ?? null) ? $marketplaceSettings['countdown'] : [];
+                ?>
+                <div class="sub-card <?php echo $owns('countdown') ? '' : 'is-locked'; ?>">
+                  <div class="sub-card-head">
+                    <div><h3>⏱ Compte à rebours</h3><p>Widget temps restant jusqu'à un event — live chaque seconde.</p></div>
+                    <?php if ($owns('countdown')): ?><span class="chip violet">Acquis</span><?php else: ?><span class="chip plain"><?php echo e($priceFor('countdown')); ?></span><?php endif; ?>
+                  </div>
+                  <?php if ($owns('countdown')): ?>
+                    <div class="two-col">
+                      <label class="label"><span>Titre</span>
+                        <input class="input" type="text" name="countdown[title]" value="<?php echo e((string)($cd['title'] ?? '')); ?>" placeholder="Event serveur" /></label>
+                      <label class="label"><span>Date cible (ISO 8601)</span>
+                        <input class="input" type="text" name="countdown[date]" value="<?php echo e((string)($cd['date'] ?? '')); ?>" placeholder="2026-06-01T20:00:00Z" /></label>
+                    </div>
+                  <?php else: ?>
+                    <div class="lock-hint"><span>🔒 Débloque pour afficher un countdown sur la page Play.</span>
+                      <form method="post" action="api/marketplace_checkout.php" style="margin:0">
+                        <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
+                        <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
+                        <input type="hidden" name="item_key" value="countdown" />
+                        <button class="btn btn-primary" type="submit" <?php echo $stripeConfigured ? '' : 'disabled'; ?>>Débloquer</button>
+                      </form>
+                    </div>
+                  <?php endif; ?>
+                </div>
+
+                <?php if ($owns('remove_copyright') || $owns('colors_custom') || $owns('music') || $owns('popup_promo') || $owns('countdown')): ?>
+                  <div class="cta-row" style="margin-top:14px">
+                    <button class="btn btn-primary" type="submit">Enregistrer les options avancées</button>
                   </div>
                 <?php endif; ?>
-              </div>
-
-              <?php /* Popup promo */
-                $pp = is_array($marketplaceSettings['popup_promo'] ?? null) ? $marketplaceSettings['popup_promo'] : [];
-              ?>
-              <div class="sub-card <?php echo $owns('popup_promo') ? '' : 'is-locked'; ?>">
-                <div class="sub-card-head">
-                  <div><h3>📣 Popup promo</h3><p>Message HTML modal affiché à l'ouverture jusqu'à une date donnée.</p></div>
-                  <?php if ($owns('popup_promo')): ?><span class="chip violet">Acquis</span><?php else: ?><span class="chip plain"><?php echo e($priceFor('popup_promo')); ?></span><?php endif; ?>
-                </div>
-                <?php if ($owns('popup_promo')): ?>
-                  <label class="label"><span>HTML du popup (≤ 2000 caractères)</span>
-                    <textarea class="input" name="popup_promo[html]" rows="4" maxlength="2000" placeholder="&lt;p&gt;Event ce weekend !&lt;/p&gt;"><?php echo e((string)($pp['html'] ?? '')); ?></textarea></label>
-                  <label class="label"><span>Valable jusqu'au (ISO 8601, ex. 2026-06-01T00:00:00Z)</span>
-                    <input class="input" type="text" name="popup_promo[until]" value="<?php echo e((string)($pp['until'] ?? '')); ?>" placeholder="2026-06-01T00:00:00Z" /></label>
-                <?php else: ?>
-                  <div class="lock-hint"><span>🔒 Débloque pour pousser des annonces modales.</span>
-                    <form method="post" action="api/marketplace_checkout.php" style="margin:0">
-                      <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
-                      <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
-                      <input type="hidden" name="item_key" value="popup_promo" />
-                      <button class="btn btn-primary" type="submit" <?php echo $stripeConfigured ? '' : 'disabled'; ?>>Débloquer</button>
-                    </form>
-                  </div>
-                <?php endif; ?>
-              </div>
-
-              <?php /* Countdown */
-                $cd = is_array($marketplaceSettings['countdown'] ?? null) ? $marketplaceSettings['countdown'] : [];
-              ?>
-              <div class="sub-card <?php echo $owns('countdown') ? '' : 'is-locked'; ?>">
-                <div class="sub-card-head">
-                  <div><h3>⏱ Compte à rebours</h3><p>Widget qui affiche le temps restant jusqu'à un event — se rafraîchit chaque seconde.</p></div>
-                  <?php if ($owns('countdown')): ?><span class="chip violet">Acquis</span><?php else: ?><span class="chip plain"><?php echo e($priceFor('countdown')); ?></span><?php endif; ?>
-                </div>
-                <?php if ($owns('countdown')): ?>
-                  <div class="two-col">
-                    <label class="label"><span>Titre</span>
-                      <input class="input" type="text" name="countdown[title]" value="<?php echo e((string)($cd['title'] ?? '')); ?>" placeholder="Event serveur" /></label>
-                    <label class="label"><span>Date cible (ISO 8601)</span>
-                      <input class="input" type="text" name="countdown[date]" value="<?php echo e((string)($cd['date'] ?? '')); ?>" placeholder="2026-06-01T20:00:00Z" /></label>
-                  </div>
-                <?php else: ?>
-                  <div class="lock-hint"><span>🔒 Débloque pour afficher un countdown sur la page Play.</span>
-                    <form method="post" action="api/marketplace_checkout.php" style="margin:0">
-                      <input type="hidden" name="csrf_token" value="<?php echo e($csrf); ?>" />
-                      <input type="hidden" name="launcher_uuid" value="<?php echo e((string)$selected['uuid']); ?>" />
-                      <input type="hidden" name="item_key" value="countdown" />
-                      <button class="btn btn-primary" type="submit" <?php echo $stripeConfigured ? '' : 'disabled'; ?>>Débloquer</button>
-                    </form>
-                  </div>
-                <?php endif; ?>
-              </div>
-
-              <?php if ($owns('remove_copyright') || $owns('colors_custom') || $owns('music') || $owns('popup_promo') || $owns('countdown')): ?>
-                <div class="cta-row" style="margin-top:14px">
-                  <button class="btn btn-primary" type="submit">Enregistrer Apparence</button>
-                </div>
-              <?php endif; ?>
-            </form>
+              </form>
+            </div>
+          </details>
+          <?php else: ?>
+            <div class="sub-card" style="margin-top:16px"><p class="small" style="margin:0">Les tables marketplace n'existent pas encore. Importe <code>migrations_v3.sql</code>.</p></div>
           <?php endif; ?>
+
+          <!-- ===== CUSTOMIZER JAVASCRIPT ===== -->
+          <script>
+          (function () {
+            var iframe    = document.getElementById('customizerIframe');
+            var status    = document.getElementById('customizerStatus');
+            var feedback  = document.getElementById('customizerFeedback');
+            var saveBtn   = document.getElementById('customizerSaveBtn');
+            var colorPick = document.getElementById('custColorPrimary');
+            var colorHex  = document.getElementById('custColorPrimaryHex');
+            var advColor  = document.getElementById('advColorPrimary');
+
+            var launcherUuid = <?php echo json_encode((string)$selected['uuid']); ?>;
+            var csrfToken    = <?php echo json_encode($csrf); ?>;
+            var hasColors    = <?php echo $custHasColors ? 'true' : 'false'; ?>;
+
+            var pendingTheme  = <?php echo json_encode($custCurrentFolder); ?>;
+            var savedTheme    = pendingTheme;
+
+            // ── Inject CSS variable into iframe ──────────────────────────
+            function injectColor(prop, val) {
+              try {
+                var doc = iframe.contentDocument || iframe.contentWindow.document;
+                if (doc && doc.documentElement) {
+                  doc.documentElement.style.setProperty(prop, val);
+                }
+              } catch(e) { /* cross-origin guard */ }
+            }
+
+            // ── Apply current primary color after iframe loads ────────────
+            function applyColorsToIframe() {
+              if (!colorPick) return;
+              injectColor('--primary', colorPick.value);
+            }
+            iframe.addEventListener('load', applyColorsToIframe);
+
+            // ── Color picker live update ──────────────────────────────────
+            if (colorPick) {
+              colorPick.addEventListener('input', function () {
+                var v = colorPick.value;
+                if (colorHex) colorHex.textContent = v;
+                if (advColor) advColor.value = v;
+                injectColor('--primary', v);
+              });
+            }
+
+            // ── Theme chip click ──────────────────────────────────────────
+            document.querySelectorAll('.cust-theme-btn').forEach(function (btn) {
+              btn.addEventListener('click', function () {
+                var themeId = btn.dataset.theme;
+                if (themeId === pendingTheme) return;
+                pendingTheme = themeId;
+
+                // Visual active state
+                document.querySelectorAll('.cust-theme-btn').forEach(function (b) {
+                  b.style.borderColor = 'var(--border-1)';
+                  b.classList.remove('cust-theme-active');
+                  var tick = b.querySelector('.theme-tick');
+                  if (tick) tick.remove();
+                });
+                btn.style.borderColor = 'var(--accent,#7c3aed)';
+                btn.classList.add('cust-theme-active');
+                var tick = document.createElement('span');
+                tick.className = 'theme-tick';
+                tick.style.cssText = 'margin-left:auto;font-size:10px;color:#4ade80;flex-shrink:0';
+                tick.textContent = '✓';
+                btn.appendChild(tick);
+
+                // Reload iframe immediately
+                iframe.src = '/launcher/themes/' + themeId + '/index.html';
+              });
+            });
+
+            // ── Set status text ───────────────────────────────────────────
+            function setStatus(msg, color) {
+              if (!status) return;
+              status.textContent = msg;
+              status.style.color = color || 'var(--muted)';
+            }
+            function setFeedback(msg, color) {
+              if (!feedback) return;
+              feedback.textContent = msg;
+              feedback.style.color = color || 'var(--muted)';
+            }
+
+            // ── Save button ───────────────────────────────────────────────
+            if (saveBtn) {
+              saveBtn.addEventListener('click', async function () {
+                saveBtn.disabled = true;
+                setStatus('Enregistrement…', '#a78bfa');
+                setFeedback('');
+
+                try {
+                  // 1. Save theme (if changed)
+                  if (pendingTheme !== savedTheme) {
+                    var fd = new FormData();
+                    fd.append('csrf_token',    csrfToken);
+                    fd.append('launcher_uuid', launcherUuid);
+                    fd.append('theme_id',      pendingTheme);
+                    fd.append('_ajax',         '1');
+                    var r = await fetch('/api/set_launcher_theme.php', { method:'POST', body:fd });
+                    var j = await r.json();
+                    if (!j.ok) throw new Error(j.error || 'Erreur thème');
+                    savedTheme = pendingTheme;
+                  }
+
+                  // 2. Save primary color (if colors enabled)
+                  if (hasColors && colorPick) {
+                    var fd2 = new FormData();
+                    fd2.append('csrf_token',        csrfToken);
+                    fd2.append('launcher_uuid',     launcherUuid);
+                    fd2.append('return_tab',        'apparence');
+                    fd2.append('sections[]',        'colors');
+                    fd2.append('colors[primary]',   colorPick.value);
+                    // Preserve existing accent/bg/surface
+                    if (advColor) {
+                      fd2.set('colors[primary]', colorPick.value);
+                    }
+                    <?php if ($custHasColors): ?>
+                    fd2.append('colors[accent]',  <?php echo json_encode($custAccent ?: '#22d3ee'); ?>);
+                    fd2.append('colors[bg]',      <?php echo json_encode($custBg     ?: ''); ?>);
+                    fd2.append('colors[surface]', <?php echo json_encode($custSurface?: ''); ?>);
+                    <?php endif; ?>
+                    await fetch('/update_marketplace_settings.php', { method:'POST', body:fd2, redirect:'manual' });
+                  }
+
+                  setStatus('✓ Enregistré', '#4ade80');
+                  setFeedback('Les modifications seront actives au prochain lancement du launcher.', '#4ade80');
+                  setTimeout(function () { setStatus(''); setFeedback(''); }, 4000);
+
+                } catch (err) {
+                  setStatus('Erreur', '#f87171');
+                  setFeedback(err.message || 'Une erreur est survenue.', '#f87171');
+                } finally {
+                  saveBtn.disabled = false;
+                }
+              });
+            }
+          })();
+          </script>
+
         </section>
 
         <!-- ============ TAB: Auth ============ -->
