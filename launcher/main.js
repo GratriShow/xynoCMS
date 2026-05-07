@@ -357,6 +357,8 @@ async function runSync(apiClient, pub, { licRes } = {}) {
       }
     : null;
   const _auth = _licRes.auth && typeof _licRes.auth === 'object' ? _licRes.auth : null;
+  const _extensions = Array.isArray(_licRes.extensions) ? _licRes.extensions : null;
+  const _news = Array.isArray(_licRes.news) ? _licRes.news : null;
 
   pub.info({
     name: manifest.launcher.name,
@@ -367,6 +369,8 @@ async function runSync(apiClient, pub, { licRes } = {}) {
     branding: _branding,
     marketplace: _marketplace,
     auth: _auth,
+    extensions: _extensions,
+    news: _news,
   });
 
   console.log(`[sync] manifest ok: ${manifest.files.length} fichiers, total ${manifest.totalSize} bytes`);
