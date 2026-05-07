@@ -402,18 +402,28 @@
           const overlay = document.createElement('div');
           overlay.id = 'marketplace-popup';
           overlay.setAttribute('role', 'dialog');
-          overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;';
+          overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;z-index:9999;padding:12px;';
           const box = document.createElement('div');
-          box.style.cssText = 'max-width:420px;background:rgba(20,20,30,.98);border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:16px;color:rgba(255,255,255,.92);font-size:13px;line-height:1.5;';
+          // Wider box, no padding — images go edge-to-edge inside, text carries its own padding.
+          box.style.cssText = 'width:min(520px,calc(100vw - 24px));background:rgba(18,18,28,.98);border:1px solid rgba(255,255,255,.15);border-radius:14px;overflow:hidden;color:rgba(255,255,255,.92);font-size:13px;line-height:1.55;max-height:88vh;display:flex;flex-direction:column;';
           // innerHTML is intentional here — the tenant owns the payload and it's
           // capped to 2000 chars server-side. Scripts are dropped defensively.
-          box.innerHTML = html.replace(/<script[\s\S]*?<\/script>/gi, '');
+          const content = document.createElement('div');
+          content.style.cssText = 'flex:1 1 auto;overflow-y:auto;';
+          content.innerHTML = html.replace(/<script[\s\S]*?<\/script>/gi, '');
+          box.appendChild(content);
+          // Footer with close button
+          const closeWrap = document.createElement('div');
+          closeWrap.style.cssText = 'flex-shrink:0;padding:10px 16px 14px;border-top:1px solid rgba(255,255,255,.08);';
           const close = document.createElement('button');
           close.type = 'button';
           close.textContent = 'Fermer';
-          close.style.marginTop = '12px';
+          close.style.cssText = 'width:100%;padding:8px 12px;border-radius:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:rgba(255,255,255,.85);cursor:pointer;font-size:13px;font-family:inherit;';
           close.addEventListener('click', () => { overlay.remove(); });
-          box.appendChild(close);
+          // Click outside the box also closes
+          overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+          closeWrap.appendChild(close);
+          box.appendChild(closeWrap);
           overlay.appendChild(box);
           document.body.appendChild(overlay);
         }

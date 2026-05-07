@@ -1378,7 +1378,7 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
                   <!-- ── Preview ── -->
                   <div class="label" style="margin-top:12px">
                     <span>Aperçu</span>
-                    <div id="ppPreview" style="border:1px solid var(--border-2);border-radius:var(--radius-sm);padding:14px 16px;background:#1a1a2e;min-height:50px;font-size:13px;color:#e0e0ff;font-family:sans-serif;max-height:260px;overflow:auto"></div>
+                    <div id="ppPreview" style="border:1px solid var(--border-2);border-radius:var(--radius-sm);padding:0;overflow:hidden;background:#12121c;min-height:50px;font-size:13px;color:#e0e0ff;font-family:sans-serif;max-height:320px;overflow-y:auto"></div>
                     <div id="ppCharCount" style="font-size:11px;color:var(--muted-2);text-align:right;margin-top:2px">0 / 2000 caractères</div>
                   </div>
 
@@ -1476,16 +1476,19 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
                       var valid = getImages();
                       var parts = [];
 
+                      // Images: full-width, natural proportions, no cropping.
+                      // The popup box is overflow:hidden so they respect the border-radius.
                       if (valid.length === 1) {
-                        parts.push('<img src="' + escAttr(valid[0]) + '" style="max-width:100%;display:block;border-radius:6px;margin:0 0 8px">');
+                        parts.push('<img src="' + escAttr(valid[0]) + '" style="width:100%;height:auto;display:block">');
                       } else if (valid.length > 1) {
                         var imgs = valid.map(function (u) {
-                          return '<img src="' + escAttr(u) + '" style="min-width:100%;max-height:160px;object-fit:cover;scroll-snap-align:start;display:block">';
+                          return '<img src="' + escAttr(u) + '" style="min-width:100%;height:auto;display:block;scroll-snap-align:start">';
                         }).join('');
-                        parts.push('<div style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;border-radius:6px;margin:0 0 8px">' + imgs + '</div>');
+                        parts.push('<div style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory">' + imgs + '</div>');
                       }
 
-                      if (textRaw) parts.push(textRaw);
+                      // Text carries its own padding so it looks good whether or not images precede it.
+                      if (textRaw) parts.push('<div style="padding:12px 16px">' + textRaw + '</div>');
                       return parts.join('');
                     }
 
@@ -1513,11 +1516,18 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
                         srcs.push(ta.value);
                       }
 
-                      // Extract text: remove slider wrapper and standalone imgs
-                      var text = raw
-                        .replace(/<div[^>]*scroll-snap-type[^>]*>[\s\S]*?<\/div>/gi, '')
-                        .replace(/<img[^>]*>/gi, '')
-                        .trim();
+                      // Extract text: try new padding-wrapper format first, then fallback
+                      var padMatch = raw.match(/<div[^>]*padding:[^>]*16px[^>]*>([\s\S]*?)<\/div>/i);
+                      var text;
+                      if (padMatch) {
+                        text = padMatch[1].trim();
+                      } else {
+                        // Legacy format: strip slider/img and use remainder
+                        text = raw
+                          .replace(/<div[^>]*scroll-snap-type[^>]*>[\s\S]*?<\/div>/gi, '')
+                          .replace(/<img[^>]*>/gi, '')
+                          .trim();
+                      }
 
                       if (text) editor.innerHTML = text;
                       srcs.forEach(function (s) { addImageRow(s); });
