@@ -1487,8 +1487,8 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
                         parts.push('<div style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory">' + imgs + '</div>');
                       }
 
-                      // Text carries its own padding so it looks good whether or not images precede it.
-                      if (textRaw) parts.push('<div style="padding:12px 16px">' + textRaw + '</div>');
+                      // Text carries its own padding + resets line-height (parent is line-height:0 for img gap fix).
+                      if (textRaw) parts.push('<div style="padding:12px 16px;line-height:1.55">' + textRaw + '</div>');
                       return parts.join('');
                     }
 

@@ -409,7 +409,7 @@
           // innerHTML is intentional here — the tenant owns the payload and it's
           // capped to 2000 chars server-side. Scripts are dropped defensively.
           const content = document.createElement('div');
-          content.style.cssText = 'flex:1 1 auto;overflow-y:auto;';
+          content.style.cssText = 'flex:1 1 auto;overflow-y:auto;line-height:0;'; /* line-height:0 removes inline gap above first img; text restores its own via padding div */
           content.innerHTML = html.replace(/<script[\s\S]*?<\/script>/gi, '');
           box.appendChild(content);
           // Footer with close button
