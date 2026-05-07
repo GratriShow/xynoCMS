@@ -1340,10 +1340,198 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
                   <?php if ($owns('popup_promo')): ?><span class="chip violet">Acquis</span><?php else: ?><span class="chip plain"><?php echo e($priceFor('popup_promo')); ?></span><?php endif; ?>
                 </div>
                 <?php if ($owns('popup_promo')): ?>
-                  <label class="label"><span>HTML du popup (≤ 2000 caractères)</span>
-                    <textarea class="input" name="popup_promo[html]" rows="4" maxlength="2000" placeholder="&lt;p&gt;Event ce weekend !&lt;/p&gt;"><?php echo e((string)($pp['html'] ?? '')); ?></textarea></label>
-                  <label class="label"><span>Valable jusqu'au (ISO 8601, ex. 2026-06-01T00:00:00Z)</span>
+                  <!-- Hidden field – populated by the visual editor JS before form submit -->
+                  <input type="hidden" name="popup_promo[html]" id="ppHtmlField" value="<?php echo e((string)($pp['html'] ?? '')); ?>">
+
+                  <!-- ── Text editor ── -->
+                  <div class="label" style="gap:0">
+                    <span style="margin-bottom:8px">Contenu du popup</span>
+                    <!-- Toolbar -->
+                    <div id="ppToolbar" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;padding:6px 8px;border:1px solid var(--border-2);border-radius:var(--radius-sm) var(--radius-sm) 0 0;background:var(--surface-2)">
+                      <button type="button" class="btn btn-ghost" data-cmd="bold"        title="Gras (Ctrl+B)"      style="font-weight:700;padding:3px 9px;font-size:13px">B</button>
+                      <button type="button" class="btn btn-ghost" data-cmd="italic"      title="Italique (Ctrl+I)"  style="font-style:italic;padding:3px 9px;font-size:13px">I</button>
+                      <button type="button" class="btn btn-ghost" data-cmd="underline"   title="Souligner (Ctrl+U)" style="text-decoration:underline;padding:3px 9px;font-size:13px">U</button>
+                      <div style="width:1px;height:20px;background:var(--border-2);margin:0 2px;align-self:center"></div>
+                      <button type="button" class="btn btn-ghost" data-cmd="justifyLeft"   title="Aligner à gauche" style="padding:3px 9px;font-size:13px">⬅</button>
+                      <button type="button" class="btn btn-ghost" data-cmd="justifyCenter" title="Centrer"          style="padding:3px 9px;font-size:14px">≡</button>
+                      <button type="button" class="btn btn-ghost" data-cmd="justifyRight"  title="Aligner à droite" style="padding:3px 9px;font-size:13px">➡</button>
+                      <div style="width:1px;height:20px;background:var(--border-2);margin:0 2px;align-self:center"></div>
+                      <label title="Couleur du texte" style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer;margin:0">
+                        <span style="font-weight:700;font-size:13px">A</span>
+                        <input type="color" id="ppColor" value="#ffffff" style="width:24px;height:24px;padding:1px;border:1px solid var(--border-2);border-radius:5px;cursor:pointer;background:transparent">
+                      </label>
+                    </div>
+                    <!-- Editable area -->
+                    <div id="ppEditor" contenteditable="true"
+                      style="min-height:80px;max-height:220px;overflow-y:auto;padding:10px 12px;border:1px solid var(--border-2);border-top:none;background:var(--bg-1);color:var(--text);font-size:13.5px;font-family:inherit;line-height:1.55;outline:none;border-radius:0 0 var(--radius-sm) var(--radius-sm)"
+                      aria-label="Texte du popup"></div>
+                  </div>
+
+                  <!-- ── Images ── -->
+                  <div class="label" style="margin-top:12px">
+                    <span>Images</span>
+                    <div id="ppImageList" style="display:grid;gap:8px"></div>
+                    <button type="button" id="ppAddImg" class="btn btn-ghost" style="align-self:start;font-size:13px">+ Ajouter une image</button>
+                    <p class="help" style="margin:0">1 image → affichée seule &nbsp;·&nbsp; 2+ images → slider horizontal (CSS scroll-snap)</p>
+                  </div>
+
+                  <!-- ── Preview ── -->
+                  <div class="label" style="margin-top:12px">
+                    <span>Aperçu</span>
+                    <div id="ppPreview" style="border:1px solid var(--border-2);border-radius:var(--radius-sm);padding:14px 16px;background:#1a1a2e;min-height:50px;font-size:13px;color:#e0e0ff;font-family:sans-serif;max-height:260px;overflow:auto"></div>
+                    <div id="ppCharCount" style="font-size:11px;color:var(--muted-2);text-align:right;margin-top:2px">0 / 2000 caractères</div>
+                  </div>
+
+                  <label class="label" style="margin-top:12px"><span>Valable jusqu'au (ISO 8601, ex. 2026-06-01T00:00:00Z)</span>
                     <input class="input" type="text" name="popup_promo[until]" value="<?php echo e((string)($pp['until'] ?? '')); ?>" placeholder="2026-06-01T00:00:00Z" /></label>
+
+                  <script>
+                  (function () {
+                    'use strict';
+                    var editor    = document.getElementById('ppEditor');
+                    var imgList   = document.getElementById('ppImageList');
+                    var preview   = document.getElementById('ppPreview');
+                    var hidden    = document.getElementById('ppHtmlField');
+                    var counter   = document.getElementById('ppCharCount');
+                    var colorPick = document.getElementById('ppColor');
+
+                    /* ── Toolbar buttons ── */
+                    document.getElementById('ppToolbar').addEventListener('mousedown', function (e) {
+                      var btn = e.target.closest('[data-cmd]');
+                      if (!btn) return;
+                      e.preventDefault();
+                      document.execCommand(btn.dataset.cmd, false, null);
+                      editor.focus();
+                    });
+                    colorPick.addEventListener('input', function () {
+                      document.execCommand('foreColor', false, this.value);
+                      editor.focus();
+                    });
+
+                    /* ── Image rows ── */
+                    function addImageRow(url) {
+                      var row = document.createElement('div');
+                      row.style.cssText = 'display:flex;gap:8px;align-items:center';
+
+                      var inp = document.createElement('input');
+                      inp.type = 'text';
+                      inp.placeholder = 'https://...';
+                      inp.value = url || '';
+                      inp.style.cssText = 'flex:1;padding:8px 11px;border:1px solid var(--border-2);border-radius:var(--radius-sm);background:var(--bg-1);color:var(--text);font-size:13px;font-family:inherit;outline:none;min-width:0';
+
+                      var thumb = document.createElement('img');
+                      thumb.alt = '';
+                      thumb.style.cssText = 'width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--border-2);flex-shrink:0;display:' + ((url && url.trim()) ? 'block' : 'none');
+                      if (url && url.trim()) thumb.src = url;
+                      thumb.addEventListener('error', function () { this.style.display = 'none'; });
+                      thumb.addEventListener('load',  function () { this.style.display = 'block'; });
+
+                      var del = document.createElement('button');
+                      del.type = 'button';
+                      del.title = 'Supprimer';
+                      del.className = 'btn btn-ghost';
+                      del.textContent = '✕';
+                      del.style.cssText = 'padding:5px 9px;font-size:14px;flex-shrink:0';
+
+                      inp.addEventListener('input', function () {
+                        var v = this.value.trim();
+                        if (v) { thumb.src = v; } else { thumb.style.display = 'none'; }
+                        updateAll();
+                      });
+                      del.addEventListener('click', function () {
+                        row.remove();
+                        updateAll();
+                      });
+
+                      row.appendChild(inp);
+                      row.appendChild(thumb);
+                      row.appendChild(del);
+                      imgList.appendChild(row);
+                    }
+
+                    document.getElementById('ppAddImg').addEventListener('click', function () {
+                      addImageRow('');
+                      var inputs = imgList.querySelectorAll('input[type="text"]');
+                      if (inputs.length) inputs[inputs.length - 1].focus();
+                    });
+
+                    /* ── HTML build ── */
+                    function escAttr(s) {
+                      return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                    }
+
+                    function getImages() {
+                      var inputs = imgList.querySelectorAll('input[type="text"]');
+                      return Array.prototype.filter.call(inputs, function (i) { return i.value.trim(); })
+                                  .map(function (i) { return i.value.trim(); });
+                    }
+
+                    function buildHtml() {
+                      var textRaw = editor.innerHTML
+                        .replace(/<div><br\s*\/?><\/div>/gi, '<br>')
+                        .replace(/<div>/gi, '<br>').replace(/<\/div>/gi, '')
+                        .replace(/^<br\s*\/?>/i, '')
+                        .trim();
+
+                      var valid = getImages();
+                      var parts = [];
+
+                      if (valid.length === 1) {
+                        parts.push('<img src="' + escAttr(valid[0]) + '" style="max-width:100%;display:block;border-radius:6px;margin:0 0 8px">');
+                      } else if (valid.length > 1) {
+                        var imgs = valid.map(function (u) {
+                          return '<img src="' + escAttr(u) + '" style="min-width:100%;max-height:160px;object-fit:cover;scroll-snap-align:start;display:block">';
+                        }).join('');
+                        parts.push('<div style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;border-radius:6px;margin:0 0 8px">' + imgs + '</div>');
+                      }
+
+                      if (textRaw) parts.push(textRaw);
+                      return parts.join('');
+                    }
+
+                    function updateAll() {
+                      var html = buildHtml();
+                      hidden.value = html;
+                      preview.innerHTML = html;
+                      var len = html.length;
+                      counter.textContent = len + ' / 2000 caractères';
+                      counter.style.color = len > 2000 ? '#c33' : (len > 1800 ? '#c47000' : '');
+                    }
+
+                    editor.addEventListener('input', updateAll);
+
+                    /* ── Parse existing HTML on load ── */
+                    (function parseExisting() {
+                      var raw = hidden.value;
+                      if (!raw) return;
+
+                      // Extract img srcs
+                      var srcRe = /<img[^>]+src="([^"]*)"/gi, m, srcs = [];
+                      while ((m = srcRe.exec(raw)) !== null) {
+                        var ta = document.createElement('textarea');
+                        ta.innerHTML = m[1];
+                        srcs.push(ta.value);
+                      }
+
+                      // Extract text: remove slider wrapper and standalone imgs
+                      var text = raw
+                        .replace(/<div[^>]*scroll-snap-type[^>]*>[\s\S]*?<\/div>/gi, '')
+                        .replace(/<img[^>]*>/gi, '')
+                        .trim();
+
+                      if (text) editor.innerHTML = text;
+                      srcs.forEach(function (s) { addImageRow(s); });
+                      updateAll();
+                    }());
+
+                    /* ── Sync on submit (safety net) ── */
+                    if (hidden.form) {
+                      hidden.form.addEventListener('submit', function () {
+                        hidden.value = buildHtml();
+                      }, true);
+                    }
+                  }());
+                  </script>
                 <?php else: ?>
                   <div class="lock-hint"><span>🔒 Débloque pour pousser des annonces modales.</span>
                     <button class="btn btn-primary" type="button" <?php echo $stripeConfigured ? '' : 'disabled'; ?> onclick="_xyCheckout('popup_promo')">Débloquer</button>
