@@ -1262,6 +1262,7 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
               <input type="hidden" name="sections[]" value="music" />
               <input type="hidden" name="sections[]" value="popup_promo" />
               <input type="hidden" name="sections[]" value="countdown" />
+              <input type="hidden" name="sections[]" value="screenshot_gallery" />
 
               <?php /* Copyright */ ?>
               <div class="sub-card <?php echo $owns('remove_copyright') ? '' : 'is-locked'; ?>">
@@ -1571,7 +1572,76 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
                 <?php endif; ?>
               </div>
 
-              <?php if ($owns('remove_copyright') || $owns('colors_custom') || $owns('music') || $owns('popup_promo') || $owns('countdown')): ?>
+              <?php /* Screenshot gallery */
+                $sg = is_array($marketplaceSettings['screenshot_gallery'] ?? null) ? $marketplaceSettings['screenshot_gallery'] : [];
+                $sgImages = is_array($sg['images'] ?? null) ? $sg['images'] : [];
+              ?>
+              <div class="sub-card <?php echo $owns('screenshot_gallery') ? '' : 'is-locked'; ?>">
+                <div class="sub-card-head">
+                  <div><h3>🖼 Galerie de screenshots</h3><p>Carrousel plein écran accessible depuis un bouton dans le launcher (max 10 images).</p></div>
+                  <?php if ($owns('screenshot_gallery')): ?><span class="chip violet">Acquis</span><?php else: ?><span class="chip plain"><?php echo e($priceFor('screenshot_gallery')); ?></span><?php endif; ?>
+                </div>
+                <?php if ($owns('screenshot_gallery')): ?>
+                  <label class="label"><span>Titre du bouton</span>
+                    <input class="input" type="text" name="screenshot_gallery[title]" value="<?php echo e((string)($sg['title'] ?? '')); ?>" placeholder="Screenshots" maxlength="64" /></label>
+
+                  <div class="label" style="margin-top:10px">
+                    <span>URLs des images (max 10)</span>
+                    <div id="sgImageList" style="display:grid;gap:8px">
+                      <?php foreach ($sgImages as $i => $imgUrl): ?>
+                        <div class="sg-img-row" style="display:flex;gap:8px;align-items:center">
+                          <input type="text" name="screenshot_gallery[images][]" class="input" value="<?php echo e((string)$imgUrl); ?>" placeholder="https://..." style="flex:1">
+                          <img src="<?php echo e((string)$imgUrl); ?>" alt="" style="width:60px;height:40px;object-fit:cover;border-radius:6px;border:1px solid var(--border-2);flex-shrink:0" onerror="this.style.display='none'" onload="this.style.display='block'">
+                          <button type="button" class="btn btn-ghost" onclick="this.closest('.sg-img-row').remove()" style="padding:5px 9px;flex-shrink:0">✕</button>
+                        </div>
+                      <?php endforeach; ?>
+                    </div>
+                    <button type="button" id="sgAddImg" class="btn btn-ghost" style="align-self:start;font-size:13px;margin-top:4px">+ Ajouter une image</button>
+                    <p class="help" style="margin:0">Chaque URL doit pointer vers une image (jpg, png, webp…)</p>
+                  </div>
+
+                  <script>
+                  (function () {
+                    document.getElementById('sgAddImg').addEventListener('click', function () {
+                      var list = document.getElementById('sgImageList');
+                      if (list.querySelectorAll('.sg-img-row').length >= 10) return;
+                      var row = document.createElement('div');
+                      row.className = 'sg-img-row';
+                      row.style.cssText = 'display:flex;gap:8px;align-items:center';
+                      var inp = document.createElement('input');
+                      inp.type = 'text';
+                      inp.name = 'screenshot_gallery[images][]';
+                      inp.className = 'input';
+                      inp.placeholder = 'https://...';
+                      inp.style.flex = '1';
+                      var thumb = document.createElement('img');
+                      thumb.alt = '';
+                      thumb.style.cssText = 'width:60px;height:40px;object-fit:cover;border-radius:6px;border:1px solid var(--border-2);flex-shrink:0;display:none';
+                      var del = document.createElement('button');
+                      del.type = 'button';
+                      del.className = 'btn btn-ghost';
+                      del.textContent = '✕';
+                      del.style.cssText = 'padding:5px 9px;flex-shrink:0';
+                      inp.addEventListener('input', function () {
+                        var v = this.value.trim();
+                        if (v) { thumb.src = v; thumb.style.display = 'block'; } else { thumb.style.display = 'none'; }
+                      });
+                      thumb.addEventListener('error', function () { this.style.display = 'none'; });
+                      del.addEventListener('click', function () { row.remove(); });
+                      row.appendChild(inp); row.appendChild(thumb); row.appendChild(del);
+                      list.appendChild(row);
+                      inp.focus();
+                    });
+                  }());
+                  </script>
+                <?php else: ?>
+                  <div class="lock-hint"><span>🔒 Débloque pour afficher une galerie de screenshots dans le launcher.</span>
+                    <button class="btn btn-primary" type="button" <?php echo $stripeConfigured ? '' : 'disabled'; ?> onclick="_xyCheckout('screenshot_gallery')">Débloquer</button>
+                  </div>
+                <?php endif; ?>
+              </div>
+
+              <?php if ($owns('remove_copyright') || $owns('colors_custom') || $owns('music') || $owns('popup_promo') || $owns('countdown') || $owns('screenshot_gallery')): ?>
                 <div class="cta-row" style="margin-top:14px">
                   <button class="btn btn-primary" type="submit">Enregistrer Apparence</button>
                 </div>

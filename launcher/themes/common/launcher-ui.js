@@ -325,6 +325,105 @@
     let musicAudioEl = null;
     let countdownTimer = null;
 
+    // --- Screenshot gallery lightbox ------------------------------------------
+    function openGallery(images, title) {
+      const existing = document.getElementById('marketplace-gallery');
+      if (existing) { existing.remove(); return; }
+
+      let current = 0;
+
+      const overlay = document.createElement('div');
+      overlay.id = 'marketplace-gallery';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:9998;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+
+      // Header: title + close
+      const header = document.createElement('div');
+      header.style.cssText = 'width:100%;max-width:860px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-shrink:0;';
+      const titleEl = document.createElement('span');
+      titleEl.textContent = title;
+      titleEl.style.cssText = 'color:#fff;font-size:15px;font-weight:600;font-family:inherit;';
+      const counter = document.createElement('span');
+      counter.style.cssText = 'color:rgba(255,255,255,.5);font-size:13px;font-family:inherit;';
+      counter.textContent = images.length > 1 ? '1 / ' + images.length : '';
+      const closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
+      closeBtn.textContent = '✕';
+      closeBtn.style.cssText = 'background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;padding:4px 11px;border-radius:8px;cursor:pointer;font-size:14px;font-family:inherit;';
+      header.appendChild(titleEl);
+      header.appendChild(counter);
+      header.appendChild(closeBtn);
+      overlay.appendChild(header);
+
+      // Main image row (prev / img / next)
+      const imgRow = document.createElement('div');
+      imgRow.style.cssText = 'width:100%;max-width:860px;display:flex;align-items:center;gap:10px;flex:1 1 auto;min-height:0;';
+
+      const makeNavBtn = (label) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = label;
+        b.style.cssText = 'flex-shrink:0;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;font-size:22px;cursor:pointer;font-family:inherit;line-height:1;';
+        return b;
+      };
+      const prevBtn = makeNavBtn('‹');
+      const nextBtn = makeNavBtn('›');
+      if (images.length < 2) { prevBtn.style.visibility = 'hidden'; nextBtn.style.visibility = 'hidden'; }
+
+      const mainImg = document.createElement('img');
+      mainImg.style.cssText = 'flex:1 1 auto;min-width:0;max-height:60vh;object-fit:contain;border-radius:10px;display:block;';
+      mainImg.src = images[0];
+
+      imgRow.appendChild(prevBtn);
+      imgRow.appendChild(mainImg);
+      imgRow.appendChild(nextBtn);
+      overlay.appendChild(imgRow);
+
+      // Thumbnails strip
+      const thumbStrip = document.createElement('div');
+      thumbStrip.style.cssText = 'display:flex;gap:8px;flex-wrap:nowrap;overflow-x:auto;justify-content:center;margin-top:12px;flex-shrink:0;max-width:860px;padding-bottom:4px;';
+
+      function goTo(idx) {
+        current = ((idx % images.length) + images.length) % images.length;
+        mainImg.src = images[current];
+        if (images.length > 1) counter.textContent = (current + 1) + ' / ' + images.length;
+        thumbStrip.querySelectorAll('img').forEach((t, i) => {
+          t.style.opacity = i === current ? '1' : '0.45';
+          t.style.outline = i === current ? '2px solid rgba(255,255,255,.75)' : 'none';
+        });
+      }
+
+      images.forEach((url, i) => {
+        const t = document.createElement('img');
+        t.src = url;
+        t.alt = '';
+        t.style.cssText = 'width:72px;height:48px;object-fit:cover;border-radius:5px;cursor:pointer;flex-shrink:0;opacity:' + (i === 0 ? '1' : '0.45') + ';' + (i === 0 ? 'outline:2px solid rgba(255,255,255,.75);' : '');
+        t.addEventListener('click', () => goTo(i));
+        thumbStrip.appendChild(t);
+      });
+      overlay.appendChild(thumbStrip);
+
+      // Wire navigation
+      prevBtn.addEventListener('click', () => goTo(current - 1));
+      nextBtn.addEventListener('click', () => goTo(current + 1));
+
+      function cleanup() {
+        overlay.remove();
+        document.removeEventListener('keydown', keyHandler);
+      }
+      const keyHandler = (e) => {
+        if (!document.contains(overlay)) { document.removeEventListener('keydown', keyHandler); return; }
+        if (e.key === 'ArrowLeft')  goTo(current - 1);
+        if (e.key === 'ArrowRight') goTo(current + 1);
+        if (e.key === 'Escape')     cleanup();
+      };
+      closeBtn.addEventListener('click', cleanup);
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(); });
+      document.addEventListener('keydown', keyHandler);
+
+      document.body.appendChild(overlay);
+    }
+    // --------------------------------------------------------------------------
+
     function applyMarketplace(marketplace) {
       if (!marketplace || typeof marketplace !== 'object') return;
       const owned = Array.isArray(marketplace.owned) ? marketplace.owned : [];
@@ -423,6 +522,27 @@
           box.appendChild(closeWrap);
           overlay.appendChild(box);
           document.body.appendChild(overlay);
+        }
+      }
+
+      // Screenshot gallery — floating button that opens a fullscreen lightbox.
+      if (owned.indexOf('screenshot_gallery') >= 0) {
+        const sg = settings.screenshot_gallery && typeof settings.screenshot_gallery === 'object' ? settings.screenshot_gallery : {};
+        const images = Array.isArray(sg.images) ? sg.images.filter(u => typeof u === 'string' && u.trim()) : [];
+        const btnLabel = (typeof sg.title === 'string' && sg.title.trim()) ? sg.title.trim() : 'Screenshots';
+        let galleryBtn = document.getElementById('marketplace-gallery-btn');
+        if (images.length > 0) {
+          if (!galleryBtn) {
+            galleryBtn = document.createElement('button');
+            galleryBtn.id = 'marketplace-gallery-btn';
+            galleryBtn.type = 'button';
+            galleryBtn.style.cssText = 'position:fixed;bottom:14px;right:14px;z-index:990;padding:6px 14px;border-radius:20px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.22);color:rgba(255,255,255,.88);font-size:12px;font-family:inherit;cursor:pointer;backdrop-filter:blur(6px);letter-spacing:.02em;';
+            document.body.appendChild(galleryBtn);
+          }
+          galleryBtn.textContent = '🖼 ' + btnLabel;
+          galleryBtn.onclick = () => openGallery(images, btnLabel);
+        } else if (galleryBtn) {
+          galleryBtn.remove();
         }
       }
 

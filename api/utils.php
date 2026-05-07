@@ -673,6 +673,13 @@ function api_marketplace_catalog(): array
             'price_cents' => $price, 'currency' => $cur,
             'category' => 'contenu', 'category_label' => 'Contenu',
         ],
+        [
+            'key' => 'screenshot_gallery',
+            'name' => 'Galerie de screenshots',
+            'description' => 'Carrousel plein écran accessible via un bouton dédié dans le launcher — jusqu\'à 10 images de ton serveur.',
+            'price_cents' => $price, 'currency' => $cur,
+            'category' => 'contenu', 'category_label' => 'Contenu',
+        ],
     ];
 }
 
@@ -803,6 +810,7 @@ function api_marketplace_settings_filtered(int $launcherId): array
     if (isset($owned['multi_account']))         $out['multi_account']       = is_array($raw['multi_account'] ?? null) ? $raw['multi_account'] : ['enabled' => true];
     if (isset($owned['popup_promo']))           $out['popup_promo']         = is_array($raw['popup_promo'] ?? null) ? $raw['popup_promo'] : [];
     if (isset($owned['countdown']))             $out['countdown']           = is_array($raw['countdown'] ?? null) ? $raw['countdown'] : [];
+    if (isset($owned['screenshot_gallery']))    $out['screenshot_gallery']  = is_array($raw['screenshot_gallery'] ?? null) ? $raw['screenshot_gallery'] : [];
 
     return $out;
 }

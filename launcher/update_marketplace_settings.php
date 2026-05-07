@@ -215,6 +215,25 @@ try {
         }
     }
 
+    if ($touching('screenshot_gallery')) {
+        if (isset($ownedKeys['screenshot_gallery'])) {
+            $sg = is_array($post['screenshot_gallery'] ?? null) ? $post['screenshot_gallery'] : [];
+            $title = trim((string)($sg['title'] ?? ''));
+            if (strlen($title) > 64) $title = substr($title, 0, 64);
+            $rawImages = is_array($sg['images'] ?? null) ? $sg['images'] : [];
+            $images = [];
+            foreach ($rawImages as $img) {
+                $url = trim((string)$img);
+                if ($url !== '' && filter_var($url, FILTER_VALIDATE_URL) && count($images) < 10) {
+                    $images[] = $url;
+                }
+            }
+            $out['screenshot_gallery'] = ['title' => $title, 'images' => $images];
+        } else {
+            unset($out['screenshot_gallery']);
+        }
+    }
+
     if (!api_marketplace_settings_save($launcherId, $out)) {
         flash_set('error', 'Impossible d’enregistrer les paramètres marketplace.');
     } else {
