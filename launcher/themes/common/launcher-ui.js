@@ -402,19 +402,16 @@
           const overlay = document.createElement('div');
           overlay.id = 'marketplace-popup';
           overlay.setAttribute('role', 'dialog');
-          overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;z-index:9999;padding:12px;';
+          overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;box-sizing:border-box;';
           const box = document.createElement('div');
-          // Wider box, no padding — images go edge-to-edge inside, text carries its own padding.
-          box.style.cssText = 'width:min(520px,calc(100vw - 24px));background:rgba(18,18,28,.98);border:1px solid rgba(255,255,255,.15);border-radius:14px;overflow:hidden;color:rgba(255,255,255,.92);font-size:13px;line-height:1.55;max-height:88vh;display:flex;flex-direction:column;';
+          // No padding on the box — images go bord-à-bord, text has its own padding in the HTML.
+          // Use width + max-width instead of min() for broader Electron compat.
+          box.style.cssText = 'width:640px;max-width:calc(100% - 32px);background:rgba(18,18,28,.98);border:1px solid rgba(255,255,255,.15);border-radius:14px;overflow:hidden;color:rgba(255,255,255,.92);font-size:13px;line-height:1.55;max-height:82vh;overflow-y:auto;';
           // innerHTML is intentional here — the tenant owns the payload and it's
           // capped to 2000 chars server-side. Scripts are dropped defensively.
-          const content = document.createElement('div');
-          content.style.cssText = 'flex:1 1 auto;overflow-y:auto;line-height:0;'; /* line-height:0 removes inline gap above first img; text restores its own via padding div */
-          content.innerHTML = html.replace(/<script[\s\S]*?<\/script>/gi, '');
-          box.appendChild(content);
-          // Footer with close button
+          box.innerHTML = html.replace(/<script[\s\S]*?<\/script>/gi, '');
           const closeWrap = document.createElement('div');
-          closeWrap.style.cssText = 'flex-shrink:0;padding:10px 16px 14px;border-top:1px solid rgba(255,255,255,.08);';
+          closeWrap.style.cssText = 'padding:10px 16px 14px;border-top:1px solid rgba(255,255,255,.08);';
           const close = document.createElement('button');
           close.type = 'button';
           close.textContent = 'Fermer';

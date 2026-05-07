@@ -1378,7 +1378,7 @@ $catOrder = ['contenu','serveur','social','monétisation','gameplay','système']
                   <!-- ── Preview ── -->
                   <div class="label" style="margin-top:12px">
                     <span>Aperçu</span>
-                    <div id="ppPreview" style="border:1px solid var(--border-2);border-radius:var(--radius-sm);padding:0;overflow:hidden;background:#12121c;min-height:50px;font-size:13px;color:#e0e0ff;font-family:sans-serif;max-height:320px;overflow-y:auto"></div>
+                    <div id="ppPreview" style="border:1px solid var(--border-2);border-radius:var(--radius-sm);padding:0;overflow:hidden;background:#12121c;min-height:50px;font-size:13px;color:#e0e0ff;font-family:sans-serif;max-height:400px;overflow-y:auto;max-width:640px"></div>
                     <div id="ppCharCount" style="font-size:11px;color:var(--muted-2);text-align:right;margin-top:2px">0 / 2000 caractères</div>
                   </div>
 
