@@ -108,7 +108,7 @@ function base_path(): string
     // app dirs (e.g. `/api/v2/manifest.php` → strip `v2`, then `api`, leaving
     // empty = app served at site root). Without this, base_path() returned
     // `/api/v2` and api_public_url() built `…/api/v2/uploads/…` which 404'd.
-    $known = ['api', 'dashboard', 'auth', 'launcher', 'v2'];
+    $known = ['api', 'dashboard', 'auth', 'launcher', 'v2', 'server-cms'];
     $segments = explode('/', trim($dir, '/'));
     while (!empty($segments)) {
         $last = strtolower((string)end($segments));
