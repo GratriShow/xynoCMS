@@ -10,33 +10,42 @@ if (!$serverId) { redirect('/panel/servers.php'); }
 
 $server = null;
 try {
-    // Après migration 003 : plan_slug et server_name existent
+    // Essai 1 : après migration 003 — colonnes server_name + plan_slug présentes
+    $s = $pdo->prepare(
+        'SELECT s.id, s.uuid, s.server_name, s.server_type, s.mc_version,
+                s.status, s.server_ip, s.server_port, s.server_config, s.ram_mb,
+                s.created_at, s.hosting_server_id,
+                COALESCE(s.plan_slug, \'spark\') AS plan_slug,
+                p.name AS plan_name,
+                COALESCE(p.ram_mb,      2048) AS plan_ram_mb,
+                COALESCE(p.max_players,   20) AS plan_max_players,
+                COALESCE(p.storage_gb,    10) AS disk_gb
+         FROM mc_servers s
+         LEFT JOIN mc_server_plans p ON p.slug = COALESCE(s.plan_slug, \'spark\')
+         WHERE s.id = ? AND s.user_id = ? LIMIT 1'
+    );
+    $s->execute([$serverId, $user['id']]);
+    $server = $s->fetch() ?: null;
+} catch (Throwable) {
+    // Essai 2 : avant migration 003 — colonne `name`, pas de plan_slug
     try {
         $s = $pdo->prepare(
-            'SELECT s.*, s.name AS server_name_fallback,
-                    COALESCE(s.plan_slug, \'spark\') AS plan_slug,
-                    p.name AS plan_name, p.ram_mb AS plan_ram_mb, p.max_players AS plan_max_players, p.storage_gb AS disk_gb
-             FROM mc_servers s
-             LEFT JOIN mc_server_plans p ON p.slug = COALESCE(s.plan_slug, \'spark\')
-             WHERE s.id = ? AND s.user_id = ? LIMIT 1'
-        );
-        $s->execute([$serverId, $user['id']]);
-        $server = $s->fetch() ?: null;
-        // Compatibilité : si server_name absent (avant migration), utiliser name
-        if ($server && empty($server['server_name'])) {
-            $server['server_name'] = $server['server_name_fallback'] ?? $server['name'] ?? 'Serveur';
-        }
-    } catch (Throwable) {
-        $s = $pdo->prepare(
-            'SELECT s.*, s.name AS server_name, \'spark\' AS plan_slug,
-                    NULL AS plan_name, 2048 AS plan_ram_mb, 20 AS plan_max_players, 10 AS disk_gb
+            'SELECT s.id, s.uuid, s.name AS server_name, s.server_type, s.mc_version,
+                    s.status, s.server_ip, s.server_port, s.server_config, s.ram_mb,
+                    s.created_at,
+                    NULL  AS hosting_server_id,
+                    \'spark\' AS plan_slug,
+                    NULL  AS plan_name,
+                    2048  AS plan_ram_mb,
+                    20    AS plan_max_players,
+                    10    AS disk_gb
              FROM mc_servers s
              WHERE s.id = ? AND s.user_id = ? LIMIT 1'
         );
         $s->execute([$serverId, $user['id']]);
         $server = $s->fetch() ?: null;
-    }
-} catch (Throwable) {}
+    } catch (Throwable) {}
+}
 if (!$server) { redirect('/panel/servers.php'); }
 
 $isAdmin = false;
