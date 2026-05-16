@@ -18,6 +18,9 @@ if ($requestPath !== '/' && $requestPath !== '/index.php' && str_ends_with($requ
     exit;
   }
 }
+
+define('SKIP_SECURITY_HEADERS', true); // Headers already sent via HTML; avoid double-send
+require_once __DIR__ . '/config/bootstrap.php';
 ?><!doctype html>
 <html lang="fr">
 <head>
@@ -364,8 +367,14 @@ if ($requestPath !== '/' && $requestPath !== '/index.php' && str_ends_with($requ
       <a href="/pricing.php"        class="nav-link">Tarifs</a>
       <a href="/server-cms/pricing.php" class="nav-link">Serveurs</a>
       <a href="/self-hosting.php"   class="nav-link">Self-hosting</a>
-      <a href="/login.php"          class="btn btn-ghost" style="margin-left:8px;">Connexion</a>
-      <a href="/register.php"       class="btn btn-primary">Démarrer</a>
+      <?php
+        start_secure_session();
+        if (!empty($_SESSION['user_id'])): ?>
+        <a href="/panel/" class="btn btn-ghost" style="margin-left:8px;">Mon panel</a>
+      <?php else: ?>
+        <a href="/login.php"          class="btn btn-ghost" style="margin-left:8px;">Connexion</a>
+        <a href="/register.php"       class="btn btn-primary">Démarrer</a>
+      <?php endif; ?>
     </div>
   </div>
 </nav>
