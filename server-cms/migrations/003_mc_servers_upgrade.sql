@@ -7,20 +7,19 @@
 
 SET FOREIGN_KEY_CHECKS = 0;
 
--- ── Renommer name → server_name ────────────────────────────
+-- ── Étape 1 : renommer name → server_name ──────────────────
 ALTER TABLE `mc_servers`
   CHANGE COLUMN `name` `server_name` VARCHAR(190) NOT NULL;
 
--- ── Colonnes manquantes ─────────────────────────────────────
+-- ── Étape 2 : ajouter les colonnes manquantes ───────────────
 ALTER TABLE `mc_servers`
-  ADD COLUMN IF NOT EXISTS `server_name`       VARCHAR(190) NOT NULL DEFAULT '' AFTER `api_key`,
-  ADD COLUMN IF NOT EXISTS `plan_slug`          VARCHAR(64)  NULL DEFAULT 'spark'   AFTER `server_port`,
-  ADD COLUMN IF NOT EXISTS `hosting_server_id`  VARCHAR(128) NULL DEFAULT NULL      AFTER `plan_slug`,
-  ADD COLUMN IF NOT EXISTS `motd`               VARCHAR(255) NULL DEFAULT NULL      AFTER `hosting_server_id`,
-  ADD COLUMN IF NOT EXISTS `max_players`        SMALLINT     NOT NULL DEFAULT 20    AFTER `motd`;
+  ADD COLUMN `plan_slug`          VARCHAR(64)  NULL DEFAULT 'spark'   AFTER `server_port`,
+  ADD COLUMN `hosting_server_id`  VARCHAR(128) NULL DEFAULT NULL      AFTER `plan_slug`,
+  ADD COLUMN `motd`               VARCHAR(255) NULL DEFAULT NULL      AFTER `hosting_server_id`,
+  ADD COLUMN `max_players`        SMALLINT     NOT NULL DEFAULT 20    AFTER `motd`;
 
--- ── Index utile pour hosting_server_id ────────────────────
+-- ── Index utile pour hosting_server_id ─────────────────────
 ALTER TABLE `mc_servers`
-  ADD KEY IF NOT EXISTS `mc_servers_hosting_id_index` (`hosting_server_id`);
+  ADD KEY `mc_servers_hosting_id_index` (`hosting_server_id`);
 
 SET FOREIGN_KEY_CHECKS = 1;

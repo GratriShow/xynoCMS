@@ -9,44 +9,41 @@ $serverId = (int)($_GET['id'] ?? 0);
 if (!$serverId) { redirect('/panel/servers.php'); }
 
 $server = null;
+// Étape 1 : récupérer le serveur (sans JOIN — robuste quelle que soit la structure)
 try {
-    // Essai 1 : après migration 003 — colonnes server_name + plan_slug présentes
     $s = $pdo->prepare(
-        'SELECT s.id, s.uuid, s.server_name, s.server_type, s.mc_version,
-                s.status, s.server_ip, s.server_port, s.server_config, s.ram_mb,
-                s.created_at, s.hosting_server_id,
-                COALESCE(s.plan_slug, \'spark\') AS plan_slug,
-                p.name AS plan_name,
-                COALESCE(p.ram_mb,      2048) AS plan_ram_mb,
-                COALESCE(p.max_players,   20) AS plan_max_players,
-                COALESCE(p.storage_gb,    10) AS disk_gb
-         FROM mc_servers s
-         LEFT JOIN mc_server_plans p ON p.slug = COALESCE(s.plan_slug, \'spark\')
-         WHERE s.id = ? AND s.user_id = ? LIMIT 1'
+        'SELECT id, uuid, server_name, server_type, mc_version,
+                status, server_ip, server_port, server_config, ram_mb,
+                created_at, hosting_server_id,
+                COALESCE(plan_slug, \'spark\') AS plan_slug
+         FROM mc_servers
+         WHERE id = ? AND user_id = ? LIMIT 1'
     );
     $s->execute([$serverId, $user['id']]);
     $server = $s->fetch() ?: null;
-} catch (Throwable) {
-    // Essai 2 : avant migration 003 — colonne `name`, pas de plan_slug
-    try {
-        $s = $pdo->prepare(
-            'SELECT s.id, s.uuid, s.name AS server_name, s.server_type, s.mc_version,
-                    s.status, s.server_ip, s.server_port, s.server_config, s.ram_mb,
-                    s.created_at,
-                    NULL  AS hosting_server_id,
-                    \'spark\' AS plan_slug,
-                    NULL  AS plan_name,
-                    2048  AS plan_ram_mb,
-                    20    AS plan_max_players,
-                    10    AS disk_gb
-             FROM mc_servers s
-             WHERE s.id = ? AND s.user_id = ? LIMIT 1'
-        );
-        $s->execute([$serverId, $user['id']]);
-        $server = $s->fetch() ?: null;
-    } catch (Throwable) {}
-}
+} catch (Throwable) {}
 if (!$server) { redirect('/panel/servers.php'); }
+
+// Étape 2 : enrichir avec le plan (optionnel — ne bloque pas si la table manque)
+$server['plan_name']        = null;
+$server['plan_ram_mb']      = (int)($server['ram_mb'] ?? 2048);
+$server['plan_max_players'] = 20;
+$server['disk_gb']          = 10;
+try {
+    $planSlug = (string)($server['plan_slug'] ?? 'spark');
+    $s = $pdo->prepare(
+        'SELECT name AS plan_name, ram_mb, max_players, storage_gb AS disk_gb
+         FROM mc_server_plans WHERE slug = ? LIMIT 1'
+    );
+    $s->execute([$planSlug]);
+    $plan = $s->fetch() ?: [];
+    if ($plan) {
+        $server['plan_name']        = $plan['plan_name'];
+        $server['plan_ram_mb']      = (int)$plan['ram_mb'];
+        $server['plan_max_players'] = (int)$plan['max_players'];
+        $server['disk_gb']          = (int)$plan['disk_gb'];
+    }
+} catch (Throwable) {}
 
 $isAdmin = false;
 try {
