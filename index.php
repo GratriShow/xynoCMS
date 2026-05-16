@@ -369,8 +369,57 @@ require_once __DIR__ . '/config/bootstrap.php';
       <a href="/self-hosting.php"   class="nav-link">Self-hosting</a>
       <?php
         start_secure_session();
-        if (!empty($_SESSION['user_id'])): ?>
-        <a href="/panel/" class="btn btn-ghost" style="margin-left:8px;">Mon panel</a>
+        if (!empty($_SESSION['user_id'])):
+          $__navEmail  = (string)($_SESSION['user_email'] ?? '');
+          $__navInitial = $__navEmail !== '' ? strtoupper($__navEmail[0]) : 'U';
+      ?>
+        <div style="position:relative;margin-left:8px;" id="nav-profile-wrap">
+          <button id="nav-profile-btn" onclick="toggleNavDropdown()" aria-haspopup="true" aria-expanded="false"
+            style="display:flex;align-items:center;gap:8px;background:rgba(124,92,255,.12);border:1px solid rgba(124,92,255,.25);border-radius:999px;padding:5px 12px 5px 6px;cursor:pointer;font-family:inherit;transition:.15s;"
+            onmouseenter="this.style.background='rgba(124,92,255,.2)'" onmouseleave="this.style.background='rgba(124,92,255,.12)'">
+            <div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#7c5cff,#5b8dff);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0;">
+              <?= htmlspecialchars($__navInitial) ?>
+            </div>
+            <span style="font-size:13px;font-weight:500;color:var(--text);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars($__navEmail) ?></span>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="color:var(--muted);flex-shrink:0;" id="nav-caret">
+              <path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <div id="nav-dropdown" style="display:none;position:absolute;top:calc(100% + 8px);right:0;min-width:180px;background:#0e0e28;border:1px solid rgba(255,255,255,.1);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.5);overflow:hidden;z-index:9999;">
+            <a href="/panel/" style="display:flex;align-items:center;gap:10px;padding:10px 14px;color:var(--text);text-decoration:none;font-size:13px;font-weight:500;transition:.12s;"
+               onmouseenter="this.style.background='rgba(255,255,255,.06)'" onmouseleave="this.style.background=''">
+              <span style="font-size:16px;">🏠</span> Mon panel
+            </a>
+            <a href="/panel/settings.php" style="display:flex;align-items:center;gap:10px;padding:10px 14px;color:var(--text);text-decoration:none;font-size:13px;font-weight:500;transition:.12s;"
+               onmouseenter="this.style.background='rgba(255,255,255,.06)'" onmouseleave="this.style.background=''">
+              <span style="font-size:16px;">⚙️</span> Paramètres
+            </a>
+            <div style="height:1px;background:rgba(255,255,255,.07);margin:4px 0;"></div>
+            <a href="/auth/logout.php" style="display:flex;align-items:center;gap:10px;padding:10px 14px;color:#ff4d6a;text-decoration:none;font-size:13px;font-weight:500;transition:.12s;"
+               onmouseenter="this.style.background='rgba(255,77,106,.08)'" onmouseleave="this.style.background=''">
+              <span style="font-size:16px;">🚪</span> Déconnexion
+            </a>
+          </div>
+        </div>
+        <script>
+        function toggleNavDropdown() {
+          var d = document.getElementById('nav-dropdown');
+          var b = document.getElementById('nav-profile-btn');
+          var c = document.getElementById('nav-caret');
+          var open = d.style.display === 'block';
+          d.style.display = open ? 'none' : 'block';
+          b.setAttribute('aria-expanded', !open);
+          c.style.transform = open ? '' : 'rotate(180deg)';
+        }
+        document.addEventListener('click', function(e) {
+          var wrap = document.getElementById('nav-profile-wrap');
+          if (wrap && !wrap.contains(e.target)) {
+            document.getElementById('nav-dropdown').style.display = 'none';
+            document.getElementById('nav-profile-btn').setAttribute('aria-expanded', 'false');
+            document.getElementById('nav-caret').style.transform = '';
+          }
+        });
+        </script>
       <?php else: ?>
         <a href="/login.php"          class="btn btn-ghost" style="margin-left:8px;">Connexion</a>
         <a href="/register.php"       class="btn btn-primary">Démarrer</a>

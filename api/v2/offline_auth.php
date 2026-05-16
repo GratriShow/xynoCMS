@@ -74,7 +74,7 @@ if ($ts < $now - 300 || $ts > $now + 300) {
 
 // ── Récupération du launcher + vérification HMAC ──────────────────────────────
 try {
-    $pdo = db_connect();
+    $pdo = db();
 } catch (Throwable $e) {
     http_response_code(503);
     echo json_encode(['ok' => false, 'error' => 'Service temporairement indisponible']);

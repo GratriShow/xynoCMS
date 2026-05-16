@@ -13,7 +13,7 @@ $serverId = (int)($_GET['id'] ?? 0);
 
 if (!$serverId) { header('Location: /server-cms/dashboard/servers.php'); exit; }
 
-$pdo = db_connect();
+$pdo = db();
 $server = $pdo->prepare('SELECT s.*, p.name as plan_name, p.ram_mb FROM mc_servers s
     LEFT JOIN mc_server_plans p ON p.slug = s.plan_slug
     WHERE s.id = ? AND s.user_id = ? LIMIT 1');

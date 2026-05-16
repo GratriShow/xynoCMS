@@ -64,7 +64,7 @@ if (!$action) {
 // ── DB ────────────────────────────────────────────────────────────────────────
 
 try {
-    $pdo = db_connect();
+    $pdo = db();
 } catch (Throwable $e) {
     http_response_code(503);
     echo json_encode(['ok' => false, 'error' => 'DB indisponible']);
