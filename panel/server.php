@@ -66,7 +66,8 @@ try {
 
 $players = [];
 try {
-    $s = $pdo->prepare('SELECT username, uuid, added_at FROM mc_server_players WHERE server_id = ? ORDER BY added_at DESC'); $s->execute([$serverId]); $players = $s->fetchAll();
+    $s = $pdo->prepare('SELECT id, mc_username, mc_uuid, whitelisted, added_at FROM mc_server_players WHERE server_id = ? ORDER BY added_at DESC');
+    $s->execute([$serverId]); $players = $s->fetchAll();
 } catch (Throwable) {}
 
 $config = json_decode((string)($server['server_config'] ?? '{}'), true) ?: [];
@@ -566,15 +567,22 @@ $apiBase = base_path() . '/server-cms/api/provision_server.php';
     </div>
 
     <!-- ══════ TAB: FILES ══════ -->
-    <div class="sv-panel" id="tab-files">
-      <div id="fm-bar">
-        <button class="btn btn-ghost btn-sm" onclick="fmUp()">↑ Parent</button>
-        <span id="fm-path">/</span>
-        <button class="btn btn-ghost btn-sm" onclick="fmRefresh()">↻ Rafraîchir</button>
+    <div class="sv-panel" id="tab-files" style="padding:0;display:none;flex-direction:column;">
+      <div id="fm-bar" style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.06);background:#06060f;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" onclick="fmUp()" title="Dossier parent">↑ Parent</button>
+        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;background:#0a0a1a;border:1px solid rgba(255,255,255,.07);border-radius:7px;padding:5px 10px;">
+          <span style="color:#3a3a60;font-size:11px;font-family:'JetBrains Mono',monospace;">📁</span>
+          <span id="fm-path" style="font-size:12px;font-family:'JetBrains Mono',monospace;color:#8888c0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">/</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="fmRefresh()" title="Rafraîchir">↻</button>
+        <button class="btn btn-ghost btn-sm" onclick="fmMkdir()" title="Nouveau dossier">📁+</button>
         <button class="btn btn-primary btn-sm" onclick="fmUploadClick()">⬆ Upload</button>
         <input type="file" id="fm-upload-input" style="display:none;" multiple onchange="fmUpload(this)"/>
       </div>
-      <div id="fm-list">
+      <div id="fm-upload-progress" style="display:none;padding:6px 14px;background:rgba(124,92,255,.08);border-bottom:1px solid rgba(124,92,255,.2);font-size:12px;color:#b8a4ff;">
+        ⏳ Upload en cours…
+      </div>
+      <div id="fm-list" style="flex:1;overflow-y:auto;padding:8px;">
         <div class="empty"><div class="empty-icon">📁</div><div class="empty-title">Chargement…</div></div>
       </div>
     </div>
@@ -839,31 +847,160 @@ $apiBase = base_path() . '/server-cms/api/provision_server.php';
 
     <!-- ══════ TAB: PLAYERS ══════ -->
     <div class="sv-panel" id="tab-players">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
         <div>
           <div style="font-size:15px;font-weight:700;color:#e0e0f0;">Whitelist</div>
-          <div style="font-size:12px;color:#3a3a60;margin-top:3px;"><?= count($players) ?> joueur<?= count($players) !== 1 ? 's' : '' ?> autorisé<?= count($players) !== 1 ? 's' : '' ?></div>
+          <div style="font-size:12px;color:#3a3a60;margin-top:2px;" id="pl-count"><?= count($players) ?> joueur<?= count($players) !== 1 ? 's' : '' ?> autorisé<?= count($players) !== 1 ? 's' : '' ?></div>
         </div>
-        <?php if ($serverUuid): ?>
-          <a href="<?= base_path() ?>/server-cms/dashboard/manage.php?uuid=<?= urlencode($serverUuid) ?>" class="btn btn-ghost btn-sm">Gérer</a>
+        <!-- Ajout rapide -->
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input id="pl-add-input" type="text" placeholder="Pseudo Minecraft…" maxlength="16"
+            style="background:#0a0a1a;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:7px 12px;color:#e0e0f0;font-size:13px;font-family:inherit;outline:none;width:180px;"
+            onfocus="this.style.borderColor='#7c5cff'" onblur="this.style.borderColor='rgba(255,255,255,.1)'"
+            onkeydown="if(event.key==='Enter')plAdd()"/>
+          <button onclick="plAdd()" class="btn btn-primary btn-sm">+ Ajouter</button>
+        </div>
+      </div>
+
+      <div id="pl-add-msg" style="display:none;padding:8px 12px;border-radius:8px;font-size:12px;margin-bottom:12px;"></div>
+
+      <div id="pl-list">
+        <?php if (empty($players)): ?>
+          <div class="empty" id="pl-empty">
+            <div class="empty-icon">👥</div>
+            <div class="empty-title">Whitelist vide</div>
+            <div class="empty-text">Ajoutez des joueurs pour leur donner accès au serveur.</div>
+          </div>
+        <?php else: ?>
+          <div class="ilist" id="pl-ilist">
+            <?php foreach ($players as $p): ?>
+              <div class="irow" id="pl-row-<?= (int)$p['id'] ?>">
+                <img src="https://mc-heads.net/avatar/<?= urlencode($p['mc_username'] ?? 'Steve') ?>/32"
+                     style="width:32px;height:32px;border-radius:6px;flex-shrink:0;image-rendering:pixelated;"
+                     onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2232%22 height=%2232%22><rect fill=%22%23222%22 width=%2232%22 height=%2232%22 rx=%226%22/><text y=%2222%22 x=%228%22 font-size=%2218%22>👤</text></svg>'"/>
+                <div class="irow-info">
+                  <div class="irow-name"><?= e($p['mc_username'] ?? '?') ?></div>
+                  <div class="irow-meta">
+                    <?php if (!empty($p['mc_uuid'])): ?>
+                      <code style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#3a3a60;"><?= e($p['mc_uuid']) ?></code>
+                    <?php else: ?>
+                      <span style="color:#3a3a60;">UUID non résolu</span>
+                    <?php endif; ?>
+                    · ajouté le <?= e(date('d/m/Y', strtotime((string)($p['added_at'] ?? 'now')))) ?>
+                  </div>
+                </div>
+                <span class="pill <?= (int)($p['whitelisted']??1) ? 'pill-green' : 'pill-grey' ?>" style="font-size:10px;">
+                  <?= (int)($p['whitelisted']??1) ? 'Whitelisté' : 'Retiré' ?>
+                </span>
+                <button onclick="plRemove(<?= (int)$p['id'] ?>, '<?= e(addslashes($p['mc_username']??'')) ?>')"
+                  style="background:rgba(255,77,106,.1);border:1px solid rgba(255,77,106,.2);color:#ff4d6a;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:.12s;white-space:nowrap;"
+                  onmouseenter="this.style.background='rgba(255,77,106,.2)'" onmouseleave="this.style.background='rgba(255,77,106,.1)'">
+                  ✕ Retirer
+                </button>
+              </div>
+            <?php endforeach; ?>
+          </div>
         <?php endif; ?>
       </div>
-      <?php if (empty($players)): ?>
-        <div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Whitelist vide</div></div>
-      <?php else: ?>
-        <div class="ilist">
-          <?php foreach ($players as $p): ?>
-            <div class="irow">
-              <div style="width:32px;height:32px;border-radius:7px;background:rgba(124,92,255,.1);border:1px solid rgba(124,92,255,.2);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">👤</div>
-              <div class="irow-info">
-                <div class="irow-name"><?= e($p['username'] ?? '?') ?></div>
-                <div class="irow-meta">UUID: <code style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#5858a0;"><?= e($p['uuid'] ?? '—') ?></code></div>
-              </div>
-              <span style="font-size:11px;color:#3a3a60;"><?= e(date('d/m/Y', strtotime((string)($p['added_at'] ?? '')))) ?></span>
-            </div>
-          <?php endforeach; ?>
-        </div>
-      <?php endif; ?>
+
+      <script>
+      const PL_API = '<?= base_path() ?>/server-cms/api/server_players.php';
+      const PL_SID = <?= $serverId ?>;
+
+      function plMsg(text, ok) {
+        const el = document.getElementById('pl-add-msg');
+        el.style.display = 'block';
+        el.textContent = text;
+        el.style.background = ok ? 'rgba(0,214,143,.08)' : 'rgba(255,77,106,.08)';
+        el.style.border = '1px solid ' + (ok ? 'rgba(0,214,143,.2)' : 'rgba(255,77,106,.2)');
+        el.style.color = ok ? '#00d68f' : '#ff4d6a';
+        setTimeout(() => el.style.display = 'none', 3500);
+      }
+
+      async function plAdd() {
+        const inp = document.getElementById('pl-add-input');
+        const username = inp.value.trim();
+        if (!username) { plMsg('Entrez un pseudo Minecraft.', false); return; }
+        inp.disabled = true;
+        const res = await fetch(PL_API, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ server_id: PL_SID, action: 'add', mc_username: username })
+        }).then(r=>r.json()).catch(()=>null);
+
+        inp.disabled = false; inp.value = '';
+        if (!res?.ok) { plMsg(res?.error ?? 'Erreur lors de l\'ajout.', false); return; }
+        plMsg('✓ ' + username + ' ajouté à la whitelist.', true);
+
+        const p = res.player;
+        const empty = document.getElementById('pl-empty');
+        if (empty) empty.remove();
+
+        let ilist = document.getElementById('pl-ilist');
+        if (!ilist) {
+          const list = document.getElementById('pl-list');
+          list.innerHTML = '<div class="ilist" id="pl-ilist"></div>';
+          ilist = document.getElementById('pl-ilist');
+        }
+
+        const row = document.createElement('div');
+        row.className = 'irow'; row.id = 'pl-row-' + p.id;
+        row.innerHTML = `
+          <img src="https://mc-heads.net/avatar/${encodeURIComponent(p.mc_username)}/32"
+               style="width:32px;height:32px;border-radius:6px;flex-shrink:0;image-rendering:pixelated;"
+               onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2232%22 height=%2232%22><rect fill=%22%23222%22 width=%2232%22 height=%2232%22 rx=%226%22/><text y=%2222%22 x=%228%22 font-size=%2218%22>👤</text></svg>'"/>
+          <div class="irow-info">
+            <div class="irow-name">${escHtml(p.mc_username)}</div>
+            <div class="irow-meta">${p.mc_uuid ? `<code style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#3a3a60;">${escHtml(p.mc_uuid)}</code>` : 'UUID en résolution…'} · à l'instant</div>
+          </div>
+          <span class="pill pill-green" style="font-size:10px;">Whitelisté</span>
+          <button onclick="plRemove(${p.id},'${escHtml(p.mc_username).replace(/'/g,"\\'")}') "
+            style="background:rgba(255,77,106,.1);border:1px solid rgba(255,77,106,.2);color:#ff4d6a;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:.12s;white-space:nowrap;"
+            onmouseenter="this.style.background='rgba(255,77,106,.2)'" onmouseleave="this.style.background='rgba(255,77,106,.1)'">
+            ✕ Retirer
+          </button>`;
+        ilist.prepend(row);
+        plUpdateCount(1);
+
+        // Envoyer la commande whitelist au serveur
+        fetch(API_BASE, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ action:'command', server_id: PL_SID, command: 'whitelist add ' + p.mc_username })
+        }).catch(()=>{});
+      }
+
+      async function plRemove(id, username) {
+        if (!confirm(`Retirer ${username} de la whitelist ?`)) return;
+        const row = document.getElementById('pl-row-' + id);
+        if (row) row.style.opacity = '.4';
+        const res = await fetch(PL_API, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ server_id: PL_SID, action: 'remove', player_id: id })
+        }).then(r=>r.json()).catch(()=>null);
+
+        if (res?.ok) {
+          if (row) row.remove();
+          plUpdateCount(-1);
+          fetch(API_BASE, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ action:'command', server_id: PL_SID, command: 'whitelist remove ' + username })
+          }).catch(()=>{});
+        } else {
+          if (row) row.style.opacity = '1';
+          plMsg(res?.error ?? 'Erreur lors de la suppression.', false);
+        }
+      }
+
+      function plUpdateCount(delta) {
+        const el = document.getElementById('pl-count');
+        if (!el) return;
+        const m = el.textContent.match(/\d+/);
+        const n = Math.max(0, (m ? parseInt(m[0]) : 0) + delta);
+        el.textContent = n + ' joueur' + (n!==1?'s':'') + ' autorisé' + (n!==1?'s':'');
+        document.querySelectorAll('.sv-tab-badge').forEach(b => {
+          if (b.closest('[onclick*="players"]')) b.textContent = n;
+        });
+      }
+      </script>
     </div>
 
     <!-- ══════ TAB: SETTINGS ══════ -->
@@ -913,33 +1050,72 @@ $apiBase = base_path() . '/server-cms/api/provision_server.php';
             <input class="form-input" type="password" name="rcon_password" value="<?= e($config['rcon_password'] ?? '') ?>" placeholder="Mot de passe RCON (optionnel)"/>
           </div>
 
-          <div class="form-section-title">📝 Options avancées</div>
+          <div class="form-section-title">🎮 Gameplay</div>
           <div class="form-group">
-            <label class="form-label">Message MOTD</label>
-            <input class="form-input" name="motd" value="<?= e($config['motd'] ?? '') ?>" placeholder="Message d'accueil affiché dans la liste de serveurs"/>
+            <label class="form-label">MOTD <span style="color:#3a3a60;font-weight:400;">(message affiché dans la liste de serveurs)</span></label>
+            <input class="form-input" name="motd" value="<?= e($server['motd'] ?? $config['motd'] ?? '') ?>" placeholder="Un serveur Minecraft génial"/>
           </div>
           <div class="g2">
             <div class="form-group">
               <label class="form-label">Mode de jeu</label>
               <select class="form-input form-select" name="gamemode">
-                <?php foreach (['survival','creative','adventure','spectator'] as $gm): ?>
-                  <option value="<?= $gm ?>" <?= ($config['gamemode'] ?? 'survival') === $gm ? 'selected' : '' ?>><?= ucfirst($gm) ?></option>
+                <?php foreach (['survival'=>'Survie','creative'=>'Créatif','adventure'=>'Aventure','spectator'=>'Spectateur'] as $gm => $gml): ?>
+                  <option value="<?= $gm ?>" <?= ($config['gamemode'] ?? 'survival') === $gm ? 'selected' : '' ?>><?= $gml ?></option>
                 <?php endforeach; ?>
               </select>
             </div>
             <div class="form-group">
               <label class="form-label">Difficulté</label>
               <select class="form-input form-select" name="difficulty">
-                <?php foreach (['peaceful','easy','normal','hard'] as $d): ?>
-                  <option value="<?= $d ?>" <?= ($config['difficulty'] ?? 'normal') === $d ? 'selected' : '' ?>><?= ucfirst($d) ?></option>
+                <?php foreach (['peaceful'=>'Paisible','easy'=>'Facile','normal'=>'Normal','hard'=>'Difficile'] as $d => $dl): ?>
+                  <option value="<?= $d ?>" <?= ($config['difficulty'] ?? 'normal') === $d ? 'selected' : '' ?>><?= $dl ?></option>
                 <?php endforeach; ?>
               </select>
             </div>
           </div>
+          <div class="g2">
+            <div class="form-group">
+              <label class="form-label">Distance de vue <span style="color:#3a3a60;font-weight:400;">(chunks)</span></label>
+              <input class="form-input" type="number" name="view_distance" value="<?= (int)($config['view_distance'] ?? 10) ?>" min="2" max="32"/>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Protection spawn <span style="color:#3a3a60;font-weight:400;">(rayon blocs)</span></label>
+              <input class="form-input" type="number" name="spawn_protection" value="<?= (int)($config['spawn_protection'] ?? 16) ?>" min="0" max="255"/>
+            </div>
+          </div>
 
-          <div style="display:flex;gap:10px;padding-top:8px;">
+          <div class="form-section-title">🔧 Options serveur</div>
+          <div class="g2">
+            <div class="form-group">
+              <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;">
+                PVP
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                  <input type="checkbox" name="pvp" value="1" <?= !empty($config['pvp']) || !isset($config['pvp']) ? 'checked' : '' ?> style="accent-color:#7c5cff;width:16px;height:16px;"/>
+                  <span style="font-size:12px;color:#8888c0;font-weight:400;">Activé</span>
+                </label>
+              </label>
+            </div>
+            <div class="form-group">
+              <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;">
+                Mode en ligne <span style="font-size:10px;color:#3a3a60;">(auth Mojang)</span>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                  <input type="checkbox" name="online_mode" value="1" <?= !isset($config['online_mode']) || !empty($config['online_mode']) ? 'checked' : '' ?> style="accent-color:#7c5cff;width:16px;height:16px;"/>
+                  <span style="font-size:12px;color:#8888c0;font-weight:400;">Activé</span>
+                </label>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-section-title">⚡ JVM & Performances</div>
+          <div class="form-group">
+            <label class="form-label">Flags JVM <span style="color:#3a3a60;font-weight:400;">(arguments Java optionnels)</span></label>
+            <input class="form-input" name="java_flags" value="<?= e($config['java_flags'] ?? '') ?>" placeholder="-XX:+UseG1GC -XX:MaxGCPauseMillis=50" style="font-family:'JetBrains Mono',monospace;font-size:12px;"/>
+            <div class="form-hint">Flags Aikar recommandés : <code style="font-size:10px;color:#7c5cff;">-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200</code></div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:10px;padding-top:12px;">
             <button type="submit" class="btn btn-primary">💾 Sauvegarder</button>
-            <div id="settings-msg" style="font-size:12px;color:#00d68f;display:none;align-items:center;gap:5px;">✓ Sauvegardé</div>
+            <div id="settings-msg" style="font-size:12px;display:none;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;"></div>
           </div>
         </form>
 
@@ -972,11 +1148,12 @@ let pollTimer     = null;
 /* ══════════════════════════════════
    TAB SWITCHING
 ══════════════════════════════════ */
+const FLEX_TABS = new Set(['console', 'files']);
 function switchTab(id, btn) {
   document.querySelectorAll('.sv-panel').forEach(p => { p.classList.remove('active'); p.style.display = 'none'; });
   document.querySelectorAll('.sv-tab').forEach(t => t.classList.remove('active'));
   const panel = document.getElementById('tab-' + id);
-  if (panel) { panel.classList.add('active'); panel.style.display = id === 'console' ? 'flex' : 'block'; }
+  if (panel) { panel.classList.add('active'); panel.style.display = FLEX_TABS.has(id) ? 'flex' : 'block'; }
   if (btn) btn.classList.add('active');
   const labels = { overview:'Vue d\'ensemble', console:'Console', monitoring:'Monitoring', files:'Fichiers', backups:'Backups', plugins:'<?= $isPlugin ? "Plugins" : "Mods" ?>', players:'Whitelist', settings:'Paramètres' };
   document.getElementById('tb-tab-label').textContent = labels[id] || id;
@@ -1119,6 +1296,8 @@ async function consoleSend() {
   const cmd = inp.value.trim();
   if (!cmd) return;
   inp.value = '';
+  cmdHistory.unshift(cmd); cmdHistIdx = -1;
+  if (cmdHistory.length > 100) cmdHistory.pop();
   addConsoleLine('CMD', '> ' + cmd);
   try {
     const r = await fetch(API_BASE, {
@@ -1130,8 +1309,19 @@ async function consoleSend() {
   } catch(e) { addConsoleLine('ERROR', 'Erreur réseau'); }
 }
 
+let cmdHistory = [], cmdHistIdx = -1;
 document.getElementById('console-cmd').addEventListener('keydown', e => {
-  if (e.key === 'Enter') consoleSend();
+  if (e.key === 'Enter') { consoleSend(); return; }
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (cmdHistIdx < cmdHistory.length - 1) cmdHistIdx++;
+    e.target.value = cmdHistory[cmdHistIdx] ?? '';
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (cmdHistIdx > 0) cmdHistIdx--;
+    else { cmdHistIdx = -1; e.target.value = ''; return; }
+    e.target.value = cmdHistory[cmdHistIdx] ?? '';
+  }
 });
 
 /* ══════════════════════════════════
@@ -1183,77 +1373,162 @@ function pushChart(chart, value) {
 /* ══════════════════════════════════
    FILE MANAGER
 ══════════════════════════════════ */
+const FM_API = '<?= base_path() ?>/server-cms/api/server_files.php';
 let fmCurrentPath = '/';
 
 async function fmRefresh() {
   const list = document.getElementById('fm-list');
-  list.innerHTML = '<div class="empty"><div class="empty-title">Chargement…</div></div>';
+  list.innerHTML = '<div class="empty"><div class="empty-title" style="color:#3a3a60;">Chargement…</div></div>';
+  document.getElementById('fm-path').textContent = fmCurrentPath;
   try {
-    const r = await fetch('<?= base_path() ?>/server-cms/api/server_files.php', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ action: 'list', server_id: SERVER_ID, path: fmCurrentPath })
-    });
-    const d = await r.json();
-    if (!d.ok) { list.innerHTML = '<div class="empty"><div class="empty-title">Erreur: ' + escHtml(d.error||'inconnue') + '</div></div>'; return; }
-    renderFmList(d.files || []);
-    document.getElementById('fm-path').textContent = fmCurrentPath;
+    const url = `${FM_API}?server_id=${SERVER_ID}&path=${encodeURIComponent(fmCurrentPath)}`;
+    const d = await fetch(url).then(r=>r.json());
+    if (!d.ok) { list.innerHTML = `<div class="empty"><div class="empty-title">Erreur : ${escHtml(d.error||'inconnue')}</div></div>`; return; }
+    if (d.mock) {
+      const notice = document.createElement('div');
+      notice.style.cssText = 'padding:6px 10px;background:rgba(255,190,0,.06);border-radius:6px;font-size:11px;color:#ffbe00;margin-bottom:8px;';
+      notice.textContent = '⚠ Aperçu simulé — connectez un driver de provisioning pour les fichiers réels.';
+      list.innerHTML = '';
+      list.appendChild(notice);
+      renderFmList(d.files || [], list);
+    } else {
+      renderFmList(d.files || [], list);
+    }
   } catch(e) {
-    list.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Impossible de charger les fichiers</div><div style="font-size:11px;color:#3a3a60;margin-top:6px;">Le gestionnaire de fichiers nécessite un driver de provisioning connecté.</div></div>';
+    list.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Fichiers inaccessibles</div><div style="font-size:11px;color:#3a3a60;margin-top:6px;">Nécessite un driver de provisioning connecté (Pterodactyl…).</div></div>';
   }
 }
 
-function renderFmList(files) {
-  const list = document.getElementById('fm-list');
-  if (!files.length) { list.innerHTML = '<div class="empty"><div class="empty-icon">📂</div><div class="empty-title">Dossier vide</div></div>'; return; }
-  list.innerHTML = files.map(f => {
-    const ico = f.is_dir ? '📁' : fileIcon(f.name);
-    const size = f.is_dir ? '' : fmFmtSize(f.size || 0);
-    return `<div class="fm-entry" onclick="fmClick('${escHtml(f.name)}',${f.is_dir?'true':'false'})">
-      <span class="fm-entry-icon">${ico}</span>
-      <span class="fm-entry-name">${escHtml(f.name)}</span>
-      <span class="fm-entry-size">${size}</span>
-    </div>`;
-  }).join('');
+function renderFmList(files, container) {
+  const list = container || document.getElementById('fm-list');
+  if (!files.length) {
+    const el = document.createElement('div');
+    el.className = 'empty';
+    el.innerHTML = '<div class="empty-icon">📂</div><div class="empty-title">Dossier vide</div>';
+    list.appendChild(el);
+    return;
+  }
+  // Sort: dirs first, then files alphabetically
+  files.sort((a,b) => {
+    const ad = a.type==='dir', bd = b.type==='dir';
+    if (ad !== bd) return ad ? -1 : 1;
+    return (a.name||'').localeCompare(b.name||'');
+  });
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;';
+  files.forEach(f => {
+    const isDir = f.type === 'dir';
+    const ico = isDir ? '📁' : fileIcon(f.name);
+    const size = isDir ? '' : (f.size_human || fmFmtSize(f.size||0));
+    const mod  = f.modified ? new Date(f.modified).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+    const row = document.createElement('div');
+    row.className = 'fm-entry';
+    row.dataset.name = f.name;
+    row.dataset.isDir = isDir ? '1' : '0';
+    row.innerHTML = `
+      <span class="fm-entry-icon" style="cursor:${isDir?'pointer':'default'};" onclick="${isDir?`fmNavigate('${escHtml(f.name)}')`:'void(0)'};">${ico}</span>
+      <span class="fm-entry-name" onclick="${isDir?`fmNavigate('${escHtml(f.name)}')`:''}" style="cursor:${isDir?'pointer':'default'};flex:1;">${escHtml(f.name)}</span>
+      <span class="fm-entry-size" style="font-size:10px;color:#2a2a50;width:70px;text-align:right;flex-shrink:0;">${size}</span>
+      <span style="font-size:10px;color:#2a2a50;width:110px;text-align:right;flex-shrink:0;font-family:'JetBrains Mono',monospace;">${mod}</span>
+      <div style="display:flex;gap:4px;flex-shrink:0;">
+        <button onclick="fmRename('${escHtml(f.name)}')" title="Renommer" style="background:none;border:none;color:#4848a0;cursor:pointer;padding:3px 5px;border-radius:4px;font-size:12px;transition:.1s;" onmouseenter="this.style.color='#b8a4ff'" onmouseleave="this.style.color='#4848a0'">✏</button>
+        <button onclick="fmDelete('${escHtml(f.name)}')" title="Supprimer" style="background:none;border:none;color:#4848a0;cursor:pointer;padding:3px 5px;border-radius:4px;font-size:12px;transition:.1s;" onmouseenter="this.style.color='#ff4d6a'" onmouseleave="this.style.color='#4848a0'">🗑</button>
+      </div>`;
+    wrap.appendChild(row);
+  });
+  list.appendChild(wrap);
 }
 
 function fileIcon(name) {
   const ext = (name.split('.').pop() || '').toLowerCase();
-  const map = { jar:'☕', json:'📋', yml:'📋', yaml:'📋', toml:'📋', txt:'📝', log:'📋', png:'🖼', jpg:'🖼', zip:'📦', 'class':'☕' };
+  const map = {
+    jar:'☕', zip:'📦', tar:'📦', gz:'📦',
+    json:'📋', yml:'📋', yaml:'📋', toml:'📋', properties:'📋', cfg:'📋', conf:'📋',
+    txt:'📝', log:'📝', md:'📝',
+    png:'🖼', jpg:'🖼', jpeg:'🖼', gif:'🖼', webp:'🖼',
+    sh:'⚙', bat:'⚙', py:'🐍', js:'📜',
+    'class':'☕',
+  };
   return map[ext] || '📄';
 }
 
 function fmFmtSize(bytes) {
+  if (!bytes) return '';
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1048576) return (bytes/1024).toFixed(1) + ' KB';
   return (bytes/1048576).toFixed(1) + ' MB';
 }
 
-function fmClick(name, isDir) {
-  if (isDir) { fmCurrentPath = (fmCurrentPath.endsWith('/') ? fmCurrentPath : fmCurrentPath + '/') + name; fmRefresh(); }
+function fmNavigate(name) {
+  fmCurrentPath = (fmCurrentPath === '/' ? '' : fmCurrentPath) + '/' + name;
+  fmRefresh();
 }
 
 function fmUp() {
   if (fmCurrentPath === '/' || fmCurrentPath === '') return;
-  const parts = fmCurrentPath.replace(/\/$/, '').split('/');
+  const parts = fmCurrentPath.replace(/\/$/, '').split('/').filter(Boolean);
   parts.pop();
-  fmCurrentPath = parts.join('/') || '/';
+  fmCurrentPath = '/' + parts.join('/');
+  if (fmCurrentPath === '') fmCurrentPath = '/';
   fmRefresh();
 }
 
 function fmUploadClick() { document.getElementById('fm-upload-input').click(); }
 
 async function fmUpload(input) {
+  const prog = document.getElementById('fm-upload-progress');
+  prog.style.display = 'block';
+  prog.textContent = `⏳ Upload de ${input.files.length} fichier(s)…`;
+  let done = 0;
   for (const file of input.files) {
     const fd = new FormData();
     fd.append('file', file);
     fd.append('server_id', SERVER_ID);
     fd.append('path', fmCurrentPath);
     try {
-      await fetch('<?= base_path() ?>/server-cms/api/server_files.php?action=upload', { method: 'POST', body: fd });
+      const r = await fetch(FM_API, { method: 'POST', body: fd }).then(r=>r.json());
+      done++;
+      prog.textContent = `⏳ ${done}/${input.files.length} uploadé(s)…`;
     } catch(e) {}
   }
   input.value = '';
+  prog.style.display = 'none';
   fmRefresh();
+}
+
+async function fmDelete(name) {
+  if (!confirm(`Supprimer "${name}" ? Cette action est irréversible.`)) return;
+  const fullPath = (fmCurrentPath === '/' ? '' : fmCurrentPath) + '/' + name;
+  const r = await fetch(FM_API, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ action: 'delete', server_id: SERVER_ID, path: fullPath })
+  }).then(r=>r.json()).catch(()=>null);
+  if (r?.ok) { fmRefresh(); }
+  else { alert('Erreur: ' + (r?.error || 'inconnue')); }
+}
+
+async function fmRename(name) {
+  const newName = prompt(`Renommer "${name}" en :`, name);
+  if (!newName || newName === name) return;
+  const base = fmCurrentPath === '/' ? '' : fmCurrentPath;
+  const r = await fetch(FM_API, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ action: 'rename', server_id: SERVER_ID, from: base+'/'+name, to: base+'/'+newName })
+  }).then(r=>r.json()).catch(()=>null);
+  if (r?.ok) { fmRefresh(); }
+  else { alert('Erreur: ' + (r?.error || 'inconnue')); }
+}
+
+async function fmMkdir() {
+  const name = prompt('Nom du nouveau dossier :');
+  if (!name) return;
+  const base = fmCurrentPath === '/' ? '' : fmCurrentPath;
+  const r = await fetch(FM_API, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ action: 'mkdir', server_id: SERVER_ID, path: base+'/'+name })
+  }).then(r=>r.json()).catch(()=>null);
+  if (r?.ok) { fmRefresh(); }
+  else { alert('Erreur: ' + (r?.error || 'inconnue')); }
 }
 
 /* ══════════════════════════════════
@@ -1309,19 +1584,30 @@ async function downloadBackup(uuid) { alert('Téléchargement du backup ' + uuid
 async function saveSettings(e) {
   e.preventDefault();
   const fd = new FormData(e.target);
+  // Checkboxes non cochées ne sont pas dans FormData — on les force à 0
+  ['pvp','online_mode'].forEach(k => { if (!fd.has(k)) fd.set(k, '0'); });
   const data = Object.fromEntries(fd.entries());
+  const msg = document.getElementById('settings-msg');
+  msg.style.display = 'flex'; msg.textContent = '⏳ Sauvegarde…'; msg.style.color = '#8888c0';
+  msg.style.background = 'rgba(255,255,255,.04)'; msg.style.border = 'none'; msg.style.padding = '0';
   try {
     const r = await fetch('<?= base_path() ?>/server-cms/api/server_settings.php', {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ server_id: SERVER_ID, ...data })
     });
     const d = await r.json();
-    const msg = document.getElementById('settings-msg');
-    msg.style.display = 'flex';
-    msg.textContent = d.ok ? '✓ Sauvegardé' : '✕ ' + (d.error||'Erreur');
-    msg.style.color = d.ok ? '#00d68f' : '#ff4d6a';
+    if (d.ok) {
+      msg.textContent = '✓ Paramètres sauvegardés';
+      msg.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;font-size:12px;background:rgba(0,214,143,.08);border:1px solid rgba(0,214,143,.2);color:#00d68f;';
+    } else {
+      msg.textContent = '✕ ' + (d.error||'Erreur inconnue');
+      msg.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;font-size:12px;background:rgba(255,77,106,.08);border:1px solid rgba(255,77,106,.2);color:#ff4d6a;';
+    }
+    setTimeout(() => msg.style.display = 'none', 4000);
+  } catch(e) {
+    msg.textContent = '✕ Erreur réseau'; msg.style.color = '#ff4d6a';
     setTimeout(() => msg.style.display = 'none', 3000);
-  } catch(e) {}
+  }
 }
 
 async function deleteServer() {
