@@ -54,8 +54,8 @@ try {
 
 $plugins = []; $mods = [];
 try {
-    $s = $pdo->prepare('SELECT name, version, added_at FROM mc_server_plugins WHERE server_id = ? ORDER BY added_at DESC LIMIT 50'); $s->execute([$serverId]); $plugins = $s->fetchAll();
-    $s = $pdo->prepare('SELECT name, version, added_at FROM mc_server_mods WHERE server_id = ? ORDER BY added_at DESC LIMIT 50'); $s->execute([$serverId]); $mods = $s->fetchAll();
+    $s = $pdo->prepare('SELECT id, name, version, slug, external_id, source, added_at FROM mc_server_plugins WHERE server_id = ? ORDER BY added_at DESC LIMIT 100'); $s->execute([$serverId]); $plugins = $s->fetchAll();
+    $s = $pdo->prepare('SELECT id, name, version, slug, external_id, source, added_at FROM mc_server_mods WHERE server_id = ? ORDER BY added_at DESC LIMIT 100'); $s->execute([$serverId]); $mods = $s->fetchAll();
 } catch (Throwable) {}
 
 $links = [];
@@ -595,28 +595,246 @@ $apiBase = base_path() . '/server-cms/api/provision_server.php';
 
     <!-- ══════ TAB: PLUGINS/MODS ══════ -->
     <div class="sv-panel" id="tab-plugins">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <?php
+        $pkgType  = $isPlugin ? 'plugin' : 'mod';
+        $pkgLabel = $isPlugin ? 'Plugin' : 'Mod';
+        $pkgIcon  = $isPlugin ? '🔌' : '⚙️';
+        $pkgItems = $isPlugin ? $plugins : $mods;
+        $pkgInstalled = array_column($pkgItems, null, 'slug'); // slug → row pour check rapide
+      ?>
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
         <div>
-          <div style="font-size:15px;font-weight:700;color:#e0e0f0;"><?= $isPlugin ? 'Plugins installés' : 'Mods installés' ?></div>
-          <div style="font-size:12px;color:#3a3a60;margin-top:3px;"><?= $isPlugin ? count($plugins) : count($mods) ?> au total</div>
+          <div style="font-size:15px;font-weight:700;color:#e0e0f0;"><?= $pkgLabel ?>s</div>
+          <div style="font-size:12px;color:#3a3a60;margin-top:2px;" id="pkg-installed-count"><?= count($pkgItems) ?> installé<?= count($pkgItems) !== 1 ? 's' : '' ?></div>
         </div>
-        <?php if ($serverUuid): ?>
-          <a href="<?= base_path() ?>/server-cms/dashboard/manage.php?uuid=<?= urlencode($serverUuid) ?>" class="btn btn-ghost">⚙ Gérer (avancé)</a>
-        <?php endif; ?>
+        <!-- Barre de recherche Modrinth -->
+        <div style="display:flex;gap:8px;flex:1;max-width:420px;">
+          <input id="pkg-search-input" type="text" placeholder="Rechercher sur Modrinth…"
+            style="flex:1;background:#0a0a1a;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 12px;color:#e0e0f0;font-size:13px;font-family:inherit;outline:none;"
+            onfocus="this.style.borderColor='#7c5cff'" onblur="this.style.borderColor='rgba(255,255,255,.1)'"
+            onkeydown="if(event.key==='Enter')pkgSearch()"/>
+          <button onclick="pkgSearch()" class="btn btn-primary btn-sm" style="white-space:nowrap;">🔍 Chercher</button>
+        </div>
       </div>
-      <?php $items = $isPlugin ? $plugins : $mods; ?>
-      <?php if (empty($items)): ?>
-        <div class="empty"><div class="empty-icon"><?= $isPlugin ? '🔌' : '⚙️' ?></div><div class="empty-title">Aucun <?= $isPlugin ? 'plugin' : 'mod' ?> installé</div></div>
-      <?php else: ?>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;">
-          <?php foreach ($items as $item): ?>
-            <div style="background:#0a0a1a;border:1px solid rgba(255,255,255,.06);border-radius:9px;padding:12px 14px;">
-              <div style="font-size:13px;font-weight:600;color:#c0c0e0;margin-bottom:3px;"><?= e($item['name'] ?? '?') ?></div>
-              <div style="font-size:11px;color:#3a3a60;">v<?= e($item['version'] ?? '?') ?> · ajouté le <?= e(date('d/m/Y', strtotime((string)($item['added_at'] ?? '')))) ?></div>
-            </div>
-          <?php endforeach; ?>
+
+      <!-- Résultats de recherche Modrinth -->
+      <div id="pkg-search-results" style="display:none;margin-bottom:20px;">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#3a3a60;margin-bottom:8px;">Résultats Modrinth</div>
+        <div id="pkg-results-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;"></div>
+        <div id="pkg-results-more" style="margin-top:10px;text-align:center;display:none;">
+          <button onclick="pkgSearchMore()" class="btn btn-ghost btn-sm">Charger plus</button>
         </div>
-      <?php endif; ?>
+      </div>
+
+      <!-- Liste installée -->
+      <div>
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#3a3a60;margin-bottom:8px;" id="pkg-list-title">
+          <?= $pkgLabel ?>s installés
+        </div>
+        <div id="pkg-installed-list">
+          <?php if (empty($pkgItems)): ?>
+            <div class="empty" id="pkg-empty-state">
+              <div class="empty-icon"><?= $pkgIcon ?></div>
+              <div class="empty-title">Aucun <?= strtolower($pkgLabel) ?> installé</div>
+              <div class="empty-text">Cherchez sur Modrinth pour en ajouter.</div>
+            </div>
+          <?php else: ?>
+            <?php foreach ($pkgItems as $item): ?>
+              <div class="irow" id="pkg-row-<?= (int)$item['id'] ?>">
+                <div style="width:34px;height:34px;border-radius:8px;background:rgba(124,92,255,.1);border:1px solid rgba(124,92,255,.2);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;"><?= $pkgIcon ?></div>
+                <div class="irow-info">
+                  <div class="irow-name"><?= e($item['name'] ?? '?') ?></div>
+                  <div class="irow-meta">v<?= e($item['version'] ?? '?') ?> · <?= e(ucfirst($item['source'] ?? 'manual')) ?> · <?= e(date('d/m/Y', strtotime((string)($item['added_at'] ?? '')))) ?></div>
+                </div>
+                <?php if (!empty($item['slug'])): ?>
+                  <a href="https://modrinth.com/<?= $pkgType === 'plugin' ? 'plugin' : 'mod' ?>/<?= urlencode($item['slug']) ?>" target="_blank"
+                     style="font-size:11px;color:#3a3a60;text-decoration:none;" title="Voir sur Modrinth">↗</a>
+                <?php endif; ?>
+                <button onclick="pkgRemove(<?= (int)$item['id'] ?>, '<?= e(addslashes($item['name'] ?? '')) ?>')"
+                  style="background:rgba(255,77,106,.1);border:1px solid rgba(255,77,106,.2);color:#ff4d6a;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:.12s;"
+                  onmouseenter="this.style.background='rgba(255,77,106,.2)'" onmouseleave="this.style.background='rgba(255,77,106,.1)'">
+                  ✕ Retirer
+                </button>
+              </div>
+            <?php endforeach; ?>
+          <?php endif; ?>
+        </div>
+      </div>
+
+      <script>
+      const PKG_TYPE     = '<?= $pkgType ?>';
+      const PKG_UUID     = '<?= e($serverUuid) ?>';
+      const PKG_MC_VER   = '<?= e($server['mc_version'] ?? '') ?>';
+      const PKG_LOADER   = '<?= e($type) ?>';
+      const PKG_API_SEARCH = '<?= base_path() ?>/server-cms/api/search_modrinth.php';
+      const PKG_API_VERS   = '<?= base_path() ?>/server-cms/api/modrinth_versions.php';
+      const PKG_API_PKG    = '<?= base_path() ?>/server-cms/api/server_packages.php';
+      const PKG_CSRF       = '<?= e(csrf_token()) ?>';
+      const PKG_INSTALLED  = new Set(<?= json_encode(array_values(array_filter(array_column($pkgItems, 'slug')))) ?>);
+
+      let pkgOffset = 0;
+      let pkgLastQ  = '';
+
+      async function pkgSearch(append = false) {
+        const q = document.getElementById('pkg-search-input').value.trim();
+        if (!q) return;
+        if (!append) { pkgOffset = 0; pkgLastQ = q; }
+
+        const grid = document.getElementById('pkg-results-grid');
+        if (!append) { grid.innerHTML = '<div style="color:#3a3a60;font-size:13px;padding:12px;">Recherche…</div>'; }
+
+        document.getElementById('pkg-search-results').style.display = 'block';
+
+        const url = `${PKG_API_SEARCH}?q=${encodeURIComponent(q)}&type=${PKG_TYPE}&mc_version=${encodeURIComponent(PKG_MC_VER)}&loader=${encodeURIComponent(PKG_LOADER)}&limit=12&offset=${pkgOffset}`;
+        const res = await fetch(url).then(r => r.json()).catch(() => null);
+        if (!res?.ok) {
+          if (!append) grid.innerHTML = '<div style="color:#ff4d6a;font-size:13px;padding:12px;">Erreur de recherche.</div>';
+          return;
+        }
+
+        if (!append) grid.innerHTML = '';
+        if (!res.hits?.length && !append) {
+          grid.innerHTML = '<div style="color:#3a3a60;font-size:13px;padding:12px;">Aucun résultat.</div>';
+          return;
+        }
+
+        res.hits.forEach(hit => {
+          const installed = PKG_INSTALLED.has(hit.slug);
+          const card = document.createElement('div');
+          card.id = 'pkg-card-' + hit.slug;
+          card.style.cssText = 'background:#0a0a1a;border:1px solid rgba(255,255,255,.07);border-radius:9px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;';
+          const dl = hit.downloads >= 1000000 ? (hit.downloads/1000000).toFixed(1)+'M' : hit.downloads >= 1000 ? (hit.downloads/1000).toFixed(0)+'k' : hit.downloads;
+          card.innerHTML = `
+            <div style="display:flex;gap:10px;align-items:flex-start;">
+              ${hit.icon_url ? `<img src="${hit.icon_url}" style="width:36px;height:36px;border-radius:7px;flex-shrink:0;object-fit:cover;" onerror="this.style.display='none'"/>` : '<div style="width:36px;height:36px;border-radius:7px;background:rgba(124,92,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px;"><?= $pkgIcon ?></div>'}
+              <div style="min-width:0;">
+                <div style="font-size:13px;font-weight:600;color:#c0c0e0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${hit.name}</div>
+                <div style="font-size:11px;color:#3a3a60;margin-top:2px;">⬇ ${dl} téléchargements</div>
+              </div>
+            </div>
+            <div style="font-size:11px;color:#4848a0;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${hit.description}</div>
+            <button id="pkgbtn-${hit.slug}" onclick="pkgInstall('${hit.slug}','${hit.name.replace(/'/g,"\\'")}','${hit.id}')"
+              style="background:${installed?'rgba(0,214,143,.08)':'rgba(124,92,255,.12)'};border:1px solid ${installed?'rgba(0,214,143,.2)':'rgba(124,92,255,.25)'};color:${installed?'#00d68f':'#b8a4ff'};border-radius:7px;padding:6px 10px;font-size:12px;font-weight:600;cursor:${installed?'default':'pointer'};font-family:inherit;width:100%;transition:.12s;"
+              ${installed?'disabled':''}>
+              ${installed ? '✓ Installé' : '+ Installer'}
+            </button>`;
+          grid.appendChild(card);
+        });
+
+        pkgOffset += res.hits.length;
+        const more = document.getElementById('pkg-results-more');
+        more.style.display = (pkgOffset < res.total) ? 'block' : 'none';
+      }
+
+      function pkgSearchMore() { pkgSearch(true); }
+
+      async function pkgInstall(slug, name, projectId) {
+        const btn = document.getElementById('pkgbtn-' + slug);
+        if (!btn || btn.disabled) return;
+        btn.disabled = true;
+        btn.textContent = '⏳ Récupération…';
+
+        // 1. Récupère la dernière version compatible
+        const versUrl = `${PKG_API_VERS}?project_id=${encodeURIComponent(projectId)}&mc_version=${encodeURIComponent(PKG_MC_VER)}&loader=${encodeURIComponent(PKG_LOADER)}`;
+        const vers = await fetch(versUrl).then(r => r.json()).catch(() => null);
+        const v = vers?.versions?.[0];
+
+        const payload = {
+          server_uuid:  PKG_UUID,
+          package_type: PKG_TYPE,
+          _csrf:        PKG_CSRF,
+          name:         name,
+          slug:         slug,
+          external_id:  projectId,
+          source:       'modrinth',
+          version:      v?.version_number ?? 'latest',
+          file_url:     v?.primary_file?.url ?? '',
+          file_name:    v?.primary_file?.filename ?? '',
+          file_size:    v?.primary_file?.size ?? 0,
+          file_hash:    v?.primary_file?.hashes?.sha1 ?? '',
+        };
+
+        btn.textContent = '⏳ Installation…';
+        const res = await fetch(PKG_API_PKG, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': PKG_CSRF },
+          body: JSON.stringify(payload),
+        }).then(r => r.json()).catch(() => null);
+
+        if (res?.ok) {
+          PKG_INSTALLED.add(slug);
+          btn.textContent = '✓ Installé';
+          btn.style.background = 'rgba(0,214,143,.08)';
+          btn.style.borderColor = 'rgba(0,214,143,.2)';
+          btn.style.color = '#00d68f';
+          pkgAddToList(res.package ?? { id: res.id, name, slug, version: payload.version, source: 'modrinth' });
+        } else {
+          btn.disabled = false;
+          btn.textContent = '✕ Erreur';
+          btn.style.color = '#ff4d6a';
+          setTimeout(() => { btn.textContent = '+ Installer'; btn.style.color = '#b8a4ff'; }, 2000);
+        }
+      }
+
+      function pkgAddToList(pkg) {
+        const list = document.getElementById('pkg-installed-list');
+        const empty = document.getElementById('pkg-empty-state');
+        if (empty) empty.remove();
+
+        const row = document.createElement('div');
+        row.className = 'irow';
+        row.id = 'pkg-row-' + pkg.id;
+        row.innerHTML = `
+          <div style="width:34px;height:34px;border-radius:8px;background:rgba(124,92,255,.1);border:1px solid rgba(124,92,255,.2);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;"><?= $pkgIcon ?></div>
+          <div class="irow-info">
+            <div class="irow-name">${pkg.name}</div>
+            <div class="irow-meta">v${pkg.version} · Modrinth · à l'instant</div>
+          </div>
+          ${pkg.slug ? `<a href="https://modrinth.com/${PKG_TYPE === 'plugin' ? 'plugin' : 'mod'}/${pkg.slug}" target="_blank" style="font-size:11px;color:#3a3a60;text-decoration:none;">↗</a>` : ''}
+          <button onclick="pkgRemove(${pkg.id},'${(pkg.name||'').replace(/'/g,"\\'")}') "
+            style="background:rgba(255,77,106,.1);border:1px solid rgba(255,77,106,.2);color:#ff4d6a;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:.12s;"
+            onmouseenter="this.style.background='rgba(255,77,106,.2)'" onmouseleave="this.style.background='rgba(255,77,106,.1)'">
+            ✕ Retirer
+          </button>`;
+        list.prepend(row);
+        pkgUpdateCount(1);
+      }
+
+      async function pkgRemove(id, name) {
+        if (!confirm(`Retirer "${name}" ?`)) return;
+        const row = document.getElementById('pkg-row-' + id);
+        if (row) row.style.opacity = '.4';
+
+        const res = await fetch(PKG_API_PKG + '?server_uuid=' + encodeURIComponent(PKG_UUID) + '&package_type=' + PKG_TYPE + '&package_id=' + id + '&_csrf=' + encodeURIComponent(PKG_CSRF), {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': PKG_CSRF },
+          body: JSON.stringify({ server_uuid: PKG_UUID, package_type: PKG_TYPE, package_id: id, _csrf: PKG_CSRF }),
+        }).then(r => r.json()).catch(() => null);
+
+        if (res?.ok) {
+          if (row) row.remove();
+          pkgUpdateCount(-1);
+          // Réactiver le bouton dans les résultats si visible
+          const btn = document.getElementById('pkgbtn-' + (row?.dataset?.slug ?? ''));
+          if (btn) { btn.disabled = false; btn.textContent = '+ Installer'; btn.style.color = '#b8a4ff'; }
+        } else {
+          if (row) row.style.opacity = '1';
+          alert('Erreur lors de la suppression.');
+        }
+      }
+
+      function pkgUpdateCount(delta) {
+        const el = document.getElementById('pkg-installed-count');
+        if (!el) return;
+        const n = Math.max(0, parseInt(el.textContent) + delta);
+        el.textContent = n + ' installé' + (n !== 1 ? 's' : '');
+        // badge sidebar
+        document.querySelectorAll('.sv-tab-badge').forEach(b => {
+          if (b.closest('[onclick*="plugins"]')) b.textContent = n;
+        });
+      }
+      </script>
     </div>
 
     <!-- ══════ TAB: PLAYERS ══════ -->
