@@ -115,17 +115,27 @@ require_once __DIR__ . '/_layout.php';
         <a href="<?= base_path() ?>/server-cms/dashboard/create.php" class="btn btn-primary btn-sm">Créer un serveur</a>
       </div>
     <?php else: ?>
+      <?php
+        $svTypeColors = ['vanilla'=>'#00d68f','paper'=>'#ff6b6b','spigot'=>'#ffbe00','forge'=>'#ff8c42','fabric'=>'#7c5cff','neoforge'=>'#e67e22'];
+        $svTypeIcons  = ['vanilla'=>'🟢','paper'=>'📄','spigot'=>'🔌','forge'=>'⚙️','fabric'=>'🧵','neoforge'=>'🔥'];
+      ?>
       <div class="item-list">
         <?php foreach ($recentServers as $sv):
-          $st = strtolower((string)($sv['status'] ?? 'stopped'));
-          $pc = match($st) { 'running' => 'pill-green', 'starting' => 'pill-amber', default => 'pill-grey' };
-          $pl = match($st) { 'running' => '● En ligne', 'starting' => '◌ Démarre', default => '○ Arrêté' };
+          $st   = strtolower((string)($sv['status'] ?? 'stopped'));
+          $type = strtolower((string)($sv['server_type'] ?? 'vanilla'));
+          $sc   = $svTypeColors[$type] ?? '#888888';
+          $si   = $svTypeIcons[$type]  ?? '🖥️';
+          $pc   = match($st) { 'running' => 'pill-green', 'starting','stopping' => 'pill-amber', default => 'pill-grey' };
+          $pl   = match($st) { 'running' => '● En ligne', 'starting' => '◌ Démarre', 'stopping' => '◌ Arrêt', default => '○ Arrêté' };
         ?>
           <a href="<?= base_path() ?>/panel/server.php?id=<?= (int)$sv['id'] ?>" class="item-row">
-            <div class="item-icon">⛏️</div>
+            <div class="item-icon" style="background:<?= $sc ?>18;border-color:<?= $sc ?>33;"><?= $si ?></div>
             <div class="item-info">
               <div class="item-name"><?= e($sv['server_name'] ?? 'Sans nom') ?></div>
-              <div class="item-meta"><?= e(ucfirst($sv['server_type'] ?? '')) ?> <?= e($sv['mc_version'] ?? '') ?></div>
+              <div class="item-meta">
+                <span style="color:<?= $sc ?>;font-weight:600;"><?= e(ucfirst($type)) ?></span>
+                <?php if (!empty($sv['mc_version'])): ?> · <?= e($sv['mc_version']) ?><?php endif; ?>
+              </div>
             </div>
             <span class="pill <?= $pc ?>"><?= $pl ?></span>
           </a>
