@@ -60,13 +60,13 @@ function load_env_local(string $filePath): void
 load_env_local(__DIR__ . '/.env.local');
 
 // ── Headers de sécurité globaux ───────────────────────────────────────────────
-// Appliqués sur toutes les requêtes non-statiques
-if (!defined('SKIP_SECURITY_HEADERS')) {
+// Uniquement si les headers ne sont pas encore envoyés (évite les erreurs 500
+// sur les endpoints qui ont déjà bufferisé ou envoyé du contenu).
+if (!defined('SKIP_SECURITY_HEADERS') && !headers_sent()) {
     header('X-Content-Type-Options: nosniff');
     header('X-Frame-Options: SAMEORIGIN');
     header('Referrer-Policy: strict-origin-when-cross-origin');
     header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
-    // CSP permissive pour l'instant (à durcir en prod selon les besoins)
     header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://images.unsplash.com; connect-src 'self';");
 }
 

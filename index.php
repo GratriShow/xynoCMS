@@ -735,7 +735,8 @@ if ($requestPath !== '/' && $requestPath !== '/index.php' && str_ends_with($requ
           ['Billing Stripe intégré',           '✓','✗','✓','✓'],
           ['Panel admin SaaS',                 '✓','—','—','—'],
         ];
-        foreach ($rows as [$feat, ...$vals]):
+        foreach ($rows as $row):
+          $feat = $row[0]; $vals = array_slice($row, 1);
         ?>
         <tr>
           <td><?= $feat ?></td>
