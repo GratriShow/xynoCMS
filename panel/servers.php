@@ -17,13 +17,28 @@ $flashErr = flash_get('error');
 
 $servers = [];
 try {
-    $s = $pdo->prepare(
-        'SELECT s.id, s.server_name, s.server_type, s.mc_version, s.status,
-                s.server_ip, s.server_port, s.plan_slug, s.created_at,
-                (SELECT COUNT(*) FROM mc_server_launcher_links l WHERE l.server_id = s.id) AS link_count
-         FROM mc_servers s WHERE s.user_id = ? ORDER BY s.created_at DESC'
-    );
-    $s->execute([$user['id']]); $servers = $s->fetchAll();
+    // Compatibilité migration 003 : server_name (nouveau) ou name (ancien)
+    try {
+        $s = $pdo->prepare(
+            'SELECT s.id, s.server_name, s.server_type, s.mc_version, s.status,
+                    s.server_ip, s.server_port,
+                    COALESCE(s.plan_slug, \'spark\') AS plan_slug,
+                    s.created_at,
+                    (SELECT COUNT(*) FROM mc_server_launcher_links l WHERE l.server_id = s.id) AS link_count
+             FROM mc_servers s WHERE s.user_id = ? ORDER BY s.created_at DESC'
+        );
+        $s->execute([$user['id']]); $servers = $s->fetchAll();
+    } catch (Throwable) {
+        $s = $pdo->prepare(
+            'SELECT s.id, s.name AS server_name, s.server_type, s.mc_version, s.status,
+                    s.server_ip, s.server_port,
+                    \'spark\' AS plan_slug,
+                    s.created_at,
+                    (SELECT COUNT(*) FROM mc_server_launcher_links l WHERE l.server_id = s.id) AS link_count
+             FROM mc_servers s WHERE s.user_id = ? ORDER BY s.created_at DESC'
+        );
+        $s->execute([$user['id']]); $servers = $s->fetchAll();
+    }
 } catch (Throwable) {}
 
 $serversOnline = count(array_filter($servers, fn($sv) => strtolower((string)($sv['status'] ?? '')) === 'running'));

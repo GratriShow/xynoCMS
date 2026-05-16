@@ -20,7 +20,14 @@ try {
     $s = $pdo->prepare('SELECT COUNT(*) FROM mc_servers WHERE user_id = ?'); $s->execute([$user['id']]); $serverCount = (int)$s->fetchColumn();
     $s = $pdo->prepare("SELECT COUNT(*) FROM mc_servers WHERE user_id = ? AND status = 'running'"); $s->execute([$user['id']]); $serversOnline = (int)$s->fetchColumn();
     $s = $pdo->prepare('SELECT uuid, name, version, loader FROM launchers WHERE user_id = ? ORDER BY created_at DESC LIMIT 4'); $s->execute([$user['id']]); $recentLaunchers = $s->fetchAll();
-    $s = $pdo->prepare('SELECT id, server_name, server_type, mc_version, status FROM mc_servers WHERE user_id = ? ORDER BY created_at DESC LIMIT 4'); $s->execute([$user['id']]); $recentServers = $s->fetchAll();
+    // Compatibilité : colonne `name` (ancienne) ou `server_name` (après migration 003)
+    try {
+        $s = $pdo->prepare('SELECT id, server_name, server_type, mc_version, status FROM mc_servers WHERE user_id = ? ORDER BY created_at DESC LIMIT 4');
+        $s->execute([$user['id']]); $recentServers = $s->fetchAll();
+    } catch (Throwable) {
+        $s = $pdo->prepare('SELECT id, name AS server_name, server_type, mc_version, status FROM mc_servers WHERE user_id = ? ORDER BY created_at DESC LIMIT 4');
+        $s->execute([$user['id']]); $recentServers = $s->fetchAll();
+    }
 } catch (Throwable) {}
 
 $sidebarCounts = ['launchers' => $launcherCount, 'servers_online' => $serversOnline];
